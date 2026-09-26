@@ -58,6 +58,7 @@ def load_seed(path: Path | str = DEFAULT_SEED_PATH) -> CveSeed:
                 affected=affected,
             )
         )
+    logger.debug("load_seed: {} entrée(s) depuis {}", len(entries), path)
     return CveSeed(entries=tuple(entries), source=str(raw.get("source", "")), generated=str(raw.get("generated", "")))
 
 

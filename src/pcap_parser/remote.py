@@ -114,6 +114,7 @@ def split_live_target(text: str) -> tuple[str, str | None]:
     colon = text.find(":", path_start)
     if colon < 0:
         return text, None
+    logger.debug("split_live_target: URL de source avec filtre BPF")
     return text[:colon], text[colon + 1 :]
 
 
@@ -122,13 +123,13 @@ def _check_host(host: str) -> str:
         try:
             return str(ipaddress.IPv6Address(host[1:-1]))
         except ValueError:
-            logger.exception("échec dans _check_host")
+            logger.debug("_check_host: IPv6 invalide {!r}", host)
             raise CaptureSourceError(f"adresse IPv6 invalide : {host}") from None
     try:
         return str(ipaddress.IPv4Address(host))
     except ValueError:
-        logger.exception("échec dans _check_host")
-        pass
+        # cas normal pour un nom DNS : pas une erreur
+        logger.debug("_check_host: {!r} n'est pas une IPv4, vérifié comme nom DNS", host)
     if _HOSTNAME_RE.match(host):
         return host
     raise CaptureSourceError(f"hote invalide : {host!r} (nom DNS, IPv4 ou [IPv6])")
@@ -203,6 +204,7 @@ def _parse_rpcap(body: str, env: Mapping[str, str]) -> CaptureSource:
         extra = ("-A", f"{user}:{password}")
     who = f"{user}@" if user else ""
     display = f"rpcap://{who}{_host_for_url(host)}:{port}/{iface}"
+    logger.debug("_parse_rpcap: {} (authentification={})", display, user is not None)
     return CaptureSource("rpcap", target, extra, display)
 
 
@@ -243,11 +245,13 @@ def _parse_sshdump(body: str, env: Mapping[str, str]) -> CaptureSource:
         extra += pref("remotepassword", password)
     who = f"{user}@" if user else ""
     display = f"sshdump://{who}{_host_for_url(host)}:{port}/{iface}{key_desc}"
+    logger.debug("_parse_sshdump: {} (mot de passe via env={})", display, bool(password))
     return CaptureSource("sshdump", "sshdump", tuple(extra), display)
 
 
 def _parse_pipe(body: str) -> CaptureSource:
     if body == "-":
+        logger.debug("_parse_pipe: entrée standard")
         return CaptureSource("pipe", "-", (), "pipe://- (entree standard)", uses_stdin=True)
     if not body.startswith("/"):
         raise CaptureSourceError("pipe:// attend '-' (entree standard) ou un chemin absolu : pipe:///chemin/fifo")
@@ -255,10 +259,11 @@ def _parse_pipe(body: str) -> CaptureSource:
     try:
         mode = os.stat(path).st_mode
     except OSError:
-        logger.exception("erreur: OSError")
+        logger.warning("_parse_pipe: tube nommé introuvable {}", path)
         raise CaptureSourceError(f"tube nomme introuvable : {path} (le creer avec mkfifo)") from None
     if not stat.S_ISFIFO(mode):
         raise CaptureSourceError(f"{path} n'est pas un tube nomme (pour un fichier, utiliser --capture)")
+    logger.debug("_parse_pipe: tube nommé {}", path)
     return CaptureSource("pipe", path, (), f"pipe://{path}")
 
 
@@ -278,7 +283,9 @@ def parse_source(text: str, env: Mapping[str, str] | None = None) -> CaptureSour
     if not sep:
         if text.startswith("-"):
             raise CaptureSourceError(f"nom d'interface invalide : {text!r}")
+        logger.debug("parse_source: interface locale {}", text)
         return CaptureSource("local", text, (), text)
+    logger.debug("parse_source: schéma {}", scheme.lower())
     scheme = scheme.lower()
     if scheme == "rpcap":
         return _parse_rpcap(body, env)
@@ -293,6 +300,7 @@ def source_display(text: str) -> str:
     """Forme lisible et sans secret de ``text`` (ou ``text`` si invalide)."""
     try:
         return parse_source(text, env={}).display
-    except CaptureSourceError:
-        logger.exception("erreur: CaptureSourceError")
+    except CaptureSourceError as exc:
+        # repli attendu : source invalide affichee telle quelle
+        logger.debug("source_display: {!r} invalide ({}), affichée telle quelle", text, exc)
         return text

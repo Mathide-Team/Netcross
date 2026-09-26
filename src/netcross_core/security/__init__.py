@@ -91,6 +91,7 @@ def correlate_banner(conn, banner: str) -> list[CveMatch]:
     """
     parsed = parse_banner(banner)
     if parsed is None:
+        logger.debug("correlate_banner: bannière sans produit reconnu")
         return []
 
     matches: list[CveMatch] = []
@@ -114,6 +115,7 @@ def correlate_banner(conn, banner: str) -> list[CveMatch]:
         )
 
     matches.sort(key=lambda m: (m.cvss_score is None, -(m.cvss_score or 0.0), m.cve_id))
+    logger.debug("correlate_banner: {} CVE candidate(s)", len(matches))
     return matches
 
 
@@ -136,4 +138,5 @@ def correlate_versions(conn, banners) -> dict[str, list[CveMatch]]:
         matches = correlate_banner(conn, banner)
         if matches:
             result[banner] = matches
+    logger.debug("correlate_versions: {} bannière(s) avec CVE", len(result))
     return result

@@ -212,6 +212,15 @@ def _user_strings(path: Path) -> list[str]:
                 skip.add(id(first.value))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"_", "N_", "ngettext"}:
             skip.update(id(a) for a in node.args)
+        # Messages loguru (logger.debug/info/warning/...) : destines au
+        # developpeur, volontairement non traduits (issue #245).
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "logger"
+        ):
+            skip.update(id(n) for a in node.args for n in ast.walk(a))
         if isinstance(node, ast.Raise) or (isinstance(node, ast.Assign) and _is_all(node)):
             skip.update(id(n) for n in ast.walk(node))
     found = []

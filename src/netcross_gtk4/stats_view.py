@@ -43,11 +43,13 @@ _GROUP_LABELS: dict[str, str] = {
 
 def sort_options() -> list[tuple[str, str]]:
     """Options de tri pour un DropDown : (valeur, etiquette)."""
+    logger.debug("sort_options: {} option(s)", len(SORT_BY))
     return [(s, _(_SORT_LABELS[s]) if s in _SORT_LABELS else s) for s in SORT_BY]
 
 
 def group_options() -> list[tuple[str, str]]:
     """Options de regroupement pour un DropDown : (valeur, etiquette)."""
+    logger.debug("group_options: {} option(s)", len(GROUP_BY))
     return [(g, _(_GROUP_LABELS[g]) if g in _GROUP_LABELS else g) for g in GROUP_BY]
 
 
@@ -88,11 +90,13 @@ def format_row(row: StatRow) -> str:
         parts.append(_("latence={v:.1f}ms").format(v=row.latency_ms))
     if row.events > 0:
         parts.append(_("evenements={n}").format(n=row.events))
+    logger.debug("format_row: {} -> {} champ(s)", row.label, len(parts))
     return " | ".join(parts)
 
 
 def format_rows(rows: list[StatRow]) -> list[str]:
     """Formate une liste de StatRow pour affichage."""
+    logger.debug("format_rows: {} ligne(s)", len(rows))
     return [format_row(r) for r in rows]
 
 
@@ -106,6 +110,7 @@ def flows_for_row(row: StatRow, all_flows: list[Flow]) -> list[Flow]:
     dans la liste complete.
     """
     key_set = set(row.flow_keys)
+    logger.debug("flows_for_row: {} -> {} clé(s) parmi {} flux", row.label, len(key_set), len(all_flows))
     return [f for f in all_flows if f.key in key_set]
 
 
@@ -115,6 +120,13 @@ def format_flow_summary(flow: Flow) -> str:
     total_bytes = sum(flow.byte_count.values())
     points = " -> ".join(flow.points) if flow.points else "?"
     endpoints = " <-> ".join(flow.endpoints) if flow.endpoints else "?"
+    if not flow.points or not flow.endpoints:
+        logger.debug(
+            "format_flow_summary: flux {} sans points={} ou endpoints={}, affiché ?",
+            flow.key,
+            not flow.points,
+            not flow.endpoints,
+        )
     return _("{points} | {endpoints} | {packets} pkts | {size}").format(
         points=points, endpoints=endpoints, packets=total_pkts, size=format_bytes(total_bytes)
     )
@@ -136,6 +148,15 @@ def build_query(
     Leve ValueError si group_by ou sort_by sont invalides (devrait etre
     impossible depuis un DropDown, mais le filet de securite est la).
     """
+    logger.debug(
+        "build_query: group_by={} sort_by={} top_n={} fenêtre={}-{} segment={}",
+        group_by,
+        sort_by,
+        top_n,
+        time_start,
+        time_end,
+        segment,
+    )
     return StatsQuery(
         group_by=group_by,
         sort_by=sort_by,
@@ -161,10 +182,18 @@ def run_stats(
     retourne une liste vide plutot que de crasher.
     """
     if not flows or report is None:
+        logger.debug("run_stats: flux={} rapport={}, aucune statistique", len(flows or []), report is not None)
         return []
     # all_packets n'est pas conserve dans la GUI apres l'analyse, mais
     # compute_stats l'utilise uniquement pour _flow_packets qui n'est pas
     # appele dans le pipeline d'aggregation -- on passe une liste vide.
+    logger.debug(
+        "run_stats: {} flux, group_by={} sort_by={} segments_evenements={}",
+        len(flows),
+        query.group_by,
+        query.sort_by,
+        len(events_by_segment or {}),
+    )
     return compute_stats(
         flows=flows,
         report=report,
@@ -185,6 +214,7 @@ def build_events_by_segment(
     point. En l'absence d'information de segment, on regroupe sous "?".
     """
     if not findings:
+        logger.debug("build_events_by_segment: aucun finding")
         return {}
     index: dict[str, list[Any]] = {}
     for f in findings:
@@ -192,6 +222,12 @@ def build_events_by_segment(
         if seg is None:
             seg = "?"
         index.setdefault(str(seg), []).append(f)
+    logger.debug(
+        "build_events_by_segment: {} finding(s) -> {} segment(s), {} sans segment",
+        len(findings),
+        len(index),
+        len(index.get("?", [])),
+    )
     return index
 
 

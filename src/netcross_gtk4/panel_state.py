@@ -129,6 +129,12 @@ def panel_visibility(
     """
     # Priorite au live, cf. docstring : l'affichage doit designer le mode
     # qui serait reellement execute.
+    logger.debug(
+        "panel_visibility: diff={} live={} doublons={}",
+        diff_mode,
+        live_mode,
+        detect_duplicates_active,
+    )
     diff_effectif = diff_mode and not live_mode
     duplicate_controls = not diff_mode
     return PanelVisibility(
@@ -189,6 +195,16 @@ def run_button_state(
     refuserait a tort une configuration valide sur une machine a deux
     interfaces.
     """
+    logger.debug(
+        "run_button_state: capture={} diff={} live={} lignes={} base={} courant={} points_live={}",
+        live_capturing,
+        diff_mode,
+        live_mode,
+        single_rows,
+        baseline_rows,
+        current_rows,
+        live_points,
+    )
     if live_capturing:
         return RunButtonState(
             enabled=True,
@@ -304,11 +320,14 @@ def apply_dashboard_selection(
     selection inchangee, ce qui est le comportement d'origine et reste
     correct (le flux a pu disparaitre entre l'affichage et le clic).
     """
+    logger.debug("apply_dashboard_selection: kind={} key={}", kind, key)
     if kind == "flow":
         if flow_par_cle is None:
+            logger.warning("apply_dashboard_selection: sélection flow sans résolveur de clé")
             raise UnknownViewTypeError("selection de type 'flow' sans resolveur de cle")
         flow = flow_par_cle(key)
         if flow is None:
+            logger.debug("apply_dashboard_selection: flux introuvable pour la clé {}, sélection inchangée", key)
             return selection
         return select_flow(selection, flow)
     if kind == "endpoint":
@@ -321,4 +340,5 @@ def apply_dashboard_selection(
         return select_bucket(selection, key)
     if kind == "event":
         return select_event(selection, key, list(evenements or []))
+    logger.warning("apply_dashboard_selection: type de vue inconnu {!r}", kind)
     raise UnknownViewTypeError(f"type de vue inconnu : {kind!r} (attendus : {', '.join(TYPES_DE_VUE)})")

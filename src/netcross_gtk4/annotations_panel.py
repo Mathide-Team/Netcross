@@ -33,6 +33,7 @@ logger = get_logger(__name__)
 class AnnotationsPanel(Gtk.Box):
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        logger.debug("AnnotationsPanel: construction du panneau")
         for side in ("top", "bottom", "start", "end"):
             getattr(self, f"set_margin_{side}")(6)
         self.store: AnnotationStore | None = None
@@ -80,9 +81,15 @@ class AnnotationsPanel(Gtk.Box):
 
     def load(self, captures) -> None:
         """Charge les sidecars des captures analysees (liste (label, chemin))."""
+        logger.debug("AnnotationsPanel.load: {} capture(s)", len(captures))
         self.store = AnnotationStore.load(captures)
         self.selected_tags = set()
         self._point_labels = self.store.writable_labels()
+        logger.debug(
+            "AnnotationsPanel.load: {} point(s) inscriptible(s), {} en lecture seule",
+            len(self._point_labels),
+            len(self.store.errors),
+        )
         self.point_drop.set_model(Gtk.StringList.new(self._point_labels))
         self._set_form_sensitive(bool(self._point_labels))
         self._status(None)
@@ -90,6 +97,7 @@ class AnnotationsPanel(Gtk.Box):
 
     def clear(self) -> None:
         """Analyse sans fichiers (capture en direct, diff) : rien a annoter."""
+        logger.debug("AnnotationsPanel.clear: aucune capture fichier à annoter")
         self.store = None
         self._point_labels = []
         self.point_drop.set_model(Gtk.StringList.new([]))
@@ -98,6 +106,7 @@ class AnnotationsPanel(Gtk.Box):
         self.refresh()
 
     def _set_form_sensitive(self, sensitive: bool) -> None:
+        logger.debug("_set_form_sensitive: {}", sensitive)
         for widget in (self.point_drop, self.frame_entry, self.tag_entry, self.comment_entry, self.add_btn):
             widget.set_sensitive(sensitive)
 
@@ -106,6 +115,7 @@ class AnnotationsPanel(Gtk.Box):
         lines = ([message] if message else []) + [f"Lecture seule : {e}" for e in errors]
         if not lines and self.store is not None:
             lines = ["Clic droit sur une annotation pour l'etendre ou la supprimer."]
+        logger.debug("_status: {} ligne(s)", len(lines))
         self.status_label.set_text("\n".join(lines))
 
     # -- actions -------------------------------------------------------------
@@ -119,6 +129,7 @@ class AnnotationsPanel(Gtk.Box):
     def prefill(self, point: str | None, frame_number: int | None) -> None:
         """Preremplit le formulaire (menu contextuel) et place le focus sur
         l'etiquette : il ne reste qu'a la saisir."""
+        logger.debug("prefill: point={} trame={}", point, frame_number)
         if point in self._point_labels:
             self.point_drop.set_selected(self._point_labels.index(point))
         self.frame_entry.set_text("" if frame_number is None else str(frame_number))
@@ -129,12 +140,14 @@ class AnnotationsPanel(Gtk.Box):
     def submit(self) -> bool:
         """Valide le formulaire ; True si l'annotation est enregistree."""
         point = self.selected_point()
+        logger.debug("submit: point={}", point)
         if self.store is None or point is None:
             return False
         try:
             frame_number = parse_frame_number(self.frame_entry.get_text())
             self.store.add(point, frame_number, self.tag_entry.get_text(), self.comment_entry.get_text())
         except (ValueError, OSError) as exc:
+            logger.warning("submit: annotation non enregistrée sur {} ({})", point, exc)
             self._status(f"Annotation non enregistree : {exc}")
             return False
         self.frame_entry.set_text("")
@@ -142,14 +155,17 @@ class AnnotationsPanel(Gtk.Box):
         self.comment_entry.set_text("")
         self._status(None)
         self.refresh()
+        logger.debug("submit: annotation enregistrée sur {}", point)
         return True
 
     def remove(self, point: str, frame_number: int, tag: str) -> None:
+        logger.debug("AnnotationsPanel.remove: point={} trame={} tag={}", point, frame_number, tag)
         if self.store is None:
             return
         try:
             self.store.remove(point, frame_number, tag)
         except (ValueError, OSError) as exc:
+            logger.warning("remove: suppression impossible sur {} ({})", point, exc)
             self._status(f"Suppression impossible : {exc}")
             return
         self.selected_tags &= set(self.store.tags())
@@ -157,6 +173,7 @@ class AnnotationsPanel(Gtk.Box):
         self.refresh()
 
     def toggle_tag(self, tag: str, active: bool) -> None:
+        logger.debug("toggle_tag: {} actif={}", tag, active)
         if active:
             self.selected_tags.add(tag)
         else:
@@ -173,6 +190,7 @@ class AnnotationsPanel(Gtk.Box):
         while (child := self.tags_box.get_first_child()) is not None:
             self.tags_box.remove(child)
         tags = self.store.tags() if self.store else []
+        logger.debug("_refresh_tags: {} étiquette(s)", len(tags))
         if tags:
             self.tags_box.append(Gtk.Label(label="Filtrer :"))
         for tag in tags:
@@ -187,6 +205,7 @@ class AnnotationsPanel(Gtk.Box):
         while (child := self.list_box.get_first_child()) is not None:
             self.list_box.remove(child)
         rows = self.visible_rows()
+        logger.debug("_refresh_rows: {} annotation(s) visible(s)", len(rows))
         if not rows:
             self.list_box.append(Gtk.Label(label="(aucune annotation)", halign=Gtk.Align.START))
         for point, ann in rows:
@@ -209,11 +228,13 @@ class AnnotationsPanel(Gtk.Box):
         if point in self._point_labels:
             actions.append(("Ajouter une etiquette sur cette trame", lambda: self.prefill(point, frame_number)))
             actions.append(("Supprimer cette etiquette", lambda: self.remove(point, frame_number, tag)))
+        logger.debug("context_actions: cible={} -> {} action(s)", target, len(actions))
         return actions
 
     def _on_right_click(self, gesture, _n_press, x, y) -> None:
         row = self.list_box.get_row_at_y(int(y))
         actions = self.context_actions(getattr(row, "annotation", None))
+        logger.debug("_on_right_click: y={} -> {} action(s)", y, len(actions))
         if not actions:
             return
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)

@@ -65,6 +65,7 @@ def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
     l'appelant (cf. l'adaptateur netcross_core/parsing.py, qui associe
     chaque RawPacket a son label lors de la conversion en Pkt).
     """
+    logger.debug("parse_capture: lecture de {}", path)
     packets: list[RawPacket] = []
     try:
         for record in iter_ek_records(path=path):
@@ -72,11 +73,12 @@ def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
             if pkt is not None:
                 packets.append(pkt)
     except (TsharkNotFoundError, TsharkError) as e:
-        logger.exception(f"échec dans parse_capture: {e}")
+        logger.exception("échec dans parse_capture({}) : {}", path, e)
         if raise_on_error:
             raise
         print(f"impossible de lire {path} : {e}", file=sys.stderr)
         return []
+    logger.debug("parse_capture: {} -> {} paquet(s)", path, len(packets))
     return packets
 
 
@@ -94,6 +96,7 @@ def _parse_capture_timed(label: str, path: str):
 
     t0 = time.time()
     pkts = parse_capture(path, raise_on_error=True)
+    logger.debug("_parse_capture_timed: [{}] {} paquet(s) en {:.3f} s", label, len(pkts), time.time() - t0)
     return pkts, time.time() - t0
 
 
@@ -111,6 +114,7 @@ def parse_captures_parallel(
     """
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
+    logger.debug("parse_captures_parallel: {} capture(s), max_workers={}", len(captures), max_workers)
     all_packets: list[RawPacket] = []
     per_file_stats: list[dict] = []
 
@@ -135,7 +139,7 @@ def parse_captures_parallel(
             except Exception as e:  # noqa: BLE001 -- catch-all volontaire : un
                 # fichier en echec (tshark absent, pcap corrompu, permission...)
                 # ne doit jamais interrompre le traitement parallele des autres.
-                logger.exception(f"échec dans parse_captures_parallel: {e}")
+                logger.exception("échec dans parse_captures_parallel pour {} ({}) : {}", label, path, e)
                 per_file_stats.append(
                     {
                         "label": label,
@@ -149,6 +153,11 @@ def parse_captures_parallel(
     order = {(label, path): i for i, (label, path) in enumerate(captures)}
     per_file_stats.sort(key=lambda s: order[(s["label"], s["path"])])
 
+    logger.debug(
+        "parse_captures_parallel: {} paquet(s) au total, {} capture(s) en erreur",
+        len(all_packets),
+        sum(1 for s in per_file_stats if s["error"]),
+    )
     return all_packets, per_file_stats
 
 
@@ -176,6 +185,7 @@ def iter_live(interface: str, bpf_filter: str | None = None, stop_event=None) ->
     interface sans trafic).
     """
     source = parse_source(interface)
+    logger.debug("iter_live: {} -> interface {} (filtre BPF : {})", interface, source.interface, bpf_filter or "aucun")
     records = iter_ek_records(
         interface=source.interface, bpf_filter=bpf_filter, stop_event=stop_event, **_source_kwargs(source)
     )
@@ -234,6 +244,13 @@ class CaptureRingBuffer:
         self._files: deque[str] = deque()
         self._rotation_started_ts: float | None = None
         self._sequence = 0
+        logger.debug(
+            "CaptureRingBuffer: {} ({} fichier(s) max, {} s par fichier, {})",
+            directory,
+            max_files,
+            max_duration_per_file,
+            extension,
+        )
 
     @property
     def files(self) -> tuple[str, ...]:
@@ -261,6 +278,7 @@ class CaptureRingBuffer:
         self._files.append(path)
         self._rotation_started_ts = ts
         self._prune()
+        logger.debug("CaptureRingBuffer.rotate: nouveau fichier {} ({} conservé(s))", path, len(self._files))
         return path
 
     def maybe_rotate(self, now: float | None = None) -> str | None:
@@ -281,6 +299,7 @@ class CaptureRingBuffer:
         while len(self._files) > self.max_files:
             oldest = self._files.popleft()
             with contextlib.suppress(FileNotFoundError):
+                logger.debug("CaptureRingBuffer._prune: suppression de {}", oldest)
                 os.remove(oldest)
 
 
@@ -290,16 +309,21 @@ def _wireshark_tool_path(name: str) -> str:
     exception et meme message d'installation que ek_source._tshark_path."""
     path = shutil.which(name)
     if path is None:
+        logger.warning("{} introuvable dans le PATH", name)
         raise TsharkNotFoundError(
             f"{name} introuvable dans le PATH -- installer le paquet "
             "'tshark' (apt install tshark / dnf install wireshark-cli), "
             "qui fournit aussi mergecap, reordercap et editcap."
         )
+    logger.debug("_wireshark_tool_path: {} -> {}", name, path)
     return path
 
 
 def _run_wireshark_tool(args: list[str]) -> None:
+    t0 = time.monotonic()
+    logger.debug("exécution : {}", " ".join(map(str, args)))
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
+    logger.debug("{} : code {} en {:.3f} s", os.path.basename(args[0]), proc.returncode, time.monotonic() - t0)
     if proc.returncode != 0:
         raise TsharkError(
             f"{os.path.basename(args[0])} a echoue (code {proc.returncode}) : {proc.stderr.strip()}",
@@ -356,6 +380,7 @@ def merge_captures(paths: Sequence[str], output_path: str, dedup: bool = False) 
     if not os.path.isdir(output_dir):
         raise FileNotFoundError(f"repertoire de sortie introuvable : {output_dir}")
 
+    logger.debug("merge_captures: {} entrée(s) -> {} (dedup={})", len(paths), output_path, dedup)
     mergecap = _wireshark_tool_path("mergecap")
     reordercap = _wireshark_tool_path("reordercap")
     editcap = _wireshark_tool_path("editcap") if dedup else None
@@ -373,6 +398,7 @@ def merge_captures(paths: Sequence[str], output_path: str, dedup: bool = False) 
             deduped = os.path.join(tmp, "deduped")
             _run_wireshark_tool([editcap, "-w", "0", "-F", file_type, ordered, deduped])
             result = deduped
+        logger.debug("merge_captures: format {}, résultat écrit dans {}", file_type, output_real)
         os.replace(result, output_real)
 
 
@@ -400,6 +426,7 @@ class TcpreplayError(RuntimeError):
 def _tcpreplay_path() -> str:
     path = shutil.which("tcpreplay")
     if path is None:
+        logger.warning("tcpreplay introuvable dans le PATH")
         raise TcpreplayNotFoundError(
             "tcpreplay introuvable dans le PATH -- installer le paquet "
             "'tcpreplay' (apt install tcpreplay / dnf install tcpreplay)."
@@ -408,7 +435,9 @@ def _tcpreplay_path() -> str:
 
 
 def _run_tcpreplay(args: list[str]) -> None:
+    logger.debug("exécution : {}", " ".join(map(str, args)))
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
+    logger.debug("tcpreplay : code {}", proc.returncode)
     if proc.returncode != 0:
         raise TcpreplayError(
             f"tcpreplay a echoue (code {proc.returncode}) : {proc.stderr.strip()}",
@@ -474,6 +503,13 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
         if speed <= 0:
             raise ValueError(f"speed doit etre strictement positif (recu {speed!r})")
 
+    logger.debug(
+        "replay_capture: {} sur {} (vitesse={} boucles={})",
+        path,
+        interface,
+        "topspeed" if topspeed else speed,
+        loop,
+    )
     tcpreplay = _tcpreplay_path()
     args = [tcpreplay, f"--intf1={interface}", f"--loop={loop}"]
     args.append("--topspeed" if topspeed else f"--multiplier={speed}")
@@ -567,6 +603,7 @@ def split_capture(path: str, output_dir: str, by: str = "time", value: float = 6
             f"{output_dir} contient deja des segments de {stem!r} -- les supprimer ou choisir un autre repertoire"
         )
 
+    logger.debug("split_capture: {} -> {} par {}={}", path, output_dir, by, value)
     if by == "size":
         return split_by_size(path, os.path.join(output_dir, stem), int(value))
 
@@ -583,7 +620,7 @@ def split_capture(path: str, output_dir: str, by: str = "time", value: float = 6
     try:
         _run_wireshark_tool(args)
     except TsharkError:
-        logger.exception("erreur: TsharkError")
+        logger.exception("split_capture: editcap a échoué, segments partiels de {} supprimés", stem)
         for segment in _list_segments(output_dir, stem):  # jeu partiel trompeur : on ne le laisse pas
             os.remove(segment)
         raise
@@ -595,6 +632,11 @@ def split_capture(path: str, output_dir: str, by: str = "time", value: float = 6
             kept.append(segment)
         else:
             os.remove(segment)
+    logger.debug(
+        "split_capture: {} segment(s) produit(s), {} vide(s) supprimé(s)",
+        len(kept),
+        len(segments) - len(kept),
+    )
     return kept
 
 
@@ -654,6 +696,7 @@ def _validate_live_sources(interfaces: Sequence[tuple[str, str]]) -> list[tuple[
         raise ValueError(
             f"iter_live_multi : une seule source peut lire l'entree standard (pipe://-) : {', '.join(stdin_labels)}"
         )
+    logger.debug("_validate_live_sources: {} source(s) valide(s)", len(sources))
     return sources
 
 
@@ -671,6 +714,7 @@ def _live_source_worker(
     deja recus) et la boucle se termine d'elle-meme."""
     try:
         source = parse_source(interface)
+        logger.debug("_live_source_worker [{}] : démarrage sur {}", label, source.interface)
         records = iter_ek_records(
             interface=source.interface, bpf_filter=bpf_filter, stop_event=halt, **_source_kwargs(source)
         )
@@ -685,9 +729,10 @@ def _live_source_worker(
                 close()  # termine tshark proprement, meme si la boucle a ete interrompue
     except Exception as e:  # noqa: BLE001 -- thread de fond : toute erreur (tshark absent,
         # interface inconnue, permission...) doit etre relayee a l'appelant, pas perdue.
-        logger.exception(f"échec dans _live_source_worker: {e}")
+        logger.exception("échec dans _live_source_worker [{}] ({}) : {}", label, interface, e)
         out.put(_SourceFailed(label, e))
     else:
+        logger.debug("_live_source_worker [{}] : source terminée", label)
         out.put(_SourceDone(label))
 
 
@@ -696,6 +741,7 @@ def _relay_stop(stop_event: threading.Event, halt: threading.Event) -> None:
     l'est, ou s'arrete des que `halt` l'est deja (generateur termine)."""
     while not halt.is_set():
         if stop_event.wait(_LIVE_MULTI_RELAY_POLL_SECONDS):
+            logger.debug("_relay_stop: arrêt demandé par l'appelant")
             halt.set()
             return
 
@@ -710,11 +756,18 @@ def _drain_queue(out: queue.Queue) -> None:
 def _shutdown_live_sources(out: queue.Queue, threads: Sequence[threading.Thread]) -> None:
     """Attend la fin de tous les threads en continuant a vider la file (un
     producteur bloque sur put() ne pourrait sinon jamais se terminer)."""
+    logger.debug("_shutdown_live_sources: arrêt de {} thread(s)", len(threads))
     deadline = time.monotonic() + _LIVE_MULTI_SHUTDOWN_TIMEOUT_SECONDS
     for thread in threads:
         while thread.is_alive() and time.monotonic() < deadline:
             _drain_queue(out)
             thread.join(timeout=0.05)
+            if thread.is_alive() and time.monotonic() >= deadline:
+                logger.warning(
+                    "_shutdown_live_sources: {} toujours actif après {} s",
+                    thread.name,
+                    _LIVE_MULTI_SHUTDOWN_TIMEOUT_SECONDS,
+                )
 
 
 def _raise_source_failure(failure: _SourceFailed) -> None:
@@ -722,6 +775,7 @@ def _raise_source_failure(failure: _SourceFailed) -> None:
     label en prefixe (le message tshark seul ne dit pas quelle interface est
     en cause) ; toute autre exception (dont TsharkNotFoundError) est relevee telle quelle."""
     error = failure.error
+    logger.debug("_raise_source_failure: source {} en échec ({})", failure.label, type(failure.error).__name__)
     if isinstance(error, TsharkError):
         raise TsharkError(f"[{failure.label}] {error}", returncode=error.returncode, stderr=error.stderr) from error
     raise error
@@ -748,12 +802,14 @@ def _iter_live_multi(
             threading.Thread(target=_relay_stop, args=(stop_event, halt), name="iter_live_multi[stop]", daemon=True)
         )
     try:
+        logger.debug("_iter_live_multi: {} source(s), relais d'arrêt={}", len(sources), stop_event is not None)
         for thread in threads:
             thread.start()
         remaining = len(sources)
         while remaining:
             item = out.get()
             if isinstance(item, _SourceDone):
+                logger.debug("_iter_live_multi: source {} terminée, {} restante(s)", item.label, remaining - 1)
                 remaining -= 1
             elif isinstance(item, _SourceFailed):
                 _raise_source_failure(item)
@@ -847,6 +903,7 @@ def _build_display_filter(
         # ip.addr couvre src ET dst (ip.src==X || ip.dst==X en un seul champ)
         endpoint_filters = " || ".join(f"ip.addr == {ip}" for ip in endpoints)
         parts.append(f"({endpoint_filters})")
+    logger.debug("_build_display_filter: {} critère(s)", len(parts))
     return " && ".join(parts) if parts else None
 
 
@@ -925,6 +982,7 @@ def _verifier_filtre_affichage(expr: str) -> None:
     bas = f"{expr.strip().lower()} "
     for token in _BPF_ONLY_TOKENS:
         if bas.startswith(token) or f" {token}" in bas:
+            logger.debug("_verifier_filtre_affichage: syntaxe BPF détectée ({!r})", token.strip())
             raise ValueError(
                 f"filtre {expr!r} : syntaxe BPF/tcpdump detectee (mot-cle {token.strip()!r}), "
                 "alors qu'un filtre d'AFFICHAGE Wireshark est attendu. "
@@ -991,7 +1049,9 @@ def export_filtered(
         args += ["-Y", display_filter]
     logger.debug("export filtre : {} -> {} (filtre d'affichage : {})", path_in, path_out, display_filter or "aucun")
 
+    logger.debug("export_filtered: {}", " ".join(map(str, args)))
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
+    logger.debug("export_filtered: tshark code {}", proc.returncode)
     if proc.returncode != 0:
         raise TsharkError(
             f"tshark a echoue lors de l'export filtre (code {proc.returncode}) : {proc.stderr.strip()}",
@@ -1046,6 +1106,14 @@ def adjust_timestamps(
         actual_offset = offset_seconds
 
     # editcap -t SECONDS : decale tous les timestamps
+    logger.debug(
+        "adjust_timestamps: {} -> {} décalage={} s (normalize={} align_to={})",
+        path_in,
+        path_out,
+        actual_offset,
+        normalize,
+        align_to,
+    )
     editcap = _wireshark_tool_path("editcap")
     # -F deduit de l'extension : editcap ecrit du pcapng par defaut, quel
     # que soit le nom du fichier de sortie (issue #262).
@@ -1097,7 +1165,9 @@ def convert_capture(path_in: str, path_out: str, fmt: str = "pcapng") -> None:
 
     tshark = _tshark_path()
     args = [tshark, "-n", "-r", path_in, "-F", fmt_lower, "-w", path_out]
+    logger.debug("convert_capture: {} -> {} ({}) : {}", path_in, path_out, fmt_lower, " ".join(map(str, args)))
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
+    logger.debug("convert_capture: tshark code {}", proc.returncode)
     if proc.returncode != 0:
         raise TsharkError(
             f"tshark a echoue lors de la conversion (code {proc.returncode}) : {proc.stderr.strip()}",
@@ -1124,10 +1194,12 @@ def export_csv(path_in: str, path_out: str) -> None:
     args += ["-E", "header=y", "-E", "separator=,", "-E", "quote=d", "-E", "occurrence=f"]
     for field in _CSV_FIELDS:
         args += ["-e", field]
+    logger.debug("export_csv: {} -> {} ({} champ(s))", path_in, path_out, len(_CSV_FIELDS))
     with open(path_out, "w", encoding="utf-8") as fh:
         # stdout vers le fichier : capture_output=True est interdit avec
         # stdout=... (ValueError), seul stderr est capture.
         proc = subprocess.run(args, stdout=fh, stderr=subprocess.PIPE, text=True, check=False)
+    logger.debug("export_csv: tshark code {}", proc.returncode)
     if proc.returncode != 0:
         raise TsharkError(
             f"tshark a echoue lors de l'export CSV (code {proc.returncode}) : {proc.stderr.strip()}",
@@ -1148,8 +1220,10 @@ def export_json(path_in: str, path_out: str) -> None:
 
     tshark = _tshark_path()
     args = [tshark, "-n", "-r", path_in, "-T", "json"]
+    logger.debug("export_json: {} -> {}", path_in, path_out)
     with open(path_out, "w", encoding="utf-8") as fh:
         proc = subprocess.run(args, stdout=fh, stderr=subprocess.PIPE, text=True, check=False)
+    logger.debug("export_json: tshark code {}", proc.returncode)
     if proc.returncode != 0:
         raise TsharkError(
             f"tshark a echoue lors de l'export JSON (code {proc.returncode}) : {proc.stderr.strip()}",

@@ -59,6 +59,7 @@ class DashboardSelection:
 
 def clear_selection(selection: DashboardSelection) -> DashboardSelection:
     """Reinitialise toutes les dimensions de la selection."""
+    logger.debug("clear_selection: sélection réinitialisée")
     return DashboardSelection()
 
 
@@ -72,8 +73,10 @@ def _flow_protocol(flow: Flow) -> str | None:
     (strict : (proto, src, ...) ; NAT : (\"NAT\", proto, ...))."""
     key = flow.key
     if not key:
+        logger.debug("_flow_protocol: flux sans clé, protocole inconnu")
         return None
     if key[0] == "NAT" and len(key) >= 2:
+        logger.debug("_flow_protocol: clé NAT, protocole {}", key[1])
         return key[1]
     return key[0]
 
@@ -91,6 +94,13 @@ def select_flow(selection: DashboardSelection, flow: Flow) -> DashboardSelection
     new_pair = selection.pair
     if len(flow.points) == 2:
         new_pair = (flow.points[0], flow.points[1])
+    logger.debug(
+        "select_flow: flow={} proto={} endpoints={} paire={}",
+        flow.key,
+        proto,
+        endpoints,
+        new_pair,
+    )
     return replace(
         selection,
         flow_key=flow.key,
@@ -101,18 +111,22 @@ def select_flow(selection: DashboardSelection, flow: Flow) -> DashboardSelection
 
 
 def select_endpoint(selection: DashboardSelection, endpoint: str) -> DashboardSelection:
+    logger.debug("select_endpoint: {}", endpoint)
     return replace(selection, endpoint=endpoint)
 
 
 def select_protocol(selection: DashboardSelection, protocol: str) -> DashboardSelection:
+    logger.debug("select_protocol: {}", protocol)
     return replace(selection, protocol=protocol)
 
 
 def select_point(selection: DashboardSelection, point: str) -> DashboardSelection:
+    logger.debug("select_point: {}", point)
     return replace(selection, point=point)
 
 
 def select_bucket(selection: DashboardSelection, bucket: int) -> DashboardSelection:
+    logger.debug("select_bucket: {}", bucket)
     return replace(selection, bucket=bucket)
 
 
@@ -128,6 +142,7 @@ def select_event(
     jamais supposer un attribut absent.
     """
     if not (0 <= event_id < len(events)):
+        logger.debug("select_event: indice {} hors bornes ({} événement(s)), pas de propagation", event_id, len(events))
         return replace(selection, event_id=event_id)
     ev = events[event_id]
     proto = getattr(ev, "protocol", None)
@@ -135,6 +150,7 @@ def select_event(
     point = None
     if segment and "->" not in segment:
         point = segment  # segment = un point seul, pas une paire "A -> B"
+    logger.debug("select_event: #{} proto={} point={}", event_id, proto, point)
     return replace(
         selection,
         event_id=event_id,
@@ -203,6 +219,7 @@ def _summary(sel: DashboardSelection) -> str:
         parts.append(f"bucket={sel.bucket}")
     if sel.event_id is not None:
         parts.append(f"evenement=#{sel.event_id}")
+    logger.debug("_summary: {} dimension(s) active(s)", len(parts))
     return " | ".join(parts) if parts else "aucune selection active"
 
 
@@ -221,6 +238,15 @@ def build_dashboard_snapshot(
     Tolere des entrees None (analyse pas encore lancee) : renvoie un
     snapshot vide plutot que de planter.
     """
+    logger.debug(
+        "build_dashboard_snapshot: rapport={} flux={} findings={} tls={} quic={} tshark={}",
+        report is not None,
+        len(flows or []),
+        len(findings or []),
+        len(tls_findings or []),
+        len(quic_findings or []),
+        len(wireshark_expert_events or []),
+    )
     sel = selection or DashboardSelection()
     flows = flows or []
     findings = findings or []
@@ -241,6 +267,7 @@ def build_dashboard_snapshot(
 
     # -- flows filtres --
     visible_flows = [f for f in flows if _flow_matches(f, sel)]
+    logger.debug("build_dashboard_snapshot: {}/{} flux visible(s) après filtre", len(visible_flows), len(flows))
 
     flow_rows: list[dict] = []
     for f in visible_flows:
@@ -355,6 +382,16 @@ def build_dashboard_snapshot(
             }
         )
 
+    logger.debug(
+        "build_dashboard_snapshot: timeline={} segments={} flows={} endpoints={} protocoles={} evenements={}/{}",
+        len(timeline_rows),
+        len(segment_rows),
+        len(flow_rows),
+        len(endpoint_rows),
+        len(protocol_rows),
+        len(event_rows),
+        len(all_events),
+    )
     return DashboardSnapshot(
         timeline_rows=timeline_rows,
         segment_rows=segment_rows,
@@ -378,12 +415,14 @@ def _port(flow: Flow, side: int) -> str:
     if not key:
         return "?"
     if key[0] == "NAT":
+        logger.debug("_port: clé NAT, port illisible")
         return "?"  # cle NAT : pas de port lisible
     # strict : (proto, src, sport, dst, dport, key_id)
     try:
         return str(key[2] if side == 0 else key[4])
     except IndexError:
-        logger.exception("erreur: IndexError")
+        # repli attendu (cle plus courte que la forme stricte) : affichage "?"
+        logger.debug("_port: clé de flux trop courte pour le côté {} : {}", side, key)
         return "?"
 
 
@@ -398,6 +437,7 @@ def _build_conversations(flows: list[Flow]) -> list[Conversation]:
         conv.flow_keys.append(f.key)
         conv.packet_count += sum(f.packet_count.values())
         conv.byte_count += sum(f.byte_count.values())
+    logger.debug("_build_conversations: {} flux -> {} conversation(s)", len(flows), len(convs))
     return list(convs.values())
 
 
@@ -410,6 +450,7 @@ def _dedup_endpoints(rows: list[dict]) -> list[dict]:
         m["flows"] += r["flows"]
         m["packets"] += r["packets"]
         m["bytes"] += r["bytes"]
+    logger.debug("_dedup_endpoints: {} ligne(s) -> {} endpoint(s)", len(rows), len(merged))
     return [
         {
             "endpoint": ep,
@@ -425,6 +466,7 @@ def _dedup_endpoints(rows: list[dict]) -> list[dict]:
 def _bucket_label(bucket: int, bucket_seconds: float) -> str:
     start = bucket * bucket_seconds
     end = start + bucket_seconds
+    logger.debug("_bucket_label: bucket={} -> {:.1f}-{:.1f}s", bucket, start, end)
     return f"{start:.1f}-{end:.1f}s"
 
 

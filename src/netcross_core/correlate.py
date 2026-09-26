@@ -70,6 +70,13 @@ def correlate(all_packets, nat_tolerant=False, nat_window_ms=200, exclude_duplic
             # flows.
             continue
         flows[flow_key(pk, nat_tolerant, nat_window_ms)].setdefault(pk.point, []).append(pk)
+    logger.debug(
+        "correlate: {} paquet(s) -> {} flux (nat_tolerant={}, doublons exclus={})",
+        len(all_packets),
+        len(flows),
+        nat_tolerant,
+        exclude_duplicates,
+    )
     return flows
 
 
@@ -94,6 +101,7 @@ def build_flows(flows: dict) -> list[Flow]:
             if f.endpoints is None:
                 f.endpoints = tuple(sorted((pkts[0].src, pkts[0].dst)))
         out.append(f)
+    logger.debug("build_flows: {} flux construits", len(out))
     return out
 
 
@@ -111,6 +119,7 @@ def build_conversations(flow_list: list[Flow]) -> list[Conversation]:
         conv.flow_keys.append(f.key)
         conv.packet_count += sum(f.packet_count.values())
         conv.byte_count += sum(f.byte_count.values())
+    logger.debug("build_conversations: {} flux -> {} conversation(s)", len(flow_list), len(by_endpoints))
     return list(by_endpoints.values())
 
 
@@ -120,6 +129,7 @@ def compute_throughput(all_packets, bucket_seconds):
     for pk in all_packets:
         bucket = int(pk.ts // bucket_seconds)
         tp[pk.point][bucket] += pk.length
+    logger.debug("compute_throughput: {} point(s), buckets de {} s", len(tp), bucket_seconds)
     return tp
 
 
@@ -190,4 +200,5 @@ def compute_topn_series(all_packets, bucket_seconds, dimension, top_n=5):
             for bucket, nbytes in buckets.items():
                 merged[target][bucket] += nbytes
         result[point] = {cat: dict(buckets) for cat, buckets in merged.items()}
+    logger.debug("compute_topn_series: dimension {} top {} sur {} point(s)", dimension, top_n, len(result))
     return result

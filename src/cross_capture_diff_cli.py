@@ -90,7 +90,7 @@ from netcross_core import (
     write_redaction_map_csv,
 )
 from netcross_core.baseline_diff import diff_reports, print_diff_report, write_diff_csv
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
 from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
 from pcap_parser.remote import CaptureSourceError, parse_source, split_live_target
 
@@ -524,7 +524,9 @@ def main():
         "enregistres (y compris celui-ci, analyses ET diffs confondus dans "
         "la meme base) -- defaut 10 si l'option est fournie sans valeur.",
     )
+    add_debug_argument(ap)
     args = ap.parse_args()
+    apply_debug_argument(args)
 
     if not args.current and not args.live_current:
         print("Il faut fournir au moins un --current ou un --live-current.", file=sys.stderr)

@@ -42,6 +42,8 @@ les charges utiles brutes, comme `tls_diagnostics`). Le rendu vit dans
 
 from __future__ import annotations
 
+import time
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from typing import Any
 
@@ -111,6 +113,12 @@ def scan_capture_exploits(label: str, path: str, signatures: Sequence[Signature]
     n'echoue pas sur une capture illisible : liste vide (le message
     d'erreur est deja emis par pcap_parser)."""
     raw_packets = pcap_parser.parse_capture(path, raise_on_error=False)
+    logger.debug(
+        "scan_capture_exploits: {} ({}), signatures={}",
+        label,
+        path,
+        "défaut" if signatures is None else len(signatures),
+    )
     return detect_exploits(raw_packets, signatures, point=label)
 
 
@@ -153,6 +161,7 @@ def exploit_findings(detections: Iterable[Detection]) -> list[dict[str, Any]]:
         if count > 1:
             entry["detail"] += f" -- {count} occurrences"
         findings.append(entry)
+    logger.trace("exploit_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -188,6 +197,7 @@ def anomaly_findings(suspicions: Iterable[dict]) -> list[dict[str, Any]]:
                 "source": "expert_info",
             }
         )
+    logger.trace("anomaly_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -234,6 +244,7 @@ def dns_tunnel_findings(suspicions: Iterable[dict]) -> list[dict[str, Any]]:
                 "point": s.get("point") or None,
             }
         )
+    logger.trace("dns_tunnel_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -275,6 +286,7 @@ def beaconing_findings(suspicions: Iterable[dict]) -> list[dict[str, Any]]:
                 "point": s.get("point") or None,
             }
         )
+    logger.trace("beaconing_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -329,6 +341,7 @@ def exfiltration_findings(alerts: Iterable[dict]) -> list[dict[str, Any]]:
                 "point": a.get("point") or None,
             }
         )
+    logger.trace("exfiltration_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -363,6 +376,7 @@ def tls_audit_findings(audit: TlsAuditResult) -> list[dict[str, Any]]:
                     "point": cert.get("point") or None,
                 }
             )
+    logger.trace("tls_audit_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -402,6 +416,7 @@ def lateral_movement_findings(events: list[dict]) -> list[dict[str, Any]]:
                 "point": points[0] if points else None,
             }
         )
+    logger.trace("lateral_movement_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -445,6 +460,7 @@ def flow_stats_findings(flows: list[dict]) -> list[dict[str, Any]]:
                 "point": points[0] if points else None,
             }
         )
+    logger.trace("flow_stats_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -478,6 +494,7 @@ def new_host_findings(assets: list[dict]) -> list[dict[str, Any]]:
                 "point": points[0] if points else None,
             }
         )
+    logger.trace("new_host_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -517,6 +534,7 @@ def cve_findings(fingerprints: Iterable[dict], conn) -> list[dict[str, Any]]:
                     "point": fp.get("point"),
                 }
             )
+    logger.trace("cve_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -544,6 +562,7 @@ def dga_findings(alerts: list[dict]) -> list[dict[str, Any]]:
                 "point": points[0] if points else None,
             }
         )
+    logger.trace("dga_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -571,6 +590,7 @@ def fast_flux_findings(alerts: list[dict]) -> list[dict[str, Any]]:
                 "point": points[0] if points else None,
             }
         )
+    logger.trace("fast_flux_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -611,6 +631,7 @@ def sequence_gap_findings(gaps: list) -> list[dict[str, Any]]:
                 "point": g.point or None,
             }
         )
+    logger.trace("sequence_gap_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -633,6 +654,7 @@ def cross_capture_duplicate_findings(duplicate_count: dict) -> list[dict[str, An
                     "point": point_a,
                 }
             )
+    logger.trace("cross_capture_duplicate_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -661,6 +683,7 @@ def extracted_file_findings(extraction) -> list[dict[str, Any]]:
                 "point": point,
             }
         )
+    logger.trace("extracted_file_findings: {} constat(s)", len(findings))
     return findings
 
 
@@ -695,7 +718,17 @@ def apply_security_findings(
     sont des entrees de plus dans la MEME liste (cle `service` valant
     "TLS/JA4" ou "SSH/HASSH" plutot qu'un nom de logiciel), voir
     `netcross_core.fingerprint.report.build_fingerprint_records`."""
+    debut = time.perf_counter()
     all_packets = list(all_packets)
+    logger.debug(
+        "apply_security_findings: {} paquet(s), base CVE={}, politique TLS={}, "
+        "{} destination(s) connue(s), {} hôte(s) connu(s)",
+        len(all_packets),
+        cve_conn is not None,
+        "personnalisée" if tls_policy else "défaut",
+        len(known_destinations or ()),
+        len(known_hosts or ()),
+    )
     # Issue #365 : plages TEST-NET (RFC 5737) internes par defaut (comme
     # ipaddress) ; externes sur demande (--test-net-external, demonstrations).
     beacon_thresholds = BeaconingThresholds(treat_test_net_as_external=treat_test_net_as_external)
@@ -810,6 +843,12 @@ def apply_security_findings(
     # "0 fingerprints" sur une capture qui en contenait deux. Un journal qui
     # se trompe d'etiquette est pire qu'un journal muet -- il fait chercher
     # un bug la ou il n'y en a pas, et masque celui qui existe.
+    logger.debug(
+        "apply_security_findings: terminé en {:.3f} s, sévérités {}, catégories {}",
+        time.perf_counter() - debut,
+        dict(Counter(f.get("severity") for f in findings)),
+        dict(Counter(f.get("category") for f in findings)),
+    )
     logger.info(
         "security_findings : {} constats ({} empreintes de service, {} incoherences de protocole)",
         len(findings),

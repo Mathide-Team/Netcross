@@ -155,6 +155,12 @@ def correlate_event_causes(events: list[ExpertEvent]) -> list[ExpertEvent]:
                 ev.impact = impact
                 break  # un seul pattern par evenement (priorite : ordre _PATTERNS)
 
+    logger.debug(
+        "correlate_event_causes: {} événement(s), {} segment(s) avec motif, {} cause(s) attribuée(s)",
+        len(events),
+        len(patterns_by_segment),
+        sum(1 for ev in events if ev.cause is not None),
+    )
     return events
 
 
@@ -173,4 +179,9 @@ def correlate_diagnosis_causes(diagnoses: list[Diagnosis]) -> list[Diagnosis]:
                 diag.cause = ev.cause
                 diag.impact = ev.impact
                 break
+    logger.debug(
+        "correlate_diagnosis_causes: {} diagnostic(s), {} avec cause",
+        len(diagnoses),
+        sum(1 for d in diagnoses if d.cause is not None),
+    )
     return diagnoses

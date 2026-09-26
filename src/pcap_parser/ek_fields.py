@@ -62,7 +62,8 @@ def as_int(value: Any, base: int = 10) -> int | None:
     try:
         return int(value, base) if isinstance(value, str) else int(value)
     except (TypeError, ValueError):
-        logger.exception("échec dans as_int")
+        # appele pour chaque champ de chaque paquet : TRACE, pas de traceback
+        logger.trace("as_int: valeur non entière {!r} (base {})", value, base)
         return None
 
 
@@ -114,7 +115,7 @@ def as_float(value: Any) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError):
-        logger.exception("échec dans as_float")
+        logger.trace("as_float: valeur non numérique {!r}", value)
         return None
 
 
@@ -336,5 +337,5 @@ def as_bytes_from_hex_dump(value: Any) -> bytes:
     try:
         return bytes.fromhex(value.replace(":", ""))
     except ValueError:
-        logger.exception("échec dans as_bytes_from_hex_dump")
+        logger.trace("as_bytes_from_hex_dump: dump hexadécimal invalide ({} car.)", len(str(value)))
         return b""

@@ -83,6 +83,7 @@ def load_packets(
     Remplace MainWindow._load_packets : même logique, sans dépendance GTK.
     Supporte le mode parallèle via parse_captures_parallel.
     """
+    logger.debug("load_packets: {} capture(s), parallel={}", len(captures), parallel)
     if parallel:
         from pcap_parser.capture import parse_captures_parallel
 
@@ -95,6 +96,7 @@ def load_packets(
                     on_progress(
                         f"  [{s['label']}] {s['count']} paquets chargés depuis {s['path']} ({s['seconds']:.2f}s)"
                     )
+        logger.debug("load_packets: {} paquet(s) chargé(s) en parallèle", len(all_packets))
         return all_packets
 
     sequential: list = []
@@ -105,6 +107,7 @@ def load_packets(
         sequential.extend(packets)
         if on_progress:
             on_progress(f"  -> {len(packets)} paquets chargés")
+    logger.debug("load_packets: {} paquet(s) chargé(s) en séquentiel", len(sequential))
     return sequential
 
 
@@ -146,8 +149,13 @@ def run_analysis_pipeline(
         raise ValueError("le rapport de securite n'est pas disponible avec l'anonymisation des adresses")
 
     def _log(msg: str) -> None:
+        # Avec la GUI, on_progress aboutit a MainWindow._log qui trace deja
+        # chaque ligne ("journal: ...") : on ne trace ici que sans callback,
+        # pour ne pas doubler les lignes en mode debug.
         if on_progress:
             on_progress(msg)
+        else:
+            logger.debug("étape: {}", msg)
 
     points_order = None if options.auto_topology else [label for label, _ in captures]
 
@@ -315,6 +323,7 @@ def run_security_analysis(report, all_packets, captures, log: Callable[[str], No
         "Analyse de securite (beaconing, exfiltration, DGA, fast flux, mouvements lateraux, "
         "flow_stats, DNS tunnel, TLS audit, CVE)..."
     )
+    logger.debug("run_security_analysis: {} capture(s), {} paquet(s)", len(captures), len(all_packets))
     detections = []
     for label, path in captures:
         found = scan_capture_exploits(label, path)
@@ -328,6 +337,7 @@ def run_security_analysis(report, all_packets, captures, log: Callable[[str], No
             "une version absente de cette selection n'est pas pour autant non vulnerable."
         )
     except (OSError, ValueError) as exc:
+        logger.warning("run_security_analysis: base CVE embarquée illisible ({})", exc)
         log(f"  Base CVE embarquee illisible ({exc}) : services listes sans correlation CVE.")
     try:
         apply_security_findings(report, all_packets, detections=detections, cve_conn=cve_conn)
@@ -335,4 +345,5 @@ def run_security_analysis(report, all_packets, captures, log: Callable[[str], No
         if cve_conn is not None:
             close_db(cve_conn)
     log(f"  -> {len(report.security_findings)} constat(s) de securite")
+    logger.debug("run_security_analysis: {} constat(s) de sécurité", len(report.security_findings))
     return build_security_report(report)

@@ -71,6 +71,7 @@ nav:
   - Architecture:
       - Diagramme de classes: class-diagram.md
       - Internationalisation: i18n.md
+      - Journalisation et mode debug: journalisation.md
       - Décisions d'architecture: adr/netflow-sflow-architecture.md
       - Qualité: quality/anonymization-plan.md
       - Couverture de la GUI: quality/gui-app-coverage.md

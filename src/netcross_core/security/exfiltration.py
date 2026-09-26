@@ -332,6 +332,7 @@ def detect_exfiltration(
 
     alerts.sort(key=lambda a: (-a.score, -a.upload_bytes, a.point, a.src, a.dst))
     flow_stats.sort(key=lambda s: (-s["volume_bytes"], s["point"], s["src"], s["dst"]))
+    logger.debug("detect_exfiltration: {} alerte(s)", len(alerts))
     return ExfiltrationResult(alerts=[a.to_dict() for a in alerts], flow_stats=flow_stats)
 
 
@@ -354,6 +355,7 @@ def dns_tunnel_sources(packets: Iterable[Pkt], dns_suspicions: Iterable[dict]) -
             if name == dom or name.endswith("." + dom):
                 sources.add((pk.point, pk.src))
                 break
+    logger.debug("dns_tunnel_sources: {} source(s) de tunnel DNS", len(sources))
     return sources
 
 
@@ -387,4 +389,5 @@ def correlate_exfiltration(
         a["severity"] = severity_for(a["score"])
         out.append(a)
     out.sort(key=lambda d: (-d["score"], -int(d.get("upload_bytes") or 0)))
+    logger.debug("correlate_exfiltration: {} alerte(s), {} source(s) DNS", len(out), len(dns_sources))
     return out

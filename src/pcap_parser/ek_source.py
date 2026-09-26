@@ -100,10 +100,12 @@ DEFAULT_PREFS: Sequence[str] = (
 def _tshark_path() -> str:
     path = shutil.which("tshark")
     if path is None:
+        logger.warning("tshark introuvable dans le PATH")
         raise TsharkNotFoundError(
             "tshark introuvable dans le PATH -- installer le paquet "
             "'tshark' (apt install tshark / dnf install wireshark-cli)."
         )
+    logger.debug("_tshark_path: {}", path)
     return path
 
 
@@ -176,10 +178,10 @@ def _iter_ndjson_records(stream: IO[str]) -> Iterator[dict]:
             continue
         try:
             obj = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             # une ligne tronquee/corrompue ne doit pas faire tomber tout
             # le flux -- on la saute et on continue sur la suivante
-            logger.exception("échec dans _iter_ndjson_records")
+            logger.warning("_iter_ndjson_records: ligne JSON invalide ignorée ({} car., {})", len(line), exc)
             continue
         if "layers" in obj:
             yield obj
@@ -204,6 +206,7 @@ def _terminate_on_event(proc: subprocess.Popen, stop_event: threading.Event) -> 
     voir test_stop_mechanism.py, arret en ~1s meme sans aucune sortie)."""
     stop_event.wait()
     if proc.poll() is None:
+        logger.debug("_terminate_on_event: arrêt demandé, terminate() de tshark (pid {})", getattr(proc, "pid", None))
         proc.terminate()
 
 
@@ -258,11 +261,14 @@ def iter_ek_records(
     )
     if stop_event is not None:
         threading.Thread(target=_terminate_on_event, args=(proc, stop_event), daemon=True).start()
+    logger.debug("iter_ek_records: tshark lancé (pid {}, source={})", getattr(proc, "pid", None), path or interface)
+    records_count = 0
     produced_any = False
     try:
         assert proc.stdout is not None
         for obj in _iter_ndjson_records(proc.stdout):
             produced_any = True
+            records_count += 1
             frame = obj["layers"].get("frame") or {}
             ts = _parse_frame_time_epoch(frame.get("frame_frame_time_epoch"))
             if ts is None:
@@ -271,7 +277,7 @@ def iter_ek_records(
                 try:
                     ts = int(float(obj.get("timestamp", 0))) / 1000.0
                 except (TypeError, ValueError):
-                    logger.exception("échec dans iter_ek_records")
+                    logger.debug("iter_ek_records: horodatage illisible, 0.0 utilisé")
                     ts = 0.0
             yield EkRecord(ts=ts, layers=obj["layers"])
     finally:
@@ -280,9 +286,14 @@ def iter_ek_records(
             try:
                 proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                logger.exception("échec dans iter_ek_records")
+                logger.warning("iter_ek_records: tshark ne s'arrête pas après terminate(), kill")
                 proc.kill()
                 proc.wait()
+        logger.debug(
+            "iter_ek_records: tshark terminé, code {}, {} enregistrement(s)",
+            proc.returncode,
+            records_count,
+        )
         stderr_text = ""
         if proc.stderr is not None:
             with contextlib.suppress(OSError, ValueError):
@@ -295,6 +306,7 @@ def iter_ek_records(
             # capture. Un code d'echec alors qu'aucun paquet n'est sorti
             # signale un vrai probleme (fichier illisible, interface
             # inconnue, permissions) -- a faire remonter, pas a avaler.
+            logger.debug("iter_ek_records: échec tshark sans aucun paquet produit")
             raise TsharkError(
                 f"tshark a echoue (code {proc.returncode}) : {stderr_text.strip()}",
                 returncode=proc.returncode,

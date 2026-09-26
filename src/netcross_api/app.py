@@ -147,6 +147,7 @@ async def _save_upload(file: UploadFile, label: str) -> str:
                     raise HTTPException(status_code=413, detail=f"Fichier {label} trop volumineux (max {_max_mb()} Mo)")
                 tmp.write(chunk)
     except BaseException:
+        logger.debug("_save_upload: échec pour {}, fichier temporaire {} supprimé", label, tmp.name)
         Path(tmp.name).unlink(missing_ok=True)
         raise
     return tmp.name
@@ -165,6 +166,7 @@ def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | N
         try:
             pkts = parse_capture(label, path)
         except Exception as exc:
+            logger.warning("parsing de la capture {} impossible : {}", label, exc)
             raise AnalysisError(f"Erreur de parsing pour {label}: {exc}") from exc
         if not pkts:
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
@@ -179,6 +181,7 @@ def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | N
             detections.extend(scan_capture_exploits(label, path))
         apply_security_findings(report, all_packets, detections=detections)
     except Exception as exc:
+        logger.exception("échec de l'analyse des captures")
         raise AnalysisError(f"Erreur d'analyse: {exc}") from exc
 
     summary: dict = {
@@ -198,6 +201,7 @@ def _run_job(analysis_id: str, captures: list[tuple[str, str]], order_list: list
     try:
         document, summary = _analyse_captures(captures, order_list, multi)
     except AnalysisError as exc:
+        logger.warning("analyse {} en échec : {}", analysis_id, exc)
         store.fail(analysis_id, str(exc))
     except Exception as exc:  # défense : une tâche ne doit jamais rester pending
         logger.exception("analyse {} : erreur interne", analysis_id)
@@ -370,6 +374,7 @@ async def upload_multi_capture(
                 raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
             captures.append((label, await _save_upload(file, label)))
     except BaseException:
+        logger.debug("upload interrompu : {} fichier(s) temporaire(s) supprimé(s)", len(captures))
         for _label, path in captures:
             Path(path).unlink(missing_ok=True)
         raise

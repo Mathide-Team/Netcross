@@ -118,6 +118,7 @@ class CveEntry:
 
 def connect_cve_db(db_path) -> sqlite3.Connection:
     """Ouvre (et cree si absent) la base SQLite `db_path`, schema applique."""
+    logger.debug("connect_cve_db: {}", db_path)
     conn = sqlite3.connect(db_path)
     conn.executescript(_SCHEMA)
     return conn
@@ -140,6 +141,7 @@ def upsert_cve(conn: sqlite3.Connection, entry: CveEntry) -> None:
     voir son score CVSS ou sa description revisee par le NVD apres
     publication initiale).
     """
+    logger.debug("upsert_cve: {}", entry.cve_id)
     conn.execute(
         "INSERT INTO cves (cve_id, description, cvss_score, cvss_severity, published) "
         "VALUES (?, ?, ?, ?, ?) "
@@ -177,6 +179,7 @@ def get_cve(conn: sqlite3.Connection, cve_id: str) -> CveEntry | None:
         (cve_id,),
     ).fetchone()
     if row is None:
+        logger.debug("get_cve: {} absente de la base", cve_id)
         return None
     products = conn.execute(
         "SELECT vendor, product, version, version_start_including, version_start_excluding, "
@@ -210,6 +213,7 @@ def query_by_product(conn: sqlite3.Connection, vendor: str, product: str) -> lis
         ).fetchall()
     ]
     if not cve_ids:
+        logger.debug("query_by_product: aucun CVE pour {}/{}", vendor, product)
         return []
 
     placeholders = ",".join("?" * len(cve_ids))

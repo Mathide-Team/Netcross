@@ -164,7 +164,7 @@ def parse_cert_date(value: str | None) -> datetime | None:
     try:
         return datetime.strptime(value.removesuffix(" (UTC)"), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     except ValueError:
-        logger.exception("échec dans parse_cert_date")
+        logger.debug("parse_cert_date: format de date inattendu {!r}", value)
         return None
 
 
@@ -305,4 +305,7 @@ def audit_tls_certificates(packets: Iterable[Pkt], policy: TlsAuditPolicy = DEFA
         srv["severity"] = next((s for s in ranked if s in severities), None)
         result.servers.append(srv)
     result.servers.sort(key=lambda s: (-s["score"], s["host"], s["port"] or 0))
+    logger.debug(
+        "audit_tls_certificates: {} certificat(s), {} serveur(s)", len(result.certificates), len(result.servers)
+    )
     return result

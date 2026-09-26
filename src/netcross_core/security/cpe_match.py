@@ -116,6 +116,7 @@ def parse_banner(banner: str) -> ParsedBanner | None:
         parsed = _parse_token(token)
         if parsed is not None:
             return parsed
+    logger.trace("parse_banner: aucun produit reconnu")
     return None
 
 

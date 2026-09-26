@@ -273,4 +273,5 @@ def analyze_flow_stats(
             flow.byte_entropy_ratio = min(1.0, ratio_sum / flow.payload_bytes)
         flow.classification = _classify_flow(flow, thresholds)
 
+    logger.debug("analyze_flow_stats: {} flux analysés", len(flows))
     return FlowStatsResult(flows=list(flows.values()))

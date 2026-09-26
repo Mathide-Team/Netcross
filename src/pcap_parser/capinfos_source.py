@@ -82,6 +82,7 @@ def _capinfos_path() -> str | None:
     central du pipeline comme tshark : son absence degrade simplement
     vers "pas de commentaire de section disponible", jamais une erreur
     remontee a l'appelant."""
+    logger.debug("_capinfos_path: {}", shutil.which("capinfos") or "introuvable")
     return shutil.which("capinfos")
 
 
@@ -95,6 +96,7 @@ def _parse_capture_comment(stdout: str) -> str | None:
     for line in stdout.splitlines():
         if line.startswith(_COMMENT_PREFIX):
             return line[len(_COMMENT_PREFIX) :].strip() or None
+    logger.debug("_parse_capture_comment: aucun commentaire")
     return None
 
 
@@ -113,6 +115,7 @@ def read_capture_comment(path: str) -> str | None:
     absence est le cas normal, pas une erreur a signaler."""
     capinfos = _capinfos_path()
     if capinfos is None:
+        logger.debug("read_capture_comment: capinfos absent, pas de commentaire lu")
         return None
     try:
         proc = subprocess.run(
@@ -121,9 +124,10 @@ def read_capture_comment(path: str) -> str | None:
             text=True,
             timeout=_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        logger.exception("échec dans read_capture_comment")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("read_capture_comment: capinfos -k {} impossible ({})", path, exc)
         return None
+    logger.debug("read_capture_comment: {} code {}", path, proc.returncode)
     return _parse_capture_comment(proc.stdout)
 
 
@@ -204,9 +208,12 @@ def _parse_table_report(stdout: str) -> dict[str, str] | None:
     que decaler les valeurs). Ne strip pas les lignes : les colonnes
     finales vides comptent."""
     lines = [line for line in stdout.split("\n") if line.strip()]
+    logger.debug("_parse_table_report: {} ligne(s) non vide(s)", len(lines))
     if len(lines) < 2:
         return None
     header, row = lines[0].split("\t"), lines[1].split("\t")
+    if len(header) != len(row):
+        logger.debug("_parse_table_report: en-tête {} colonne(s) / ligne {} colonne(s)", len(header), len(row))
     if len(header) != len(row):
         return None
     return dict(zip(header, row, strict=True))
@@ -221,7 +228,7 @@ def _integer(value: str | None) -> int | None:
     try:
         return int(text) if text is not None else None
     except ValueError:
-        logger.exception("échec dans _integer")
+        logger.debug("_integer: valeur capinfos non entière {!r}", text)
         return None
 
 
@@ -230,7 +237,7 @@ def _number(value: str | None) -> float | None:
     try:
         return float(text) if text is not None else None
     except ValueError:
-        logger.exception("échec dans _number")
+        logger.debug("_number: valeur capinfos non numérique {!r}", text)
         return None
 
 
@@ -249,6 +256,7 @@ def _build_capture_info(path: str, fields: dict[str, str], structure: CaptureStr
         # set)"), elle est portee par chaque interface.
         limits = [i.snaplen for i in interfaces if i.snaplen]
         snaplen = max(limits) if limits else None
+    logger.debug("_build_capture_info: {} snaplen={} {} interface(s)", path, snaplen, len(interfaces))
     return CaptureInfo(
         path=path,
         file_type=_text(fields.get("File type")),
@@ -279,6 +287,7 @@ def read_capture_info(path: str) -> CaptureInfo | None:
     capinfos ne comprend pas, ou en cas de timeout. Si seul le cadrage
     binaire echoue (fichier compresse -- capinfos, lui, sait le lire), les
     champs de capinfos sont renvoyes et `interfaces` reste vide."""
+    logger.debug("read_capture_info: {}", path)
     capinfos = _capinfos_path()
     if capinfos is None:
         return None
@@ -290,15 +299,16 @@ def read_capture_info(path: str) -> CaptureInfo | None:
             errors="replace",  # materiel/application de capture : texte libre, pas forcement UTF-8
             timeout=_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        logger.exception("échec dans read_capture_info")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("read_capture_info: capinfos {} impossible ({})", path, exc)
         return None
     fields = _parse_table_report(proc.stdout)
+    logger.debug("read_capture_info: capinfos code {}, rapport lisible={}", proc.returncode, fields is not None)
     if fields is None:
         return None
     try:
         structure = read_structure(path)
-    except (OSError, ValueError, struct.error):
-        logger.exception("échec dans read_capture_info")
+    except (OSError, ValueError, struct.error) as exc:
+        logger.warning("read_capture_info: structure de {} illisible ({}), interfaces ignorées", path, exc)
         structure = None
     return _build_capture_info(path, fields, structure)

@@ -94,6 +94,7 @@ def detect_format(path: str) -> str | None:
     (fichier compresse, autre format, fichier vide/tronque)."""
     with open(path, "rb") as f:
         magic = f.read(4)
+    logger.debug("detect_format: {} magic={}", path, magic.hex())
     if magic == _PCAPNG_MAGIC:
         return FORMAT_PCAPNG
     entry = _PCAP_MAGICS.get(magic)
@@ -169,6 +170,7 @@ def has_packets(path: str) -> bool:
     fmt = detect_format(path)
     with open(path, "rb", buffering=_READ_BUFFER) as f:
         if fmt is None:
+            logger.debug("has_packets: {} format inconnu, supposé non vide", path)
             return True
         if fmt == FORMAT_PCAPNG:
             return any(block_type in _PACKET_BLOCKS for block_type, _raw in _iter_pcapng_blocks(f))
@@ -176,6 +178,7 @@ def has_packets(path: str) -> bool:
         if header is None:
             return False
         endian = _PCAP_MAGICS[header[:4]][0]
+        logger.debug("has_packets: {} (pcap)", path)
         return next(_iter_pcap_records(f, endian), None) is not None
 
 
@@ -267,9 +270,12 @@ def _read_pcapng_structure(f: BinaryIO) -> CaptureStructure | None:
                 # Compteurs cumulatifs : le DERNIER ISB d'une interface donne les
                 # totaux ; un ISB qui omet une option ne remet pas l'ancienne a None.
                 interfaces[slot] = replace(interfaces[slot], **fields)
-    except (ValueError, struct.error):
-        logger.exception("échec dans _read_pcapng_structure")
-        pass  # bloc corrompu : on garde les interfaces lues jusque-la (comme une troncature)
+    except (ValueError, struct.error) as exc:
+        logger.warning(
+            "_read_pcapng_structure: bloc corrompu, lecture arrêtée après {} interface(s) ({})", len(interfaces), exc
+        )
+        # bloc corrompu : on garde les interfaces lues jusque-la (comme une troncature)
+    logger.debug("_read_pcapng_structure: version={} {} interface(s)", version, len(interfaces))
     if version is None:
         return None
     return CaptureStructure(FORMAT_PCAPNG, version, tuple(interfaces))
@@ -286,6 +292,7 @@ def read_structure(path: str) -> CaptureStructure | None:
     Statistics Blocks (dumpcap/tshark le font, tcpdump et editcap non)."""
     fmt = detect_format(path)
     if fmt is None:
+        logger.debug("read_structure: {} format non reconnu", path)
         return None
     with open(path, "rb", buffering=_READ_BUFFER) as f:
         if fmt == FORMAT_PCAPNG:
@@ -295,6 +302,7 @@ def read_structure(path: str) -> CaptureStructure | None:
             return None
         endian = _PCAP_MAGICS[header[:4]][0]
         major, minor, _thiszone, _sigfigs, snaplen, linktype = struct.unpack_from(endian + "HHiIII", header, 4)
+        logger.debug("read_structure: {} {} {}.{} linktype={}", path, fmt, major, minor, linktype)
         return CaptureStructure(fmt, f"{major}.{minor}", (InterfaceRecord(0, linktype, snaplen),))
 
 
@@ -329,6 +337,7 @@ class _SegmentSink:
         # "xb" : refuse d'ecraser un fichier existant (defense en profondeur,
         # split_capture verifie deja le repertoire en amont).
         self._file = open(path, "xb")  # noqa: SIM115 -- ferme par _close_current/close
+        logger.debug("_SegmentSink: nouveau segment {}", path)
         self.paths.append(path)
         self._size = 0
         self._packets = 0
@@ -364,12 +373,14 @@ class _SegmentSink:
         # que des blocs de statistiques) n'a pas de raison d'exister.
         if self._file is not None and self._packets == 0:
             self._close_current()
+            logger.debug("_SegmentSink.close: dernier segment vide supprimé ({})", self.paths[-1])
             os.remove(self.paths.pop())
         self._close_current()
 
     def abort(self) -> None:
         """Ferme et supprime tous les segments deja ecrits (echec en cours
         de route : un jeu de segments partiel serait trompeur)."""
+        logger.debug("_SegmentSink.abort: {} segment(s) à supprimer", len(self.paths))
         self._close_current()
         for path in self.paths:
             with contextlib.suppress(OSError):
@@ -401,6 +412,7 @@ def split_by_size(path: str, out_prefix: str, max_bytes: int) -> list[str]:
         raise ValueError(
             f"{path} : format non reconnu -- le decoupage par taille exige un fichier pcap/pcapng non compresse"
         )
+    logger.debug("split_by_size: {} ({}) -> {}_*, {} octets max", path, fmt, out_prefix, max_bytes)
     sink = _SegmentSink(out_prefix, format_extension(fmt), max_bytes)
     try:
         with open(path, "rb", buffering=_READ_BUFFER) as f:
@@ -409,10 +421,17 @@ def split_by_size(path: str, out_prefix: str, max_bytes: int) -> list[str]:
             else:
                 _split_pcap(f, sink)
         sink.close()
-    except BaseException:
-        logger.exception("erreur: BaseException")
+    except BaseException as exc:
+        # l'appelant journalise l'erreur remontee ; ici on trace le nettoyage
+        logger.warning(
+            "split_by_size: {} interrompu ({}), {} segment(s) partiel(s) supprimé(s)",
+            path,
+            type(exc).__name__,
+            len(sink.paths),
+        )
         sink.abort()
         raise
+    logger.debug("split_by_size: {} segment(s)", len(sink.paths))
     return sink.paths
 
 
@@ -455,6 +474,7 @@ def first_timestamp(path: str) -> float:
     fmt = detect_format(path)
     if fmt is None:
         raise ValueError(f"format non reconnu : {path}")
+    logger.debug("first_timestamp: {} ({})", path, fmt)
     with open(path, "rb") as f:
         if fmt == FORMAT_PCAPNG:
             return _first_timestamp_pcapng(f)
@@ -501,5 +521,6 @@ def _first_timestamp_pcapng(f: BinaryIO) -> float:
             ts_high, ts_low = struct.unpack_from(endian + "II", raw, 12)
             ts_64 = (ts_high << 32) | ts_low
             divisor = 2**tsresol_shift
+            logger.debug("_first_timestamp_pcapng: résolution 2^-{} s", tsresol_shift)
             return ts_64 / divisor
     raise ValueError("pcapng sans paquet (aucun Enhanced Packet Block)")

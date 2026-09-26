@@ -275,6 +275,14 @@ def compute_stats(
         filtered_flows.append(f)
 
     # Regroupement
+    logger.debug(
+        "compute_stats: {} flux -> {} après filtres (segment={} fenêtre={}..{})",
+        len(flows),
+        len(filtered_flows),
+        query.segment,
+        query.time_start,
+        query.time_end,
+    )
     groups = _group_flows(filtered_flows, query.group_by)
 
     # Aggregation
@@ -310,6 +318,13 @@ def compute_stats(
     if query.top_n is not None:
         rows = rows[: query.top_n]
 
+    logger.debug(
+        "compute_stats: {} ligne(s) groupées par {}, tri {} top {}",
+        len(rows),
+        query.group_by,
+        query.sort_by,
+        query.top_n,
+    )
     return rows
 
 
@@ -343,6 +358,7 @@ def export_csv(rows: list[StatRow]) -> str:
         d = asdict(row)
         d["flow_keys"] = ";".join(str(k) for k in row.flow_keys)
         writer.writerow(d)
+    logger.debug("export_csv: {} ligne(s) de statistiques", len(rows))
     return output.getvalue()
 
 
@@ -353,6 +369,7 @@ def export_json(rows: list[StatRow]) -> list[dict]:
         d = asdict(row)
         d["flow_keys"] = [list(k) if isinstance(k, tuple) else k for k in row.flow_keys]
         result.append(d)
+    logger.debug("export_json: {} ligne(s) de statistiques", len(result))
     return result
 
 

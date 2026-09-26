@@ -69,6 +69,7 @@ def add_annotation(
     tag = tag.strip()
     if not tag:
         raise ValueError("le tag d'une annotation ne peut pas etre vide")
+    logger.debug("add_annotation: trame={} tag={}", frame_number, tag)
     return [*annotations, PacketAnnotation(frame_number=frame_number, tag=tag, comment=comment, color=color)]
 
 
@@ -82,6 +83,12 @@ def remove_annotation(annotations: list[PacketAnnotation], frame_number: int, ta
         if ann.frame_number == frame_number and ann.tag == tag:
             del result[i]
             break
+    logger.debug(
+        "remove_annotation: trame={} tag={} supprimée={}",
+        frame_number,
+        tag,
+        len(result) < len(annotations),
+    )
     return result
 
 
@@ -92,6 +99,7 @@ def parse_frame_number(text: str) -> int:
     try:
         number = int(text)
     except ValueError:
+        logger.debug("parse_frame_number: saisie invalide {!r}", text)
         raise ValueError(f"numero de trame invalide : {text!r}") from None
     if number < 1:
         raise ValueError("le numero de trame commence a 1")
@@ -118,9 +126,13 @@ class AnnotationStore:
         store = cls(captures=[(label, path) for label, path in captures])
         for label, path in store.captures:
             store._load_one(label, path)
+        logger.debug(
+            "AnnotationStore.load: {} capture(s), {} sidecar(s) illisible(s)", len(store.captures), len(store.errors)
+        )
         return store
 
     def _load_one(self, label: str, path: str) -> None:
+        logger.debug("_load_one: {} -> {}", label, annotations_sidecar_path(path))
         try:
             self.by_label[label] = read_annotations(path)
         except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -146,10 +158,12 @@ class AnnotationStore:
             raise ValueError(f"point {label} en lecture seule : {self.errors[label]}")
         write_annotations(self._path(label), annotations)  # OSError remonte : l'appelant l'affiche
         self.by_label[label] = annotations
+        logger.debug("_save: {} annotation(s) écrite(s) pour {}", len(annotations), label)
 
     def add(self, label: str, frame_number: int, tag: str, comment: str = "") -> None:
         """Ajoute puis persiste. Un doublon exact (trame, tag) n'est pas
         ajoute une deuxieme fois : son commentaire est mis a jour."""
+        logger.debug("AnnotationStore.add: point={} trame={} tag={}", label, frame_number, tag)
         current = self.by_label.get(label, [])
         updated = add_annotation(
             [a for a in current if not (a.frame_number == frame_number and a.tag == tag.strip())],
@@ -160,6 +174,7 @@ class AnnotationStore:
         self._save(label, updated)
 
     def remove(self, label: str, frame_number: int, tag: str) -> None:
+        logger.debug("AnnotationStore.remove: point={} trame={} tag={}", label, frame_number, tag)
         self._save(label, remove_annotation(self.by_label.get(label, []), frame_number, tag))
 
     def tags(self) -> list[str]:

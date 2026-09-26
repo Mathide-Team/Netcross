@@ -69,6 +69,8 @@ def detect_encapsulation(layers: dict) -> tuple[str, ...]:
 
     tags.extend(_capwap_tags(layers))
 
+    if tags:
+        logger.trace("detect_encapsulation: {}", ",".join(tags))
     return tuple(tags)
 
 
@@ -150,6 +152,8 @@ def select_innermost_layers(layers: dict) -> dict:
     Miroir direct de la logique if is_tunnel(...): innermost_layer(...)
     else p[IP] de l'ancien parse_capture()."""
     tunnel = is_tunnel(layers)
+    if tunnel:
+        logger.trace("select_innermost_layers: tunnel, couches internes retenues")
     picker = innermost if tunnel else layer
     return {
         "ip4": picker(layers, "ip"),

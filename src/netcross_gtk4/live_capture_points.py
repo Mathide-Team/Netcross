@@ -63,6 +63,7 @@ def expand_live_points(
             points.append((label, interfaces[0], bpf_filter))
         else:
             points.extend((f"{label}:{interface}", interface, bpf_filter) for interface in interfaces)
+    logger.debug("expand_live_points: {} ligne(s) -> {} point(s)", len(rows), len(points))
     return points
 
 
@@ -73,6 +74,7 @@ def duplicate_labels(points: Sequence[tuple[str, str, str | None]]) -> list[str]
     de capture -- analyse faussee sans aucun message d'erreur.
     """
     labels = [label for label, _interface, _bpf in points]
+    logger.debug("duplicate_labels: {} point(s) examiné(s)", len(labels))
     return sorted({label for label in labels if labels.count(label) > 1})
 
 
@@ -100,4 +102,10 @@ def invalid_sources(points: Sequence[tuple[str, str, str | None]]) -> list[str]:
             stdin_labels.append(label)
     if len(stdin_labels) > 1:
         errors.append(f"une seule source peut lire l'entree standard (pipe://-) : {', '.join(stdin_labels)}")
+    logger.debug(
+        "invalid_sources: {} point(s), {} erreur(s), {} lecture(s) stdin",
+        len(points),
+        len(errors),
+        len(stdin_labels),
+    )
     return errors

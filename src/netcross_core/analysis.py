@@ -6,7 +6,10 @@ decomposition reseau/serveur, DHCP, SIP, DNS, HTTP).
 """
 
 import statistics
+import time
 from collections import Counter, defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from itertools import combinations
 from typing import Any
@@ -28,6 +31,32 @@ from netcross_core.security.exfiltration import detect_exfiltration
 from netcross_core.security.expert_correlation import apply_expert_correlation
 
 logger = get_logger(__name__)
+
+
+def _taille(valeur: Any) -> Any:
+    """Résumé loggable d'un champ de Report : somme des compteurs d'un dict
+    {point: n}, taille d'une collection, valeur sinon (jamais l'objet entier)."""
+    if isinstance(valeur, dict):
+        valeurs = list(valeur.values())
+        if valeurs and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in valeurs):
+            return sum(valeurs)
+        return len(valeur)
+    if isinstance(valeur, (list, tuple, set, frozenset)):
+        return len(valeur)
+    return valeur
+
+
+def _resume(r: Report, *champs: str) -> str:
+    """``champ=taille`` pour chaque champ de ``r`` rempli par une phase."""
+    return " ".join(f"{champ}={_taille(getattr(r, champ, None))}" for champ in champs)
+
+
+@contextmanager
+def _phase(nom: str) -> Iterator[None]:
+    """Chronometre une phase de analyse() (niveau DEBUG)."""
+    debut = time.perf_counter()
+    yield
+    logger.debug("analyse : phase {} en {:.3f} s", nom, time.perf_counter() - debut)
 
 
 def analyse(
@@ -52,15 +81,23 @@ def analyse(
     # duplicate_counts : resultat de detect_cross_capture_duplicates(),
     # reporte tel quel dans Report.duplicate_count (analyse() ne detecte
     # rien elle-meme -- pas de double detection si l'appelant l'a deja faite).
+    debut_analyse = time.perf_counter()
     if exclude_duplicates:
         all_packets = [pk for pk in all_packets if not pk.is_duplicate]
         flows = _without_duplicates(flows)
     logger.info("analyse : {} points, {} flux, {} paquets", len(points_order or []), len(flows), len(all_packets))
     points = points_order or sorted({pt for f in flows.values() for pt in f})
 
-    topo_edges, topo_ambiguous, topo_isolated, topo_branch, topo_merge = _infer_topology(flows, points)
+    with _phase("infer_topology"):
+        topo_edges, topo_ambiguous, topo_isolated, topo_branch, topo_merge = _infer_topology(flows, points)
     topo_low_coverage = {(u, d) for u, d, info in topo_edges if info.get("coverage", 1.0) < 0.8}
 
+    logger.debug(
+        "analyse : topologie {} arête(s), {} ambiguë(s), {} isolé(s)",
+        len(topo_edges),
+        len(topo_ambiguous),
+        len(topo_isolated),
+    )
     used_topology_for_order = False
     if points_order:
         # itertools.pairwise() serait plus idiomatique mais demande Python 3.10+ ;
@@ -72,6 +109,11 @@ def analyse(
     else:
         pairs = [(a, b) for i, a in enumerate(points) for b in points[i + 1 :]]
 
+    logger.debug(
+        "analyse : {} paire(s) ({})",
+        len(pairs),
+        "ordre imposé" if points_order else ("topologie" if used_topology_for_order else "toutes les paires"),
+    )
     r = Report(
         points=points,
         pairs=pairs,
@@ -89,7 +131,8 @@ def analyse(
     r.packet_comments = [
         f"{pkt.point} — trame {pkt.frame_number} : {pkt.comment}" for pkt in all_packets if pkt.comment
     ]
-    r.throughput = compute_throughput(all_packets, bucket_seconds)
+    with _phase("compute_throughput"):
+        r.throughput = compute_throughput(all_packets, bucket_seconds)
     r.topn_timeseries = {dim: compute_topn_series(all_packets, bucket_seconds, dim, topn) for dim in TOPN_DIMENSIONS}
     r.topology_edges = topo_edges
     r.topology_ambiguous = topo_ambiguous
@@ -99,7 +142,8 @@ def analyse(
     r.topology_used_for_order = used_topology_for_order
     r.http_objects = [obj.__dict__ for obj in extract_http_objects(all_packets)]
     # SCENARIO-4 (#150) : extraction de fichiers (HTTP, email, SMB, FTP)
-    extraction = detect_extracted_files(all_packets)
+    with _phase("detect_extracted_files"):
+        extraction = detect_extracted_files(all_packets)
     r.extracted_files = [
         {
             "point": f.point,
@@ -117,7 +161,8 @@ def analyse(
         }
         for f in extraction.files
     ]
-    _analyse_application_transactions(r, all_packets)
+    with _phase("application_transactions"):
+        _analyse_application_transactions(r, all_packets)
     if points_order:
         r.topology_order_conflicts = _check_order_consistency(points_order, topo_edges)
 
@@ -319,47 +364,76 @@ def analyse(
                 if per_point_encap.get(a) != per_point_encap.get(b):
                     r.encap_frag_correlated[(a, b)] += 1
 
-    _analyse_pmtud(r, flows, pairs)
+    with _phase("pmtud"):
+        _analyse_pmtud(r, flows, pairs)
     # idle_timeout_seconds=None (defaut) -> _IDLE_TIMEOUT_SECONDS via le
     # defaut de _analyse_idle_timeout, expose desormais en CLI
     # (--idle-timeout-seconds, voir cross_capture_analyzer_cli.py/
     # cross_capture_diff_cli.py).
     if idle_timeout_seconds is None:
-        _analyse_idle_timeout(r, all_packets, pairs)
+        with _phase("idle_timeout"):
+            _analyse_idle_timeout(r, all_packets, pairs)
     else:
-        _analyse_idle_timeout(r, all_packets, pairs, idle_timeout_seconds)
-    _analyse_arp_ip_conflict(r, all_packets)
-    _analyse_stp_instability(r, all_packets)
-    _analyse_tls_certificate(r, all_packets, pairs)
-    _analyse_tls_handshake(r, all_packets)
-    _analyse_retransmission_types(r, all_packets)
-    _analyse_tcp_expert_signals(r, all_packets)
+        with _phase("idle_timeout"):
+            _analyse_idle_timeout(r, all_packets, pairs, idle_timeout_seconds)
+    with _phase("arp_ip_conflict"):
+        _analyse_arp_ip_conflict(r, all_packets)
+    with _phase("stp_instability"):
+        _analyse_stp_instability(r, all_packets)
+    with _phase("tls_certificate"):
+        _analyse_tls_certificate(r, all_packets, pairs)
+    with _phase("tls_handshake"):
+        _analyse_tls_handshake(r, all_packets)
+    with _phase("retransmission_types"):
+        _analyse_retransmission_types(r, all_packets)
+    with _phase("tcp_expert_signals"):
+        _analyse_tcp_expert_signals(r, all_packets)
     # Trous de sequence TCP (Job 42/issue #162) : suivi par connexion et par
     # point sur les paquets bruts -- pas sur `flows`, dont la cle porte le
     # numero de sequence (un "flow" y est un segment, pas une connexion).
-    r.sequence_gaps = detect_sequence_gaps(all_packets)
+    with _phase("detect_sequence_gaps"):
+        r.sequence_gaps = detect_sequence_gaps(all_packets)
     # Alertes Expert Info applicatives + sequences TCP anormales -> suspicions
     # fuzzing/overflow/dos (issue #137).
-    apply_expert_correlation(r, all_packets)
-    _analyse_saturation(r)
-    _analyse_bufferbloat(r)
-    _analyse_handshake(r, flows, points, points_order, nat_tolerant)
-    _analyse_tcp_options(r, flows, pairs, nat_tolerant, points_order)
-    _analyse_rtp(r, all_packets, points, points_order, rtp_clock_rate)
-    _analyse_response_time(r, flows, all_packets, points, points_order)
-    _analyse_dhcp(r, all_packets, points, points_order)
-    _analyse_sip(r, all_packets, points, points_order)
+    with _phase("apply_expert_correlation"):
+        apply_expert_correlation(r, all_packets)
+    with _phase("saturation"):
+        _analyse_saturation(r)
+    with _phase("bufferbloat"):
+        _analyse_bufferbloat(r)
+    with _phase("handshake"):
+        _analyse_handshake(r, flows, points, points_order, nat_tolerant)
+    with _phase("tcp_options"):
+        _analyse_tcp_options(r, flows, pairs, nat_tolerant, points_order)
+    with _phase("rtp"):
+        _analyse_rtp(r, all_packets, points, points_order, rtp_clock_rate)
+    with _phase("response_time"):
+        _analyse_response_time(r, flows, all_packets, points, points_order)
+    with _phase("dhcp"):
+        _analyse_dhcp(r, all_packets, points, points_order)
+    with _phase("sip"):
+        _analyse_sip(r, all_packets, points, points_order)
     from netcross_core.voip import build_calls
 
-    calls, r.voip_quality_distribution = build_calls(all_packets, r.rtp_streams)
+    with _phase("build_calls"):
+        calls, r.voip_quality_distribution = build_calls(all_packets, r.rtp_streams)
     r.voip_calls = [call.to_dict() for call in calls]
-    _analyse_dns(r, all_packets, points, points_order)
-    _analyse_http(r, all_packets, points, points_order)
+    with _phase("dns"):
+        _analyse_dns(r, all_packets, points, points_order)
+    with _phase("http"):
+        _analyse_http(r, all_packets, points, points_order)
 
     # SCENARIO-2 (#148) : exfiltration de donnees (transferts volumineux
     # vers l'exterieur) -- detectee depuis les champs Pkt deja disponibles.
-    r.exfiltration_alerts = detect_exfiltration(all_packets).alerts
+    with _phase("detect_exfiltration"):
+        r.exfiltration_alerts = detect_exfiltration(all_packets).alerts
 
+    logger.debug(
+        "analyse : terminée en {:.3f} s, {} paire(s), {}",
+        time.perf_counter() - debut_analyse,
+        len(pairs),
+        _resume(r, "loss_count", "retrans", "rst_count", "off_path_count", "zero_window"),
+    )
     return r
 
 
@@ -377,6 +451,7 @@ def _conversation_key(key) -> tuple | None:
     vu a ce point (scan local, trafic qui sort par un autre lien) est hors
     chemin."""
     if len(key) != 6 or key[0] == "NAT":
+        logger.trace("_conversation_key: clé NAT ou non standard, pas de conversation")
         return None
     _proto, src, _sport, dst, _dport, _key_id = key
     return tuple(sorted((src, dst), key=repr))
@@ -405,6 +480,7 @@ def _without_duplicates(flows):
                 kept_points[point] = live
         if kept_points:
             kept_flows[key] = kept_points
+    logger.debug("_without_duplicates: {} -> {} flux", len(flows), len(kept_flows))
     return kept_flows
 
 
@@ -507,6 +583,7 @@ def _analyse_pmtud(r: Report, flows, pairs):
                 # meme index que l'exemple texte ci-dessus -- voir
                 # Report.pmtud_blackhole_frames et netcross_report.synthesis.
                 r.pmtud_blackhole_frames[(a, b)].append(sample.frame_number)
+    logger.debug("_analyse_pmtud: {}", _resume(r, "pmtud_blackhole"))
 
 
 # Seuil de _analyse_idle_timeout() -- silence minimal (secondes) entre
@@ -642,6 +719,7 @@ def _analyse_idle_timeout(r: Report, all_packets, pairs, idle_timeout_seconds=_I
                 # trafic en amont -- meme index/plafond que l'exemple texte
                 # ci-dessus, voir Report.idle_timeout_frames (Session 37).
                 r.idle_timeout_frames[(a, b)].append(gap_end[1])
+    logger.debug("_analyse_idle_timeout: {}", _resume(r, "idle_timeout_dropped"))
 
 
 def _analyse_arp_ip_conflict(r: Report, all_packets):
@@ -718,6 +796,7 @@ def _analyse_arp_ip_conflict(r: Report, all_packets):
                     f"{ip} revendique par {len(macs)} adresses MAC differentes : {', '.join(sorted(macs))}"
                 )
                 r.arp_ip_conflict_frames[point].append(last_pkt[point][ip].frame_number)
+    logger.debug("_analyse_arp_ip_conflict: {}", _resume(r, "arp_ip_conflict"))
 
 
 def _analyse_stp_instability(r: Report, all_packets):
@@ -809,6 +888,7 @@ def _analyse_stp_instability(r: Report, all_packets):
                     r.stp_root_change_examples[point].append(f"racine changee de {previous} vers {pk.stp_root_id}")
                     r.stp_root_change_frames[point].append(pk.frame_number)
             previous = pk.stp_root_id
+    logger.debug("_analyse_stp_instability: {}", _resume(r, "stp_topology_change", "stp_root_change"))
 
 
 def _parse_tls_cert_date(s: str | None) -> datetime | None:
@@ -823,7 +903,7 @@ def _parse_tls_cert_date(s: str | None) -> datetime | None:
     try:
         return datetime.strptime(s.removesuffix(" (UTC)"), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     except ValueError:
-        logger.exception("échec dans _parse_tls_cert_date")
+        logger.debug("_parse_tls_cert_date: format de date inattendu {!r}", s)
         return None
 
 
@@ -922,6 +1002,7 @@ def _analyse_tls_certificate(r: Report, all_packets, pairs):
                     f"{src}:{sport} -> {dst}:{dport} : numero de serie {serial_a} en {a}, {serial_b} en {b}"
                 )
                 r.tls_cert_mismatch_frames[(a, b)].append(frame_a)
+    logger.debug("_analyse_tls_certificate: {}", _resume(r, "tls_cert_invalid_dates", "tls_cert_mismatch"))
 
 
 def _analyse_tls_handshake(r: Report, all_packets):
@@ -1022,6 +1103,7 @@ def _analyse_tls_handshake(r: Report, all_packets):
                         f"{info['desc']} : ServerHello recu, aucune donnee applicative observee ensuite a ce point"
                     )
                     r.tls_handshake_incomplete_frames[point].append(info["frame"])
+    logger.debug("_analyse_tls_handshake: {}", _resume(r, "tls_handshake_no_reply", "tls_handshake_incomplete"))
 
 
 def _analyse_retransmission_types(r: Report, all_packets):
@@ -1077,6 +1159,7 @@ def _analyse_retransmission_types(r: Report, all_packets):
             r.retrans_fast[pk.point] += 1
         elif pk.is_retransmission:
             r.retrans_rto[pk.point] += 1
+    logger.debug("_analyse_retransmission_types: {}", _resume(r, "retrans_spurious", "retrans_fast", "retrans_rto"))
 
 
 def _analyse_tcp_expert_signals(r: Report, all_packets):
@@ -1122,6 +1205,7 @@ def _analyse_tcp_expert_signals(r: Report, all_packets):
             r.lost_segment[pk.point] += 1
         if "tcp_tcp_analysis_window_update" in flags:
             r.window_update[pk.point] += 1
+    logger.debug("_analyse_tcp_expert_signals: {}", _resume(r, "out_of_order", "lost_segment", "window_update"))
 
 
 def _analyse_application_transactions(r: Report, all_packets: list[Pkt]):
@@ -1173,6 +1257,7 @@ def _analyse_application_transactions(r: Report, all_packets: list[Pkt]):
 
     transactions.sort(key=lambda t: t.request_ts or 0.0)
     r.application_transactions = [t.to_dict() for t in transactions]
+    logger.debug("_analyse_application_transactions: {}", _resume(r, "application_transactions"))
 
 
 def _analyse_saturation(r: Report):
@@ -1187,8 +1272,8 @@ def _analyse_saturation(r: Report):
         max_all = max(all_vals)
         try:
             p75 = statistics.quantiles(all_vals, n=4)[2] if len(all_vals) >= 4 else statistics.mean(all_vals)
-        except statistics.StatisticsError:
-            logger.exception("échec dans _analyse_saturation")
+        except statistics.StatisticsError as exc:
+            logger.debug("_analyse_saturation: quantiles impossibles pour {} ({}), moyenne utilisée", a, exc)
             p75 = statistics.mean(all_vals)
 
         frac_high = sum(1 for v in loss_vals if v >= p75) / len(loss_vals)
@@ -1213,6 +1298,7 @@ def _analyse_saturation(r: Report):
             verdict = "correlation debit/pertes partielle, pas de signature nette -> a confirmer avec plus de donnees"
 
         r.saturation_verdict[pair] = verdict
+    logger.debug("_analyse_saturation: {}", _resume(r, "saturation_verdict"))
 
 
 def _analyse_bufferbloat(r: Report):
@@ -1235,6 +1321,7 @@ def _analyse_bufferbloat(r: Report):
         high_lat = statistics.mean(high_samples)
         if low_lat > 0 and high_lat >= 1.5 * low_lat and (high_lat - low_lat) > 5:
             r.bufferbloat_hint[pair] = (low_lat, high_lat)
+    logger.debug("_analyse_bufferbloat: {}", _resume(r, "bufferbloat_hint"))
 
 
 def _analyse_handshake(r: Report, flows, points, points_order, nat_tolerant):
@@ -1248,6 +1335,9 @@ def _analyse_handshake(r: Report, flows, points, points_order, nat_tolerant):
     --nat-tolerant) et un ordre de points.
     """
     if nat_tolerant or not points_order:
+        logger.debug(
+            "_analyse_handshake: ignorée (nat_tolerant={} ordre des points={})", nat_tolerant, bool(points_order)
+        )
         return
 
     synack_lookup = defaultdict(list)
@@ -1298,6 +1388,7 @@ def _analyse_handshake(r: Report, flows, points, points_order, nat_tolerant):
         mean_off = statistics.mean(samples)
         stdev_off = statistics.pstdev(samples) if len(samples) > 1 else 0.0
         r.clock_offset_estimate[pair] = (mean_off, stdev_off, len(samples))
+    logger.debug("_analyse_handshake: {}", _resume(r, "clock_offset_estimate", "syn_no_synack", "syn_reply_missing"))
 
 
 def _analyse_tcp_options(r: Report, flows, pairs, nat_tolerant, points_order):
@@ -1334,6 +1425,9 @@ def _analyse_tcp_options(r: Report, flows, pairs, nat_tolerant, points_order):
     correlation existante, pas seulement celle-ci).
     """
     if nat_tolerant or not points_order:
+        logger.debug(
+            "_analyse_tcp_options: ignorée (nat_tolerant={} ordre des points={})", nat_tolerant, bool(points_order)
+        )
         return
     for key, per_point in flows.items():
         if key[0] != "TCP":
@@ -1356,6 +1450,7 @@ def _analyse_tcp_options(r: Report, flows, pairs, nat_tolerant, points_order):
                 r.wscale_stripped[(a, b)] += 1
             if pa.sack_permitted and not pb.sack_permitted:
                 r.sack_stripped[(a, b)] += 1
+    logger.debug("_analyse_tcp_options: {}", _resume(r, "mss_clamped", "wscale_stripped", "sack_stripped"))
 
 
 def _analyse_rtp(r: Report, all_packets, points, points_order, clock_rate):
@@ -1450,6 +1545,7 @@ def _analyse_rtp(r: Report, all_packets, points, points_order, clock_rate):
                 "first_ts_by_point": {p: min(pkt.ts for pkt in pkts) for p, pkts in per_point.items() if pkts},
             }
         )
+    logger.debug("_analyse_rtp: {}", _resume(r, "rtp_streams"))
 
 
 def _analyse_response_time(r: Report, flows, all_packets, points, points_order):
@@ -1462,6 +1558,7 @@ def _analyse_response_time(r: Report, flows, all_packets, points, points_order):
     qui est le client).
     """
     if not points_order:
+        logger.debug("_analyse_response_time: ignorée, pas d'ordre des points")
         return
     ref_point = points[-1]
 
@@ -1502,6 +1599,7 @@ def _analyse_response_time(r: Report, flows, all_packets, points, points_order):
         if turns:
             label = f"{client_ip}:{client_port} -> {server_ip}:{server_port}"
             r.server_think_time[label].extend(turns)
+    logger.debug("_analyse_response_time: {}", _resume(r, "server_think_time"))
 
 
 def _analyse_dhcp(r: Report, all_packets, points, points_order):
@@ -1545,6 +1643,17 @@ def _analyse_dhcp(r: Report, all_packets, points, points_order):
         )
         if discover_ts is not None and ack_ts is not None and ack_ts >= discover_ts:
             r.dhcp_duration_ms.append((ack_ts - discover_ts) * 1000.0)
+    logger.debug(
+        "_analyse_dhcp: {}",
+        _resume(
+            r,
+            "dhcp_msg_count",
+            "dhcp_nak_count",
+            "dhcp_server_seen",
+            "dhcp_duration_ms",
+            "dhcp_missing",
+        ),
+    )
 
 
 def _analyse_sip(r: Report, all_packets, points, points_order):
@@ -1605,6 +1714,17 @@ def _analyse_sip(r: Report, all_packets, points, points_order):
                             break
                 if call_id in failed_already:
                     break
+    logger.debug(
+        "_analyse_sip: {}",
+        _resume(
+            r,
+            "sip_msg_count",
+            "sip_agents_seen",
+            "sip_setup_duration_ms",
+            "sip_missing",
+            "sip_failed_calls",
+        ),
+    )
 
 
 # Codes RCODE DNS (RFC 1035 section 4.1.1) actionnables pour le diagnostic
@@ -1686,6 +1806,19 @@ def _analyse_dns(r: Report, all_packets, points, points_order):
                 None,
             )
             r.dns_timeout_frames[first_point].append(query_pk.frame_number if query_pk else None)
+    logger.debug(
+        "_analyse_dns: {}",
+        _resume(
+            r,
+            "dns_response_count",
+            "dns_query_count",
+            "dns_nxdomain_count",
+            "dns_duration_ms",
+            "dns_servfail_count",
+            "dns_timeout",
+            "dns_missing",
+        ),
+    )
 
 
 def _analyse_http(r: Report, all_packets, points, points_order):
@@ -1807,6 +1940,20 @@ def _analyse_http(r: Report, all_packets, points, points_order):
                 None,
             )
             r.http_timeout_frames[first_point].append(request_pk.frame_number if request_pk else None)
+    logger.debug(
+        "_analyse_http: {}",
+        _resume(
+            r,
+            "http_request_count",
+            "http_response_count",
+            "http_status_count",
+            "http_timeout",
+            "http_response_time_ms",
+            "http_client_error_count",
+            "http_server_error_count",
+            "http_missing",
+        ),
+    )
 
 
 def _descend(edge_lookup, start):
@@ -1966,6 +2113,12 @@ def _infer_topology(flows, points):
     branch_points = [p for p in points if out_deg[p] >= 2]
     merge_points = [p for p in points if in_deg[p] >= 2]
 
+    logger.debug(
+        "_infer_topology: {} arête(s) directe(s), {} branchement(s), {} fusion(s)",
+        len(direct_edges),
+        len(branch_points),
+        len(merge_points),
+    )
     return direct_edges, ambiguous, isolated, branch_points, merge_points
 
 
@@ -1979,4 +2132,5 @@ def _check_order_consistency(points_order, topo_edges):
                 f"--order place {d} avant {u}, mais le TTL indique plutot {u} -> {d} "
                 f"(confiance {info['confidence'] * 100:.0f}%, {info['common_flows']} flux communs)"
             )
+    logger.debug("_check_order_consistency: {} conflit(s) avec l'ordre imposé", len(conflicts))
     return conflicts

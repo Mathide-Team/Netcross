@@ -42,7 +42,7 @@ from netcross_core.batch import (
     inventory_from_packets,
     plan_batch,
 )
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
 from netcross_core.security import findings as security_findings
 from netcross_report.security_report import build_security_report, print_security_report
 
@@ -289,7 +289,9 @@ def main(argv=None):
         help="Reprise d'un lot interrompu : reutilise les inventaires en cache et les rapports deja ecrits.",
     )
     ap.add_argument("--security-report", action="store_true", help="Ajoute l'analyse de securite a chaque rapport.")
+    add_debug_argument(ap)
     args = ap.parse_args(argv)
+    apply_debug_argument(args)
 
     if not os.path.isdir(args.input):
         print(f"--input : dossier introuvable : {args.input}", file=sys.stderr)

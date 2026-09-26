@@ -224,6 +224,7 @@ def count_protocol_mismatches(packets: list[Pkt]) -> dict[str, dict[str, int]]:
             if proto_name not in counts:
                 counts[proto_name] = {}
             counts[proto_name][description] = counts[proto_name].get(description, 0) + 1
+    logger.debug("count_protocol_mismatches: {} protocole(s) concerné(s)", len(counts))
     return counts
 
 
@@ -272,4 +273,5 @@ def protocol_mismatch_findings(
                 "proto": detail.get("proto"),
             }
         )
+    logger.debug("protocol_mismatch_findings: {} constat(s)", len(findings))
     return findings

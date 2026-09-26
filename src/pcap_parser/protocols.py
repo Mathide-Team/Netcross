@@ -162,7 +162,7 @@ def _parse_sip_heuristic(payload: bytes) -> dict | None:
     try:
         text = payload.decode("utf-8", errors="replace")
     except (AttributeError, UnicodeError):
-        logger.exception("échec dans _parse_sip_heuristic")
+        logger.trace("_parse_sip_heuristic: charge utile non décodable ({} octets)", len(payload))
         return None
     lines = text.split("\r\n") if "\r\n" in text else text.split("\n")
     if not lines:
@@ -323,8 +323,8 @@ def _public_key_summary(cert) -> tuple[str | None, int | None]:
     (None). (None, None) si la cle n'est pas decodable."""
     try:
         key = cert.public_key()
-    except (ValueError, _UnsupportedAlgorithm):
-        logger.exception("échec dans _public_key_summary")
+    except (ValueError, _UnsupportedAlgorithm) as exc:
+        logger.debug("_public_key_summary: clé publique non décodable ({})", type(exc).__name__)
         return None, None
     if isinstance(key, _rsa.RSAPublicKey):
         return "RSA", key.key_size
@@ -345,7 +345,7 @@ def _signature_hash(cert) -> str | None:
     try:
         algo = cert.signature_hash_algorithm
     except _UnsupportedAlgorithm:
-        logger.exception("erreur: _UnsupportedAlgorithm")
+        logger.debug("_signature_hash: algorithme non pris en charge {}", cert.signature_algorithm_oid.dotted_string)
         return _UNMAPPED_SIGNATURE_HASHES.get(cert.signature_algorithm_oid.dotted_string)
     return algo.name if algo is not None else None
 
@@ -370,15 +370,16 @@ def _certificate_details(tls: dict) -> dict:
         return {}
     try:
         leaf = _x509.load_der_x509_certificate(bytes.fromhex(str(blobs[0]).replace(":", "")))
-    except ValueError:
-        logger.exception("échec dans _certificate_details")
+    except ValueError as exc:
+        logger.debug("_certificate_details: DER du certificat feuille illisible ({})", exc)
         return {}
     key_type, key_bits = _public_key_summary(leaf)
     try:
         san = leaf.extensions.get_extension_for_class(_x509.SubjectAlternativeName).value
         san_ip = tuple(str(ip) for ip in san.get_values_for_type(_x509.IPAddress))
-    except (_x509.ExtensionNotFound, ValueError):
-        logger.exception("échec dans _certificate_details")
+    except (_x509.ExtensionNotFound, ValueError) as exc:
+        # certificat sans SAN : cas courant, pas une erreur
+        logger.trace("_certificate_details: pas de SAN IP lisible ({})", type(exc).__name__)
         san_ip = ()
     return {
         "issuer": leaf.issuer.rfc4514_string(),

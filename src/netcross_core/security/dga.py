@@ -441,4 +441,5 @@ def detect_dga(
 
     domain_scores.sort(key=lambda d: (-d["score"], d["domain"]))
 
+    logger.debug("detect_dga: {} domaine(s) évalués, {} alerte(s)", len(domain_scores), len(alerts))
     return DgaResult(alerts=alerts, domain_scores=domain_scores)

@@ -17,7 +17,10 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
+from netcross_core.logging_config import get_logger
 from netcross_core.netflow.models import FlowRecord
+
+logger = get_logger(__name__)
 
 SUMMARY_FORMAT_VERSION = 1
 
@@ -77,6 +80,14 @@ def summarize_flow_records(records: Iterable[FlowRecord], *, top: int = 10) -> d
         start = flow.start_ts if start is None else min(start, flow.start_ts)
         end = flow.end_ts if end is None else max(end, flow.end_ts)
 
+    logger.debug(
+        "summarize_flow_records: {} flux, {} exportateur(s), {} protocole(s), versions={} top={}",
+        totals["flows"],
+        len(exporters),
+        len(protocols),
+        sorted(versions),
+        top,
+    )
     return {
         "version": SUMMARY_FORMAT_VERSION,
         "source": "netflow",
@@ -111,6 +122,7 @@ def format_flow_summary(summary: dict) -> list[str]:
     """Lignes du resume texte affiche par le CLI."""
     t = summary["totals"]
     lines = ["=== Resume NetFlow ==="]
+    logger.debug("format_flow_summary: {} flux à formater", t["flows"])
     if not t["flows"]:
         lines.append("Aucun flux dans les fichiers fournis.")
         return lines

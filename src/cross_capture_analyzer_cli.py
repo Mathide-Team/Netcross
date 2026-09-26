@@ -142,7 +142,7 @@ from netcross_core import (
 from netcross_core.discovery import load_baseline_hosts
 from netcross_core.flow_timeline import build_flow_timelines
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
 from netcross_core.security import close_db, connect_cve_db
 from netcross_core.security import findings as security_findings
 from netcross_core.security.cve_seed import open_seed_db
@@ -288,6 +288,7 @@ def _collect_tshark_stats(captures) -> dict:
             entry["io_stat"] = asdict(collect_io_stat(path))
         except (TsharkUnavailableError, subprocess.SubprocessError, OSError) as exc:
             entry = {"label": label, "path": path, "error": str(exc)}
+            logger.warning("--tshark-stats {} ({}) : {}", label, path, exc)
             print(f"--tshark-stats {label} ({path}) : {exc}", file=sys.stderr)
         result["captures"].append(entry)
     return result
@@ -369,6 +370,7 @@ def _run_netflow(args) -> int:
         try:
             records.extend(iter_netflow_v5_file(path, exporter=exporter))
         except (OSError, NetflowV5Error) as exc:
+            logger.warning("--netflow {} : lecture impossible ({})", path, exc)
             print(f"--netflow {path} : {exc}", file=sys.stderr)
             return 1
     summary = summarize_flow_records(records, top=args.netflow_top)
@@ -2029,7 +2031,9 @@ def main():
         metavar="VALEUR",
         help="Valeur cherchee dans --search-field (sans --search-field : dans tous les champs).",
     )
+    add_debug_argument(ap)
     args = ap.parse_args()
+    apply_debug_argument(args)
 
     plugin_names = [n.strip() for n in (args.plugins or "").split(",") if n.strip()]
     if args.list_plugins:
@@ -2758,6 +2762,7 @@ def main():
             try:
                 cve_conn, cve_seed = open_seed_db()
             except (OSError, ValueError) as exc:
+                logger.warning("base CVE embarquée illisible, corrélation CVE désactivée : {}", exc)
                 print(
                     f"Aucune base CVE fournie (--cve-db) et base embarquee illisible ({exc}) : "
                     "services listes sans correlation CVE."

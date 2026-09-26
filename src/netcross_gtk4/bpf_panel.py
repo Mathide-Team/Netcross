@@ -97,7 +97,9 @@ def selection_apres_choix(index, filtres):
     """
     flt = filtre_a_l_indice(index, filtres)
     if flt is None:
+        logger.debug("selection_apres_choix: index={} -> titre ou hors bornes, rien à écrire", index)
         return None, None
+    logger.debug("selection_apres_choix: index={} -> filtre {}", index, flt.name)
     return index, flt.expression
 
 
@@ -157,11 +159,15 @@ def valider_sauvegarde(expression, nom, description="", *, sauvegarde_possible=T
     expression = (expression or "").strip()
     nom = (nom or "").strip()
     if not expression:
+        logger.debug("valider_sauvegarde: refus, expression vide")
         return DemandeSauvegarde(None, MSG_EXPRESSION_VIDE)
     if not nom:
+        logger.debug("valider_sauvegarde: refus, nom manquant")
         return DemandeSauvegarde(None, MSG_NOM_MANQUANT)
     if not sauvegarde_possible:
+        logger.debug("valider_sauvegarde: refus, sauvegarde indisponible")
         return DemandeSauvegarde(None, MSG_SAUVEGARDE_INDISPONIBLE)
+    logger.debug("valider_sauvegarde: acceptée, nom={} expression={}", nom, expression)
     return DemandeSauvegarde(BPFFilter(nom, expression, (description or "").strip()), "")
 
 
@@ -180,6 +186,7 @@ def indice_du_filtre_nomme(nom, filtres):
     cible = nom.casefold()
     for position, flt in enumerate(filtres):
         if flt.name.casefold() == cible:
+            logger.debug("indice_du_filtre_nomme: {} -> indice {}", nom, position + DECALAGE_TITRE)
             return position + DECALAGE_TITRE
     return None
 
@@ -191,6 +198,7 @@ def noms_du_menu(filtres, titre=TITRE_MENU_FILTRES):
     n'aurait rien a afficher et paraitrait casse, alors que « choisir un
     filtre... » sur une liste vide dit au moins que la fonction existe.
     """
+    logger.debug("noms_du_menu: {} filtre(s)", len(filtres))
     return [titre, *[flt.name for flt in filtres]]
 
 
@@ -212,6 +220,12 @@ def indice_apres_deplacement(index, nombre_de_lignes, vers_le_haut):
     """
     if index is None or index < 0 or index >= nombre_de_lignes:
         return None
+    logger.debug(
+        "indice_apres_deplacement: index={} lignes={} vers_le_haut={}",
+        index,
+        nombre_de_lignes,
+        vers_le_haut,
+    )
     cible = index - 1 if vers_le_haut else index + 1
     if cible < 0 or cible >= nombre_de_lignes:
         return None

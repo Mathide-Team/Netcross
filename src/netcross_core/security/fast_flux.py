@@ -171,6 +171,7 @@ def detect_fast_flux(
                     )
                 )
 
+    logger.debug("detect_fast_flux: {} alerte(s)", len(alerts))
     return FastFluxResult(alerts=alerts)
 
 

@@ -13,6 +13,10 @@ from __future__ import annotations
 
 import ipaddress
 
+from netcross_core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 TEST_NET_RANGES = (
     ipaddress.ip_network("192.0.2.0/24"),  # TEST-NET-1
     ipaddress.ip_network("198.51.100.0/24"),  # TEST-NET-2
@@ -24,6 +28,8 @@ def _parse(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None
     try:
         return ipaddress.ip_address(address)
     except ValueError:
+        # appele pour chaque adresse de chaque paquet : niveau TRACE (NETCROSS_LOG_LEVEL=TRACE)
+        logger.trace("_parse: adresse non IP {!r}", address)
         return None  # adresse absente ou non IP (ARP, trame L2) : ni externe ni TEST-NET
 
 

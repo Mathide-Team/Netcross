@@ -81,7 +81,8 @@ def _is_internal(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
-        logger.exception("échec dans _is_internal")
+        # appele pour chaque paquet : TRACE (adresse absente ou non IP, trame L2)
+        logger.trace("_is_internal: adresse non IP {!r}", ip)
         return False
     return addr.is_private or addr.is_link_local
 
@@ -185,6 +186,7 @@ def detect_port_scans(
                         targets=sorted(hosts)[:20],
                     )
                 )
+    logger.debug("detect_port_scans: {} événement(s)", len(events))
     return events
 
 
@@ -213,7 +215,7 @@ def detect_host_scans(
             try:
                 addrs = sorted(ipaddress.ip_address(h) for h in hosts)
             except ValueError:
-                logger.exception("échec dans detect_host_scans")
+                logger.debug("detect_host_scans: {} au {}, cibles non IP ignorées", src, point)
                 continue
             # Grouper par /24 et chercher des plages consecutives.
             by_prefix: dict[str, list[int]] = defaultdict(list)
@@ -246,6 +248,7 @@ def detect_host_scans(
                         targets=sorted(hosts)[:20],
                     )
                 )
+    logger.debug("detect_host_scans: {} événement(s)", len(events))
     return events
 
 
@@ -303,6 +306,7 @@ def detect_brute_force(
                         targets=sorted(best_hosts)[:20],
                     )
                 )
+    logger.debug("detect_brute_force: {} événement(s)", len(events))
     return events
 
 
@@ -345,6 +349,7 @@ def detect_unusual_protocols(
                     targets=sorted(hosts)[:20],
                 )
             )
+    logger.debug("detect_unusual_protocols: {} événement(s)", len(events))
     return events
 
 
@@ -355,6 +360,7 @@ def detect_new_connections(
     """Detecte les nouvelles connexions internes non presentes dans la baseline."""
     baseline = thresholds.new_connection_baseline_pairs
     if not baseline:
+        logger.debug("detect_new_connections: pas de baseline, détection ignorée")
         return []  # Sans baseline, tout est nouveau → pas de signal utile.
 
     # point -> set of (src, dst) internes non dans la baseline
@@ -386,6 +392,7 @@ def detect_new_connections(
                     targets=sorted(dsts)[:20],
                 )
             )
+    logger.debug("detect_new_connections: {} événement(s)", len(events))
     return events
 
 
@@ -444,4 +451,5 @@ def detect_lateral_movement(
             )
     events = list(deduped.values())
 
+    logger.debug("detect_lateral_movement: {} événement(s) au total", len(events))
     return LateralMovementResult(events=events, suspicious=bool(events))

@@ -71,8 +71,13 @@ def run_diff_pipeline(
     """
 
     def _log(msg: str) -> None:
+        # Avec la GUI, on_progress aboutit a MainWindow._log qui trace deja
+        # chaque ligne ("journal: ...") : on ne trace ici que sans callback,
+        # pour ne pas doubler les lignes en mode debug.
         if on_progress:
             on_progress(msg)
+        else:
+            logger.debug("étape: {}", msg)
 
     from netcross_core.analysis import analyse
     from netcross_core.redact import AddressRedactor
@@ -144,6 +149,7 @@ def run_diff_pipeline(
             events = []
             for label, path in captures:
                 events.extend(parse_tls_capture(label, path))
+            logger.debug("_tls_findings: {} capture(s), {} événement(s) TLS", len(captures), len(events))
             return diagnose_tls(build_handshake_status(events), topo)
 
         tls_findings_baseline = _tls_findings(baseline_captures, points_order)
@@ -178,6 +184,7 @@ def run_diff_pipeline(
                 events = []
                 for label, path in captures:
                     events.extend(parse_quic_capture(label, path))
+                logger.debug("_quic_findings: {} capture(s), {} événement(s) QUIC", len(captures), len(events))
                 return diagnose_quic(events, topo)
 
             quic_findings_baseline = _quic_findings(baseline_captures, points_order)

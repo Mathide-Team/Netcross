@@ -40,6 +40,7 @@ from typing import Any
 from loguru import logger
 
 from netcross_core import lua_doc
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, is_debug_enabled
 from netcross_core.lua_doc import Attribut, FicheClasse, Methode, ResultatRecherche
 
 _INDENT = "    "
@@ -216,7 +217,9 @@ def _emit(lignes: list[str]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    add_debug_argument(parser)
     args = parser.parse_args(argv)
+    apply_debug_argument(args)
     terme = " ".join(args.terme).strip()
     if not (terme or args.classe or args.classes):
         parser.error("indiquer un terme de recherche, --class NOM ou --classes")
@@ -225,8 +228,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit < 1:
         parser.error("--limit doit etre >= 1")
 
-    if "NETCROSS_LOG_LEVEL" not in os.environ:
-        logger.disable("netcross_core.lua_doc")  # sortie propre ; NETCROSS_LOG_LEVEL=DEBUG pour diagnostiquer
+    if "NETCROSS_LOG_LEVEL" not in os.environ and not is_debug_enabled():
+        # sortie propre ; --debug ou NETCROSS_LOG_LEVEL=DEBUG pour diagnostiquer
+        logger.disable("netcross_core.lua_doc")
     source = args.source or lua_doc.find_json()
     if source is None or not source.is_file():
         emplacements = ", ".join(str(p) for p in lua_doc.json_candidates())

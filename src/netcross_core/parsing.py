@@ -159,10 +159,11 @@ def parse_capture(label, path, raise_on_error=False) -> list[Pkt]:
     `path` via pcap_parser (tshark -T ek), etiquette chaque paquet avec
     `label`. raise_on_error=True laisse remonter l'exception au lieu de
     l'avaler (utilise par parse_captures_parallel)."""
+    logger.debug("parse_capture: point {} <- {}", label, path)
     try:
         raw_packets = pcap_parser.parse_capture(path, raise_on_error=True)
     except (TsharkNotFoundError, TsharkError) as e:
-        logger.exception(f"échec dans parse_capture: {e}")
+        logger.exception("parse_capture: lecture de {} ({}) impossible: {}", path, label, e)
         if raise_on_error:
             raise
         print(f"[{label}] impossible de lire {path} : {e}", file=sys.stderr)
@@ -182,6 +183,7 @@ def parse_capture(label, path, raise_on_error=False) -> list[Pkt]:
     for i in range(n):
         pkts.append(_to_pkt(label, raw_packets[i]))
         raw_packets[i] = None  # type: ignore[call-overload]  # liberation memoire volontaire
+    logger.debug("parse_capture: {} paquet(s) convertis pour {}", len(pkts), label)
     return pkts
 
 
@@ -203,6 +205,7 @@ def parse_captures_parallel(captures, max_workers=None) -> tuple[list[Pkt], list
     all_packets: list[Pkt] = []
     per_file_stats: list[dict] = []
 
+    logger.debug("parse_captures_parallel: {} capture(s), max_workers={}", len(captures), max_workers)
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         future_to_capture = {
             executor.submit(_parse_capture_timed, label, path): (label, path) for label, path in captures
@@ -224,7 +227,7 @@ def parse_captures_parallel(captures, max_workers=None) -> tuple[list[Pkt], list
             except Exception as e:  # noqa: BLE001 -- catch-all volontaire : un
                 # fichier en echec (tshark absent, pcap corrompu, permission...)
                 # ne doit jamais interrompre le traitement parallele des autres.
-                logger.exception(f"échec dans parse_captures_parallel: {e}")
+                logger.exception("parse_captures_parallel: échec de {} ({}): {}", path, label, e)
                 per_file_stats.append(
                     {
                         "label": label,
@@ -238,6 +241,11 @@ def parse_captures_parallel(captures, max_workers=None) -> tuple[list[Pkt], list
     order = {(label, path): i for i, (label, path) in enumerate(captures)}
     per_file_stats.sort(key=lambda s: order[(s["label"], s["path"])])
 
+    logger.debug(
+        "parse_captures_parallel: {} paquet(s), {} capture(s) en échec",
+        len(all_packets),
+        sum(1 for st in per_file_stats if st["error"]),
+    )
     return all_packets, per_file_stats
 
 
@@ -261,6 +269,7 @@ def read_capture_comments(captures) -> list[str]:
         comment = read_capture_comment(path)
         if comment:
             comments.append(f"{label} : {comment}")
+    logger.debug("read_capture_comments: {} commentaire(s)", len(comments))
     return comments
 
 
@@ -325,6 +334,7 @@ def read_capture_infos(captures) -> list[dict]:
                 ],
             }
         )
+    logger.debug("read_capture_infos: {} fiche(s) capinfos", len(infos))
     return infos
 
 
@@ -339,6 +349,7 @@ def parse_live(label, interface, bpf_filter=None, stop_event=None):
     thread pour demander l'arret -- voir pcap_parser.iter_live /
     ek_source.iter_ek_records pour le detail (arret reactif y compris
     sans trafic sur l'interface)."""
+    logger.debug("parse_live: point {} sur {} (filtre={})", label, interface, bpf_filter)
     for raw in pcap_parser.iter_live(interface, bpf_filter=bpf_filter, stop_event=stop_event):
         yield _to_pkt(label, raw)
 
@@ -358,6 +369,7 @@ def parse_live_multi(interfaces, stop_event=None, *, bpf_filter=None):
     arguments (liste vide, label en double...) leve ValueError des
     l'appel, pas au premier paquet -- utile a un appelant qui lance la
     capture dans un thread (LiveDiffEngine.start_multi)."""
+    logger.debug("parse_live_multi: capture multi-interfaces (filtre={})", bpf_filter)
     packets = pcap_parser.iter_live_multi(interfaces, stop_event=stop_event, bpf_filter=bpf_filter)
     return (_to_pkt(label, raw) for label, raw in packets)
 

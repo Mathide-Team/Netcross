@@ -70,16 +70,19 @@ def nom_de_point(nom: str, index: int) -> str:
 def nom_par_defaut_fichier(chemin: str) -> str:
     """Nom propose pour une capture ajoutee : nom du fichier sans extension,
     en majuscules (``/tmp/lan-a.pcapng`` -> ``LAN-A``)."""
+    logger.debug("nom_par_defaut_fichier: {}", chemin)
     return os.path.splitext(os.path.basename(chemin))[0].upper()
 
 
 def nom_par_defaut_live(lignes_existantes: int) -> str:
     """Nom propose pour un nouveau point live : le suivant dans la liste."""
+    logger.debug("nom_par_defaut_live: {} ligne(s) existante(s)", lignes_existantes)
     return nom_de_point("", lignes_existantes)
 
 
 def captures_fichiers(contenus: Sequence[Any]) -> list[tuple[str, str]]:
     """(nom, chemin) de chaque ligne de fichier, dans l'ordre visuel."""
+    logger.debug("captures_fichiers: {} ligne(s)", len(contenus))
     return [(nom_de_point(row.label, i), row.path) for i, row in enumerate(contenus)]
 
 
@@ -87,6 +90,7 @@ def captures_live(contenus: Sequence[Any]) -> list[tuple[str, str, str | None]]:
     """(nom, texte du champ interface, filtre BPF ou ``None``) de chaque
     ligne live, dans l'ordre visuel. Le champ interface peut en porter
     plusieurs : voir ``live_capture_points.expand_live_points``."""
+    logger.debug("captures_live: {} ligne(s)", len(contenus))
     return [(nom_de_point(row.label, i), row.interface, row.bpf_filter) for i, row in enumerate(contenus)]
 
 
@@ -100,7 +104,9 @@ def deplacer_ligne(row: Any, *, vers_le_haut: bool) -> bool:
         return False
     cible = indice_apres_deplacement(row.get_index(), nombre_de_lignes(listbox), vers_le_haut)
     if cible is None:
+        logger.debug("deplacer_ligne: au bord, aucun déplacement")
         return False
+    logger.debug("deplacer_ligne: {} -> {}", row.get_index(), cible)
     listbox.remove(row)
     listbox.insert(row, cible)
     listbox.select_row(row)
@@ -114,6 +120,7 @@ def retirer_ligne(row: Any, on_change: Callable[[], Any] | None = None) -> bool:
     listbox = row.get_parent()
     if listbox is None:
         return False
+    logger.debug("retirer_ligne: retrait d'une ligne, on_change={}", on_change is not None)
     listbox.remove(row)
     if on_change is not None:
         on_change()

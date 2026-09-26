@@ -66,7 +66,7 @@ from netcross_core import (  # noqa: E402
 from netcross_core.baseline_diff import write_diff_csv  # noqa: E402
 from netcross_core.bpf_filters import PREDEFINED_BPF_FILTERS, available_bpf_filters, upsert_bpf_filter  # noqa: E402
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates  # noqa: E402
-from netcross_core.logging_config import get_logger  # noqa: E402
+from netcross_core.logging_config import DEBUG_FLAG, enable_debug, get_logger, is_debug_enabled  # noqa: E402
 from netcross_gtk4 import capture_list, row_labels  # noqa: E402
 from netcross_gtk4.annotations_panel import AnnotationsPanel  # noqa: E402
 from netcross_gtk4.bpf_panel import (  # noqa: E402
@@ -136,6 +136,7 @@ class CaptureRow(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.path = path
         self._on_change = on_change
+        logger.debug("CaptureRow: label={} path={}", default_label, path)
         self.set_margin_top(4)
         self.set_margin_bottom(4)
         self.set_margin_start(8)
@@ -177,9 +178,11 @@ class CaptureRow(Gtk.Box):
     def _deplacer(self, *, vers_le_haut):
         """Deplace la ligne d'un cran, ou ne fait rien si elle est au bord
         (voir `capture_list.deplacer_ligne`)."""
+        logger.debug("CaptureRow._deplacer: vers_le_haut={} path={}", vers_le_haut, self.path)
         capture_list.deplacer_ligne(self.get_parent(), vers_le_haut=vers_le_haut)
 
     def _on_remove(self, _btn):
+        logger.debug("CaptureRow._on_remove: {}", self.path)
         capture_list.retirer_ligne(self.get_parent(), self._on_change)
 
     @property
@@ -216,6 +219,13 @@ class LiveCaptureRow(Gtk.Box):
     ):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._on_change = on_change
+        logger.debug(
+            "LiveCaptureRow: label={} interface={} filtre={} filtres_proposes={}",
+            default_label,
+            interface,
+            bpf_filter,
+            len(filters or []),
+        )
         self.set_margin_top(4)
         self.set_margin_bottom(4)
         self.set_margin_start(8)
@@ -288,6 +298,7 @@ class LiveCaptureRow(Gtk.Box):
         """Remplace les filtres proposes par le menu deroulant ; la selection
         revient sur le titre (le texte du champ filtre n'est pas modifie)."""
         self._filters = list(filters)
+        logger.debug("set_filters: {} filtre(s) proposé(s)", len(self._filters))
         self._syncing_dropdown = True
         try:
             noms = noms_du_menu(self._filters, _FILTER_PICKER_TITLE)
@@ -299,6 +310,7 @@ class LiveCaptureRow(Gtk.Box):
     def _select_filter_index(self, index):
         """Positionne le menu (0 = titre, i = i-eme filtre) SANS recharger le
         champ filtre, et aligne l'infobulle sur la description du filtre."""
+        logger.debug("_select_filter_index: index={}", index)
         self._syncing_dropdown = True
         try:
             self.filter_dropdown.set_selected(index)
@@ -312,6 +324,7 @@ class LiveCaptureRow(Gtk.Box):
         index, expression = selection_apres_choix(dropdown.get_selected(), self._filters)
         if index is None:
             return
+        logger.debug("_on_filter_picked: index={} expression={}", index, expression)
         self._select_filter_index(index)
         self.filter_entry.set_text(expression)
 
@@ -319,9 +332,11 @@ class LiveCaptureRow(Gtk.Box):
         """Le champ a ete edite a la main : le menu ne doit plus annoncer un
         filtre dont le texte n'est plus celui du champ."""
         if doit_desolidariser_le_menu(self.filter_dropdown.get_selected(), self._filters, entry.get_text()):
+            logger.debug("_on_filter_text_changed: champ édité, menu désolidarisé")
             self._select_filter_index(0)
 
     def _build_save_popover(self):
+        logger.debug("_build_save_popover: construction du popover d'enregistrement")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.set_margin_top(8)
         box.set_margin_bottom(8)
@@ -353,6 +368,7 @@ class LiveCaptureRow(Gtk.Box):
 
     def _on_save_filter_clicked(self, _widget):
         name = self._save_name_entry.get_text().strip()
+        logger.debug("_on_save_filter_clicked: nom={}", name)
         demande = valider_sauvegarde(
             self.filter_entry.get_text(),
             name,
@@ -360,6 +376,7 @@ class LiveCaptureRow(Gtk.Box):
             sauvegarde_possible=self._on_save_filter is not None,
         )
         if not demande.acceptee:
+            logger.debug("_on_save_filter_clicked: refusé ({})", demande.message)
             self._save_status.set_text(demande.message)
             return
         try:
@@ -368,6 +385,7 @@ class LiveCaptureRow(Gtk.Box):
             logger.exception(f"échec dans _on_save_filter_clicked: {exc}")
             self._save_status.set_text(str(exc))
             return
+        logger.debug("_on_save_filter_clicked: filtre {} enregistré", name)
         self._save_status.set_text("")
         self._save_name_entry.set_text("")
         self._save_desc_entry.set_text("")
@@ -379,12 +397,15 @@ class LiveCaptureRow(Gtk.Box):
             self._select_filter_index(indice)
 
     def _on_up(self, _btn):
+        logger.debug("LiveCaptureRow._on_up: {}", self.label)
         capture_list.deplacer_ligne(self.get_parent(), vers_le_haut=True)
 
     def _on_down(self, _btn):
+        logger.debug("LiveCaptureRow._on_down: {}", self.label)
         capture_list.deplacer_ligne(self.get_parent(), vers_le_haut=False)
 
     def _on_remove(self, _btn):
+        logger.debug("LiveCaptureRow._on_remove: {}", self.label)
         capture_list.retirer_ligne(self.get_parent(), self._on_change)
 
     @property
@@ -408,6 +429,7 @@ class CaptureListPanel(Gtk.Box):
     def __init__(self, heading, on_change=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._on_change = on_change
+        logger.debug("CaptureListPanel: {}", heading)
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         header.append(
@@ -433,6 +455,7 @@ class CaptureListPanel(Gtk.Box):
         self.append(frame)
 
     def _on_add_clicked(self, _btn):
+        logger.debug("_on_add_clicked: ouverture du sélecteur de captures")
         dialog = Gtk.FileDialog()
         filt = Gtk.FileFilter()
         filt.add_pattern("*.pcap")
@@ -449,6 +472,7 @@ class CaptureListPanel(Gtk.Box):
         except GLib.Error:
             logger.exception("échec dans _on_files_chosen")
             return
+        logger.debug("_on_files_chosen: {} fichier(s) choisi(s)", files.get_n_items())
         for i in range(files.get_n_items()):
             gfile = files.get_item(i)
             self.add_row(gfile.get_path())
@@ -458,6 +482,7 @@ class CaptureListPanel(Gtk.Box):
         pilote sans dialogue (tests automatises, appel programmatique)."""
         if default_label is None:
             default_label = capture_list.nom_par_defaut_fichier(path)
+        logger.debug("CaptureListPanel.add_row: label={} path={}", default_label, path)
         row = CaptureRow(path, default_label, on_change=self._on_change)
         self.listbox.append(row)
         if self._on_change:
@@ -492,6 +517,7 @@ class LiveCaptureListPanel(Gtk.Box):
         self._on_change = on_change
         self._filters_path = filters_path
         self._filters = self._initial_filters()
+        logger.debug("LiveCaptureListPanel: {} ({} filtre(s) BPF)", heading, len(self._filters))
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         header.append(
@@ -519,6 +545,7 @@ class LiveCaptureListPanel(Gtk.Box):
     def add_row(self, default_label=None, interface="", bpf_filter=""):
         if default_label is None:
             default_label = capture_list.nom_par_defaut_live(len(self.rows()))
+        logger.debug("LiveCaptureListPanel.add_row: label={} interface={}", default_label, interface)
         row = LiveCaptureRow(
             default_label,
             interface,
@@ -533,21 +560,23 @@ class LiveCaptureListPanel(Gtk.Box):
         return row
 
     def _initial_filters(self):
+        logger.debug("_initial_filters: fichier={}", self._filters_path)
         try:
             return available_bpf_filters(self._filters_path)
         except (OSError, ValueError) as exc:
             # Fichier sidecar illisible : le catalogue predefini reste
             # utilisable et le fichier n'est PAS touche (upsert_bpf_filter
             # refuse d'ecraser un fichier qu'il ne sait pas relire).
-            logger.exception(f"échec dans _initial_filters: {exc}")
-            print(f"netcross: filtres BPF sauvegardes ignores ({exc})", file=sys.stderr)
+            logger.exception(f"échec dans _initial_filters, filtres BPF sauvegardés ignorés : {exc}")
             return list(PREDEFINED_BPF_FILTERS)
 
     def _save_filter(self, flt):
         """Persiste ``flt`` puis rafraichit le menu de chaque ligne. Les
         erreurs (nom reserve au catalogue, fichier illisible, E/S) remontent
         a la ligne appelante, qui les affiche dans son popover."""
+        logger.debug("_save_filter: {}", flt.name)
         self._filters = upsert_bpf_filter(flt, self._filters_path)
+        logger.debug("_save_filter: {} filtre(s), {} ligne(s) rafraîchie(s)", len(self._filters), len(self.rows()))
         for row in self.rows():
             row.set_filters(self._filters)
 
@@ -566,10 +595,17 @@ class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Analyse croisee de captures reseau")
         self.set_default_size(1080, 800)
+        logger.debug("MainWindow: construction de la fenêtre principale")
         self.last_report = None
         # etat du dernier run, pour les exports (varie selon le mode) :
         self.last_mode = None  # "single" ou "diff"
         self.last_flows = None  # mode single : pour --detail-csv et la cartographie
+        # Issue #453 : meme run, deux formes -- le dict brut de correlate()
+        # ci-dessus (detail CSV, cartographie, objets de session lisent les Pkt)
+        # et la liste de Flow ci-dessous (dashboard, statistiques, selection
+        # de flux lisent .endpoints/.points/.packet_count). Renseigne par
+        # RunOutcome (build_flow_objects), comme tous les last_*.
+        self.last_flow_objects = None
         self.last_stats_rows = None  # mode single : StatRow pour export CSV/JSON
         # Fichier PNG temporaire de la cartographie : un seul par fenetre,
         # reecrit a chaque changement de filtre. Gtk.Picture lit le fichier,
@@ -629,10 +665,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self._build_results_page()
 
         self.stack.set_visible_child_name("config")
+        logger.debug("MainWindow: fenêtre prête (3 pages construites)")
 
     # ================= PAGE 1 : CONFIGURATION =================
 
     def _build_config_page(self):
+        logger.debug("_build_config_page: construction de la page Configuration")
         outer_scroller = _visible_scroller()
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         page.set_margin_top(16)
@@ -899,12 +937,14 @@ class MainWindow(Gtk.ApplicationWindow):
         if self.diff_check.get_active() and self.live_check.get_active():
             self.live_check.set_active(False)  # declenche _on_live_toggled -> resynchronise tout
         self.live_check.set_sensitive(not self.diff_check.get_active())
+        logger.debug("_on_diff_toggled: diff={}", self.diff_check.get_active())
         self._sync_panel_visibility()
         self._update_run_sensitivity()
         self._update_run_button_label()
 
     def _on_duplicate_detection_toggled(self, _btn):
         active = self.detect_duplicates_check.get_active()
+        logger.debug("_on_duplicate_detection_toggled: detection={}", active)
         self.duplicate_threshold_spin.set_sensitive(active and not self.diff_check.get_active())
         self.exclude_duplicates_check.set_sensitive(active and not self.diff_check.get_active())
         if not active:
@@ -913,11 +953,16 @@ class MainWindow(Gtk.ApplicationWindow):
     def _on_duplicate_exclusion_toggled(self, _btn):
         if self.exclude_duplicates_check.get_active() and not self.detect_duplicates_check.get_active():
             self.detect_duplicates_check.set_active(True)
+        logger.debug(
+            "_on_duplicate_exclusion_toggled: exclusion={}",
+            self.exclude_duplicates_check.get_active(),
+        )
 
     def _on_live_toggled(self, _btn):
         if self.live_check.get_active() and self.diff_check.get_active():
             self.diff_check.set_active(False)  # declenche _on_diff_toggled -> resynchronise tout
         self.diff_check.set_sensitive(not self.live_check.get_active())
+        logger.debug("_on_live_toggled: live={}", self.live_check.get_active())
         self._sync_panel_visibility()
         self._update_run_sensitivity()
         self._update_run_button_label()
@@ -929,6 +974,7 @@ class MainWindow(Gtk.ApplicationWindow):
         modes (simple et comparaison), verifiee aussi a l'execution dans
         on_run_analysis (au cas ou l'ordre de coches inverse ait ete utilise)."""
         redact = self.redact_check.get_active()
+        logger.debug("_on_redact_toggled: redact={}", redact)
         # issue #357 : le rapport de securite aussi (charge utile brute,
         # meme refus que --security-report --redact)
         for check in (self.tls_check, self.quic_check, self.diff_tls_check, self.diff_quic_check, self.security_check):
@@ -943,6 +989,7 @@ class MainWindow(Gtk.ApplicationWindow):
         controle reglable alors que la fonctionnalite n'est pas activee
         est une invitation a perdre du temps."""
         active = self.ring_buffer_check.get_active()
+        logger.debug("_on_ring_buffer_toggled: ring_buffer={}", active)
         self.ring_max_files_spin.set_sensitive(active)
         self.ring_max_duration_spin.set_sensitive(active)
 
@@ -966,6 +1013,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.diff_panels_box.set_visible(vue.diff_panels)
         self.single_options_box.set_visible(vue.single_options)
         self.diff_options_box.set_visible(vue.diff_options)
+        logger.debug(
+            "_sync_panel_visibility: single={} live={} diff={}",
+            vue.single_panel,
+            vue.live_panel,
+            vue.diff_panels,
+        )
         self.tls_check.set_sensitive(vue.tls_sensitive)
         self.quic_check.set_sensitive(vue.quic_sensitive)
         self.parallel_check.set_sensitive(vue.parallel_sensitive)
@@ -1003,12 +1056,15 @@ class MainWindow(Gtk.ApplicationWindow):
     def _update_run_button_label(self):
         if self._live_capturing:
             return  # deja gere par _begin_live_capture/_end_live_capture
-        self.run_btn.set_label(self._run_button_state().label)
+        etat = self._run_button_state()
+        logger.debug("_update_run_button_label: label={}", etat.label)
+        self.run_btn.set_label(etat.label)
 
     def _update_run_sensitivity(self):
         if self._live_capturing:
             return  # bouton deja dans le bon etat pendant une capture en cours
         etat = self._run_button_state()
+        logger.debug("_update_run_sensitivity: enabled={} raison={}", etat.enabled, etat.raison)
         self.run_btn.set_sensitive(etat.enabled)
         # La raison du refus est affichee en infobulle plutot que gardee pour
         # nous : elle est connue au moment de la decision, et un bouton grise
@@ -1023,11 +1079,13 @@ class MainWindow(Gtk.ApplicationWindow):
     # panneau unique : on la fait pointer vers single_panel.
 
     def add_capture_row(self, path, default_label=None):
+        logger.debug("add_capture_row: {} (API de compatibilité)", path)
         return self.single_panel.add_row(path, default_label)
 
     # ================= PAGE 2 : TRAVAIL / JOURNAL =================
 
     def _build_work_page(self):
+        logger.debug("_build_work_page: construction de la page Travail")
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         page.set_margin_top(16)
         page.set_margin_bottom(16)
@@ -1072,6 +1130,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stack.add_titled(page, "log", "Travail")
 
     def _log(self, message):
+        logger.debug("journal: {}", message)
         buf = self.log_view.get_buffer()
         end = buf.get_end_iter()
         buf.insert(end, message + "\n")
@@ -1082,6 +1141,7 @@ class MainWindow(Gtk.ApplicationWindow):
     # ================= PAGE 3 : RESULTATS =================
 
     def _build_results_page(self):
+        logger.debug("_build_results_page: construction de la page Résultats")
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         page.set_margin_top(16)
         page.set_margin_bottom(16)
@@ -1491,6 +1551,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _on_live_duration_elapsed(self, session_id):
         if self._live_capturing and session_id == self._live_session_id:
+            logger.debug("_on_live_duration_elapsed: durée maximale atteinte, session={}", session_id)
             self._log("Duree maximale atteinte -- arret automatique de la capture.")
             self._end_live_capture()
         return False  # ne pas repeter le timeout (GLib.timeout_add_seconds)
@@ -1625,6 +1686,7 @@ class MainWindow(Gtk.ApplicationWindow):
         GLib.idle_add(self._reset_live_ui)
 
     def _reset_live_ui(self):
+        logger.debug("_reset_live_ui: réinitialisation de l'interface de capture en direct")
         self._live_capturing = False
         self.live_panel.set_sensitive(True)
         self.live_extra_box.set_sensitive(True)
@@ -1714,7 +1776,7 @@ class MainWindow(Gtk.ApplicationWindow):
         try:
             result = run_analysis_pipeline(captures, options, on_progress=_on_progress)
         except Exception as e:  # noqa: BLE001 -- thread de fond
-            logger.exception(f"échec dans _on_progress: {e}")
+            logger.exception(f"échec du pipeline d'analyse dans _run_analysis_thread: {e}")
             GLib.idle_add(self._log, f"ERREUR : {e}")
             GLib.idle_add(self._on_analysis_error, str(e))
             return
@@ -1773,7 +1835,7 @@ class MainWindow(Gtk.ApplicationWindow):
         try:
             result = run_diff_pipeline(baseline_captures, current_captures, options, on_progress=_on_progress)
         except Exception as e:  # noqa: BLE001 -- thread de fond
-            logger.exception(f"échec dans _on_progress: {e}")
+            logger.exception(f"échec du pipeline de comparaison dans _run_diff_thread: {e}")
             GLib.idle_add(self._log, f"ERREUR : {e}")
             GLib.idle_add(self._on_analysis_error, str(e))
             return
@@ -1791,6 +1853,7 @@ class MainWindow(Gtk.ApplicationWindow):
         )
 
     def _on_analysis_error(self, message):
+        logger.debug("_on_analysis_error: {}", message)
         self.spinner.stop()
         self.work_status_label.set_text(f"Erreur : {message}")
         self.run_btn.set_sensitive(True)
@@ -1806,6 +1869,7 @@ class MainWindow(Gtk.ApplicationWindow):
         sa liste, et un oubli d'un seul cote faisait afficher au run
         suivant des donnees restees du precedent, sans aucun message.
         """
+        logger.debug("_appliquer_outcome: {}", outcome.status)
         for nom, valeur in outcome.etat().items():
             setattr(self, nom, valeur)
         self.duplicate_indicator.set_text(outcome.duplicate_indicator)
@@ -1826,6 +1890,16 @@ class MainWindow(Gtk.ApplicationWindow):
         wireshark_expert_events=None,
         security_report=None,
     ):
+        logger.debug(
+            "_on_analysis_done: mode={} flux={} findings={} tls={} quic={} tshark={} securite={}",
+            mode,
+            len(flows or []),
+            len(findings or []),
+            len(tls_findings or []),
+            len(quic_findings or []),
+            len(wireshark_expert_events or []),
+            bool(security_report),
+        )
         # Signaux tshark bruts : calcules dans le thread d'analyse, ou les
         # paquets sont encore disponibles (issue #14). On garde le RESULTAT
         # plutot que les paquets : conserver `all_packets` dans la fenetre
@@ -1878,6 +1952,14 @@ class MainWindow(Gtk.ApplicationWindow):
         quic_findings_baseline=None,
         quic_findings_current=None,
     ):
+        logger.debug(
+            "_on_diff_done: findings={} tls_base={} tls_courant={} quic_base={} quic_courant={}",
+            len(findings or []),
+            len(tls_findings_baseline or []),
+            len(tls_findings_current or []),
+            len(quic_findings_baseline or []),
+            len(quic_findings_current or []),
+        )
         self._appliquer_outcome(
             diff_outcome(
                 findings,
@@ -1911,6 +1993,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def on_export_csv(self, _btn):
         if self.last_mode is None:
             return
+        logger.debug("on_export_csv: mode={}", self.last_mode)
         dialog = Gtk.FileDialog()
         dialog.set_initial_name("details_flux.csv" if self.last_mode == "single" else "ecarts.csv")
         dialog.save(self, None, self._on_csv_path_chosen)
@@ -1922,6 +2005,7 @@ class MainWindow(Gtk.ApplicationWindow):
             logger.exception("échec dans _on_csv_path_chosen")
             return
         path = gfile.get_path()
+        logger.debug("_on_csv_path_chosen: mode={} path={}", self.last_mode, path)
         try:
             if self.last_mode == "single":
                 write_detail_csv(path, self.last_flows, self.last_report.points)
@@ -1931,6 +2015,7 @@ class MainWindow(Gtk.ApplicationWindow):
             logger.exception(f"échec dans _on_csv_path_chosen: {e}")
             self.status_label.set_text(f"Erreur CSV : {e}")
             return
+        logger.debug("_on_csv_path_chosen: CSV écrit {}", path)
         self.status_label.set_text(f"CSV ecrit : {path}")
 
     # ================= export PDF =================
@@ -1938,6 +2023,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def on_export_pdf(self, _btn):
         if self.last_mode is None:
             return
+        logger.debug("on_export_pdf: mode={}", self.last_mode)
         dialog = Gtk.FileDialog()
         dialog.set_initial_name("rapport_analyse.pdf" if self.last_mode == "single" else "rapport_comparaison.pdf")
         dialog.save(self, None, self._on_pdf_path_chosen)
@@ -1948,7 +2034,9 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_pdf_path_chosen")
             return
-        self.export_pdf_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_pdf_path_chosen: chemin choisi {}", path)
+        self.export_pdf_to(path)
 
     def export_pdf_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""
@@ -1978,20 +2066,35 @@ class MainWindow(Gtk.ApplicationWindow):
         """Reconstruit la liste des statistiques depuis les memes objets
         que le rapport. Desactive si pas de flows (mode diff ou analyse
         non lancee)."""
-        flows = self.last_flows
+        # Issue #453 : les StatRow se construisent depuis des Flow
+        # (.endpoints, .packet_count...), pas depuis le dict brut de
+        # correlate() -- comme le dashboard ci-dessous.
+        flows = self.last_flow_objects
         self.stats_expander.set_sensitive(bool(flows))
         self.stats_csv_btn.set_sensitive(False)
         self.stats_json_btn.set_sensitive(False)
         if not flows:
+            logger.debug("_refresh_stats: aucun flux, vue désactivée")
             self._stats_clear_list()
             return
+        group_by = self._stats_group_value()
+        sort_by = self._stats_sort_value()
+        top_n = int(self.stats_topn_spin.get_value())
         query = build_query(
-            group_by=self._stats_group_value(),
-            sort_by=self._stats_sort_value(),
-            top_n=int(self.stats_topn_spin.get_value()),
+            group_by=group_by,
+            sort_by=sort_by,
+            top_n=top_n,
         )
         events_by_seg = build_events_by_segment(self.last_findings, flows)
         rows = run_stats(flows, self.last_report, query, events_by_seg)
+        logger.debug(
+            "_refresh_stats: {} flux, group_by={} sort_by={} top_n={} -> {} ligne(s)",
+            len(flows),
+            group_by,
+            sort_by,
+            top_n,
+            len(rows),
+        )
         self.last_stats_rows = rows
         self._stats_repopulate(rows, flows)
         self.stats_csv_btn.set_sensitive(bool(rows))
@@ -1999,6 +2102,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _stats_clear_list(self):
         """Vide la ListBox des statistiques."""
+        logger.debug("_stats_clear_list: vidage de la liste des statistiques")
         box = self.stats_list_box
         child = box.get_first_child()
         while child is not None:
@@ -2010,6 +2114,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def _stats_repopulate(self, rows, flows):
         """Repeuple la ListBox avec une ligne par StatRow.
         Chaque ligne est un bouton cliquable qui declenche le drill-down."""
+        logger.debug("_stats_repopulate: {} ligne(s)", len(rows))
         self._stats_clear_list()
         box = self.stats_list_box
         if not rows:
@@ -2026,6 +2131,7 @@ class MainWindow(Gtk.ApplicationWindow):
         """Drill-down : affiche les flux d'une ligne statistique.
         Remplace temporairement le contenu de la ListBox par la liste
         des flux, avec un bouton de retour."""
+        logger.debug("_stats_select: {} ({} flux)", row.label, len(row.flow_keys))
         self._stats_clear_list()
         box = self.stats_list_box
 
@@ -2055,7 +2161,7 @@ class MainWindow(Gtk.ApplicationWindow):
         rows = getattr(self, "last_stats_rows", None)
         if not rows:
             return
-
+        logger.debug("_on_stats_export_csv: {} ligne(s)", len(rows))
         dialog = Gtk.FileDialog()
         dialog.set_title("Exporter les statistiques en CSV")
         dialog.set_initial_name("netcross_stats.csv")
@@ -2079,6 +2185,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if not rows:
             return
         path = file_obj.get_path()
+        logger.debug("_on_stats_csv_saved: {} ligne(s) vers {}", len(rows), path)
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(export_csv(rows))
@@ -2089,6 +2196,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _on_stats_export_json(self, _btn):
         """Exporte les statistiques courantes en JSON."""
+        rows = getattr(self, "last_stats_rows", None)
+        if rows:
+            logger.debug("_on_stats_export_json: {} ligne(s)", len(rows))
         dialog = Gtk.FileDialog()
         dialog.set_title("Exporter les statistiques en JSON")
         dialog.set_initial_name("netcross_stats.json")
@@ -2114,6 +2224,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if not rows:
             return
         path = file_obj.get_path()
+        logger.debug("_on_stats_json_saved: {} ligne(s) vers {}", len(rows), path)
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(export_json(rows), fh, indent=2, ensure_ascii=False)
@@ -2132,6 +2243,7 @@ class MainWindow(Gtk.ApplicationWindow):
         rapport affiche."""
         flows = self.last_flows
         protocoles = available_protocols(flows) if flows else []
+        logger.debug("_reset_comm_map_filters: {} protocole(s)", len(protocoles))
         self.comm_proto_drop.set_model(Gtk.StringList.new(["Tous", *protocoles]))
         self.comm_proto_drop.set_selected(0)
         self.comm_map_expander.set_sensitive(bool(flows))
@@ -2143,6 +2255,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def _dashboard_clear(self):
         """Reinitialise le contexte de selection partage et rafraichit les
         six vues. Cablage GTK de netcross_gtk4.dashboard_context."""
+        logger.debug("_dashboard_clear: réinitialisation du contexte de sélection")
         self.dashboard_selection = DashboardSelection()
         self._refresh_dashboard()
 
@@ -2155,6 +2268,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # traverser une cascade de elif sans rien faire : avant, un type mal
         # orthographie rendait les clics d'une vue entiere inoperants, sans
         # message ni trace (issue #285, lot 3).
+        logger.debug("_dashboard_select: kind={} key={}", kind, key)
         self.dashboard_selection = apply_dashboard_selection(
             kind,
             self.dashboard_selection,
@@ -2165,9 +2279,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self._refresh_dashboard()
 
     def _flow_by_key(self, key):
-        for f in self.last_flows or []:
+        # Issue #453 : parcourt les Flow (.key), pas les cles du dict brut
+        # -- des tuples sans attribut .key.
+        for f in self.last_flow_objects or []:
             if f.key == key:
                 return f
+        logger.debug("_flow_by_key: clé introuvable {}", key)
         return None
 
     def _dashboard_events(self):
@@ -2177,6 +2294,7 @@ class MainWindow(Gtk.ApplicationWindow):
         events.extend(self.last_tls_findings or [])
         events.extend(self.last_quic_findings or [])
         events.extend(self.last_wireshark_expert_events or [])
+        logger.debug("_dashboard_events: {} événement(s)", len(events))
         return events
 
     def _refresh_dashboard(self):
@@ -2184,9 +2302,14 @@ class MainWindow(Gtk.ApplicationWindow):
         repeuple les six vues. Aucune exception ne remonte a l'interface : un
         snapshot vide (analyse pas encore lancee) desactive simplement
         l'expander, comme la cartographie."""
-        flows = self.last_flows
+        # Issue #453 : build_dashboard_snapshot attend une liste de Flow
+        # (avec .endpoints), pas le dict brut de correlate() -- lui-meme et
+        # les vues qu'il alimentait plantaient en silence sur
+        # AttributeError: 'tuple' object has no attribute 'endpoints'.
+        flows = self.last_flow_objects
         self.dashboard_expander.set_sensitive(bool(flows))
         if not flows:
+            logger.debug("_refresh_dashboard: aucun flux, dashboard désactivé")
             # vide aussi les sections : sans cette purge, un run single suivi
             # d'un diff laisserait l'ancien dashboard dans l'arbre GTK (expander
             # desactive mais contenu non nettoye).
@@ -2195,7 +2318,7 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         snap = build_dashboard_snapshot(
             self.last_report,
-            self.last_flows,
+            self.last_flow_objects,
             findings=self.last_findings,
             tls_findings=self.last_tls_findings,
             quic_findings=self.last_quic_findings,
@@ -2203,12 +2326,14 @@ class MainWindow(Gtk.ApplicationWindow):
             selection=self.dashboard_selection,
         )
         self.dashboard_context_label.set_text(f"Contexte selectionne : {snap.selection_summary}")
+        logger.debug("_refresh_dashboard: {} flux, contexte={}", len(flows), snap.selection_summary)
         self._dashboard_repopulate(snap)
 
     def _dashboard_clear_sections(self):
         """Retire toutes les sections du dashboard de l'arbre GTK. Utilise
         aussi bien avant un repeuplage qu'a la desactivation (mode sans
         flows) pour ne pas laisser de contenu stale."""
+        logger.debug("_dashboard_clear_sections: purge des sections du dashboard")
         box = self.dashboard_sections_box
         child = box.get_first_child()
         while child is not None:
@@ -2219,6 +2344,15 @@ class MainWindow(Gtk.ApplicationWindow):
     def _dashboard_repopulate(self, snap):
         """Vide la boite des sections et la repeuple avec une section par vue.
         Chaque ligne est un bouton cliquable qui appelle _dashboard_select."""
+        logger.debug(
+            "_dashboard_repopulate: timeline={} segments={} flows={} endpoints={} protocoles={} evenements={}",
+            len(snap.timeline_rows),
+            len(snap.segment_rows),
+            len(snap.flow_rows),
+            len(snap.endpoint_rows),
+            len(snap.protocol_rows),
+            len(snap.event_rows),
+        )
         self._dashboard_clear_sections()
         box = self.dashboard_sections_box
         sections = [
@@ -2257,11 +2391,13 @@ class MainWindow(Gtk.ApplicationWindow):
                 model.get_n_items(),
                 model.get_string,
             )
-        return comm_map_filters(
+        filtres = comm_map_filters(
             protocole,
             self.comm_topn_spin.get_value(),
             self.comm_anomalies_check.get_active(),
         )
+        logger.debug("_comm_map_filters: {}", filtres)
+        return filtres
 
     def _refresh_comm_map(self):
         """Reconstruit la carte et son rendu PNG a partir des filtres
@@ -2279,6 +2415,7 @@ class MainWindow(Gtk.ApplicationWindow):
         rapport ni d'exporter.
         """
         if not self.last_flows:
+            logger.debug("_refresh_comm_map: aucun flux, carte désactivée")
             self.comm_map_picture.set_filename(None)
             self.comm_map_label.set_text("Cartographie disponible apres une analyse simple.")
             return False
@@ -2286,6 +2423,7 @@ class MainWindow(Gtk.ApplicationWindow):
             from netcross_report.charts import chart_comm_map
 
             cmap = build_comm_map(self.last_flows, **self._comm_map_filters())
+            logger.debug("_refresh_comm_map: {} flux dans la carte", len(self.last_flows))
             if self._comm_map_png is None:
                 fd, self._comm_map_png = tempfile.mkstemp(prefix="netcross_comm_map_", suffix=".png")
                 os.close(fd)
@@ -2311,6 +2449,7 @@ class MainWindow(Gtk.ApplicationWindow):
         Les signaux tshark, eux, ne sont jamais recalcules : ils viennent du
         thread d'analyse (les paquets bruts ne sont plus disponibles ici).
         """
+        logger.debug("_session_objects: construction des objets de session")
         from netcross_report import build_findings, build_session_objects
 
         findings = self.last_findings if self.last_findings is not None else build_findings(self.last_report)
@@ -2360,10 +2499,12 @@ class MainWindow(Gtk.ApplicationWindow):
         GLib.idle_add(self._on_pdf_done, path)
 
     def _on_pdf_error(self, message):
+        logger.debug("_on_pdf_error: {}", message)
         self.status_label.set_text(f"Erreur PDF : {message}")
         return False
 
     def _on_pdf_done(self, path):
+        logger.debug("_on_pdf_done: {}", path)
         self.status_label.set_text(f"PDF ecrit : {path}")
         return False
 
@@ -2376,6 +2517,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def on_export_json(self, _btn):
         if self.last_mode is None:
             return
+        logger.debug("on_export_json: mode={}", self.last_mode)
         dialog = Gtk.FileDialog()
         dialog.set_initial_name("rapport_analyse.json" if self.last_mode == "single" else "rapport_comparaison.json")
         dialog.save(self, None, self._on_json_path_chosen)
@@ -2386,7 +2528,9 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_json_path_chosen")
             return
-        self.export_json_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_json_path_chosen: chemin choisi {}", path)
+        self.export_json_to(path)
 
     def export_json_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""
@@ -2429,10 +2573,12 @@ class MainWindow(Gtk.ApplicationWindow):
         GLib.idle_add(self._on_json_done, path)
 
     def _on_json_error(self, message):
+        logger.debug("_on_json_error: {}", message)
         self.status_label.set_text(f"Erreur JSON : {message}")
         return False
 
     def _on_json_done(self, path):
+        logger.debug("_on_json_done: {}", path)
         self.status_label.set_text(f"JSON ecrit : {path}")
         return False
 
@@ -2443,6 +2589,7 @@ class MainWindow(Gtk.ApplicationWindow):
         seulement quand un rapport existe (analyse simple, case cochee).
         `last_security_report` vient du RunOutcome (None apres un diff)."""
         security_report = self.last_security_report
+        logger.debug("_show_security_report: rapport={}", bool(security_report))
         buf = Gtk.TextBuffer()
         buf.set_text(security_view_text(security_report))
         self.security_view.set_buffer(buf)
@@ -2457,6 +2604,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def on_export_security(self, suffix):
         if self.last_security_report is None:
             return
+        logger.debug("on_export_security: format={}", suffix)
         dialog = Gtk.FileDialog()
         dialog.set_initial_name(f"rapport_securite{suffix}")
         dialog.save(self, None, lambda d, r: self._on_security_path_chosen(d, r))
@@ -2467,11 +2615,14 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_security_path_chosen")
             return
-        self.export_security_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_security_path_chosen: chemin choisi {}", path)
+        self.export_security_to(path)
 
     def export_security_to(self, path):
         """Separe du dialogue pour etre pilote directement (tests). Synchrone :
         le rendu part d'un SecurityReport deja calcule, sans relire de fichier."""
+        logger.debug("export_security_to: {}", path)
         try:
             written = export_security_report(self.last_security_report, path)
         except (OSError, ValueError) as e:
@@ -2486,16 +2637,25 @@ class NetcrossApp(Gtk.Application):
     def __init__(self):
         super().__init__(application_id="org.netcross.analyzer")
         self.main_window = None
+        logger.debug("NetcrossApp: application_id={}", self.get_application_id())
 
     def do_activate(self):
+        logger.debug("do_activate: fenêtre existante={}", self.main_window is not None)
         if not self.main_window:
             self.main_window = MainWindow(self)
         self.main_window.present()
 
 
 def main():
+    # --debug est propre a Netcross : retire avant Gtk.Application.run, qui
+    # refuserait une option inconnue.
+    argv = list(sys.argv)
+    if DEBUG_FLAG in argv:
+        argv = [a for a in argv if a != DEBUG_FLAG]
+        enable_debug()
+    logger.debug("main: démarrage de la GUI GTK4, argv={} debug={}", argv[1:], is_debug_enabled())
     app = NetcrossApp()
-    return app.run(sys.argv)
+    return app.run(argv)
 
 
 if __name__ == "__main__":

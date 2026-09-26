@@ -285,6 +285,12 @@ def correlate_expert_alerts(
 
     result.malformed_flows.sort(key=lambda d: (-d["count"], d["point"], d["flow"]))
     result.suspicions.sort(key=lambda d: (d["kind"], -d["count"], d["point"], d["flow"]))
+    logger.debug(
+        "correlate_expert_alerts: {} point(s) avec malformations, {} flux malformé(s), {} suspicion(s)",
+        len(result.malformed_by_point),
+        len(result.malformed_flows),
+        len(result.suspicions),
+    )
     return result
 
 
@@ -311,3 +317,8 @@ def apply_expert_correlation(
     for s in result.suspicions:
         r.exploit_suspicion[s["point"]][s["kind"]] += 1
     r.exploit_suspicion_flows = result.suspicions
+    logger.debug(
+        "apply_expert_correlation: {} flux malformé(s), {} suspicion(s) recopiés dans le rapport",
+        len(result.malformed_flows),
+        len(result.suspicions),
+    )

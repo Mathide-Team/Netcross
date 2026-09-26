@@ -38,7 +38,7 @@ from netcross_ai.outbox import (
     queue_pack,
     submission,
 )
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
 
 logger = get_logger(__name__)
 
@@ -172,7 +172,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    add_debug_argument(parser)
+    args = parser.parse_args(argv)
+    apply_debug_argument(args)
     try:
         return int(args.func(args))
     except (ModelPackError, BaselineError, TrainingSetError, OSError) as exc:

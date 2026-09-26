@@ -38,7 +38,7 @@ d'analyse simple -- d'un fichier partage entre plusieurs sites) :
 import argparse
 import sys
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
 from netcross_report import HistoryDatabaseError, list_history, print_history
 
 logger = get_logger(__name__)
@@ -75,7 +75,9 @@ def main():
         help="Nombre maximum de runs affiches (defaut : tous). Toujours les plus recents "
         "en premier (voir netcross_report.history.list_history).",
     )
+    add_debug_argument(ap)
     args = ap.parse_args()
+    apply_debug_argument(args)
 
     if args.limit is not None and args.limit <= 0:
         print("--limit doit etre un entier strictement positif.", file=sys.stderr)
