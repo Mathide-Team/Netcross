@@ -56,7 +56,7 @@ def test_les_deux_modes_renseignent_exactement_les_memes_champs():
     analyse = analysis_outcome("single", _Rapport(), [], [], "texte")
     comparaison = diff_outcome([], _Rapport(), _Rapport(), "texte")
     assert set(analyse.etat()) == set(comparaison.etat())
-    assert len(analyse.etat()) == 15
+    assert len(analyse.etat()) == 16
 
 
 def test_l_analyse_efface_l_etat_de_comparaison():
@@ -76,11 +76,12 @@ def test_l_analyse_efface_l_etat_de_comparaison():
 
 def test_la_comparaison_efface_l_etat_d_analyse_simple():
     """Symetrique : le tableau de bord et la vue statistiques s'appuient sur
-    `report` et `flows`, et doivent se desactiver en mode comparaison plutot
-    que d'afficher les chiffres du run precedent."""
+    `report`, `flows` et `flow_objects`, et doivent se desactiver en mode
+    comparaison plutot que d'afficher les chiffres du run precedent."""
     o = diff_outcome(["e"], _Rapport(), _Rapport(), "texte")
     assert o.report is None
     assert o.flows is None
+    assert o.flow_objects is None
     assert o.findings is None
     assert o.tls_findings is None
     assert o.quic_findings is None

@@ -57,6 +57,15 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - `docs/fingerprints-ja4-hassh.md` (#259)
 
 ### Corrigé
+- Le tableau de bord analytique, la vue statistiques et la sélection de flux
+  de la GUI plantaient silencieusement (`AttributeError` dans un callback
+  `GLib.idle_add`) dès qu'un flux existait : les deux threads d'analyse
+  transmettent le dict brut de `correlate()`, que ces vues orientées objets
+  ne savent pas lire. `RunOutcome` porte désormais `flow_objects`, la
+  `list[Flow]` dérivée du dict au seul point par lequel les deux chemins
+  passent, et les vues concernées la consomment ; `last_flows` reste le dict
+  brut pour le détail CSV, la cartographie et les objets de session, qui
+  lisent les paquets (#453)
 - Le bouton « Descendre » d'une ligne de capture n'avait pas la borne que
   « Monter » avait : il insérait au-delà de la fin sur la dernière ligne et ne
   restait en place que parce que GTK ajoute silencieusement en fin de liste.

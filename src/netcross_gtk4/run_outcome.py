@@ -4,9 +4,10 @@ fin d'une analyse ou d'une comparaison (issue #285, deuxieme lot).
 
 ## Le probleme que ce module resout
 
-`MainWindow` conserve quinze attributs `last_*` decrivant le dernier
-run : le rapport, les flux, les constats, les diagnostics TLS/QUIC, les
-evenements Expert Info, et leurs equivalents en mode comparaison. Deux
+`MainWindow` conserve seize attributs `last_*` decrivant le dernier
+run : le rapport, les flux (sous leurs deux formes, voir `flow_objects`),
+les constats, les diagnostics TLS/QUIC, les evenements Expert Info, et
+leurs equivalents en mode comparaison. Deux
 methodes les reecrivaient chacune de son cote : `_on_analysis_done` et
 `_on_diff_done`.
 
@@ -39,6 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import Any
 
+from netcross_core.correlate import build_flows
 from netcross_core.i18n import N_, _, ngettext
 from netcross_core.logging_config import get_logger
 from netcross_gtk4.duplicate_view import format_duplicate_indicator
@@ -70,6 +72,13 @@ class RunOutcome:
     mode: str
     report: Any
     flows: Any
+    # Issue #453 : les flux sous forme de list[Flow] (netcross_core.
+    # expert_model), construite par build_flow_objects() depuis le dict brut
+    # de correlate(). Les vues orientees objets -- dashboard analytique,
+    # exploration statistique, selection de flux -- consomment cette forme ;
+    # `flows` reste le dict brut pour les consommateurs qui lisent les Pkt
+    # (detail CSV, cartographie, objets de session).
+    flow_objects: Any
     findings: Any
     tls_findings: Any
     quic_findings: Any
@@ -98,6 +107,7 @@ class RunOutcome:
         "mode",
         "report",
         "flows",
+        "flow_objects",
         "findings",
         "tls_findings",
         "quic_findings",
@@ -148,6 +158,37 @@ def _verifier_completude() -> None:
 _verifier_completude()
 
 
+def build_flow_objects(flows: Any) -> Any:
+    """Construit la liste de `Flow` correspondant aux flux d'un run.
+
+    Issue #453 : les deux threads d'analyse (fichier via le pipeline,
+    capture en direct via `_join_live_and_analyze`) transmettent le dict
+    brut retourne par `correlate()`, et c'est ce dict qui est stocke dans
+    `last_flows` -- voulu, car le detail CSV, la cartographie et les objets
+    de session lisent les paquets qu'il porte. Mais les vues orientees
+    objets (dashboard, statistiques, selection de flux) attendent une
+    `list[Flow]` avec `.endpoints`, `.points`, `.packet_count`... Les deux
+    formes coexistent donc : cette fonction derive la seconde de la
+    premiere, au seul endroit par lequel les deux chemins passent --
+    `_on_analysis_done` appele `analysis_outcome`, jamais l'inverse.
+
+    Tolere une entree deja convertie (une liste de `Flow`, y compris
+    vide) : les tests et les futurs appelants n'ont pas a connaitre la
+    forme interne. `None` reste `None` -- c'est l'etat "pas de run",
+    pas un run sans flux.
+    """
+    if flows is None:
+        logger.debug("build_flow_objects: aucun flux (run absent)")
+        return None
+    if isinstance(flows, dict):
+        flow_objects = build_flows(flows)
+        logger.debug("build_flow_objects: {} flux -> {} Flow", len(flows), len(flow_objects))
+        return flow_objects
+    if isinstance(flows, list):
+        return flows
+    return list(flows)
+
+
 def analysis_outcome(
     mode: str,
     report: Any,
@@ -170,6 +211,7 @@ def analysis_outcome(
         mode=mode,
         report=report,
         flows=flows,
+        flow_objects=build_flow_objects(flows),
         findings=findings,
         tls_findings=tls_findings,
         quic_findings=quic_findings,
@@ -229,6 +271,7 @@ def diff_outcome(
         mode="diff",
         report=None,
         flows=None,
+        flow_objects=None,
         findings=None,
         tls_findings=None,
         quic_findings=None,

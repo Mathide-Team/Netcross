@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-160 modules · 240 classes · 540 fonctions publiques de module.
+160 modules · 240 classes · 541 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"40 imports"| netcross_core
     CLI -->|"5 imports"| pcap_parser
     netcross_gtk4 -->|"13 imports"| netcross_report
-    netcross_gtk4 -->|"53 imports"| netcross_core
+    netcross_gtk4 -->|"54 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
     netcross_api -->|"6 imports"| netcross_core
     netcross_report -->|"32 imports"| netcross_core
@@ -4157,6 +4157,7 @@ classDiagram
         +str mode
         +Any report
         +Any flows
+        +Any flow_objects
         +Any findings
         +Any tls_findings
         +Any quic_findings
@@ -4177,6 +4178,7 @@ classDiagram
     }
     class mod_netcross_gtk4_run_outcome["netcross_gtk4.run_outcome"] {
         <<module>>
+        +build_flow_objects(flows) Any
         +analysis_outcome(mode, report, flows, findings, text, tls_findings, quic_findings, wireshark_expert_events, security_report) RunOutcome
         +diff_status_text(findings) str
         +diff_outcome(findings, baseline_report, current_report, text, tls_findings_baseline, tls_findings_current, quic_findings_baseline, quic_findings_current) RunOutcome
