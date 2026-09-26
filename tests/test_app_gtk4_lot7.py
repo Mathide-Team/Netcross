@@ -9,6 +9,8 @@ GTK4/pygobject ou un affichage manquent (CI sans libgtk-4) -- aucun test
 de ce fichier ne doit exiger GTK4 en CI.
 """
 
+import itertools
+
 from gtk4_display import exiger_gtk4_avec_affichage
 
 Gtk = exiger_gtk4_avec_affichage()
@@ -33,9 +35,20 @@ from netcross_gtk4.stats_view import (  # noqa: E402
     sort_options,
 )
 
+_IDS_APPLICATION = itertools.count(1)
+
 
 def _make_window():
-    app = Gtk.Application(application_id="org.netcross.test428")
+    """MainWindow fraîche pour chaque test, avec un identifiant d'application
+    UNIQUE (même approche que le lot 5, tests/test_app_gtk4_lot5.py).
+
+    Quand un bus D-Bus de session existe (runner GitHub, poste de bureau),
+    ``register()`` exporte l'application sur ``/org/netcross/test428`` : une
+    seconde inscription avec le même identifiant dans le même processus
+    échoue avec « An object is already exported for the interface
+    org.gtk.Application ». Sans bus (bac à sable), rien n'est exporté et le
+    défaut restait invisible."""
+    app = Gtk.Application(application_id=f"org.netcross.test428.n{next(_IDS_APPLICATION)}")
     app.register(None)
     return MainWindow(app)
 
