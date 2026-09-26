@@ -129,6 +129,63 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  gtk4:
+    # Tests GTK4 réellement exécutés (issues #357, #363, #421).
+    # Le job Qualité n'installe ni pygobject ni libgtk-4 : tous les tests
+    # pilotés via pygobject y sont SAUTÉS -- c'est voulu (#285/#421 : aucun
+    # test n'exige GTK4 dans ce job). Mais un test sauté est une vérification
+    # qui n'a pas eu lieu (#261/#262) : sans ce job, les ~180 tests des lots
+    # de #421 ne tourneraient jamais en CI et pourraient régresser
+    # indéfiniment sous une CI verte (un test du lot 7 échouait déjà sous
+    # GTK4 tout en passant en CI). Ici : GTK4 + pygobject + serveur X
+    # virtuel (Xvfb), suite complète, et échec si un test GTK est sauté.
+    name: Tests GTK4 (Xvfb)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v7
+
+      - name: GTK4, introspection, Xvfb, tshark, pdftotext
+        # libgirepository-2.0-dev + libcairo2-dev : compilation de
+        # pygobject/pycairo depuis les sources si aucune roue ne convient.
+        run: |
+          echo "wireshark-common wireshark-common/install-setuid boolean false" \
+            | sudo debconf-set-selections
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            gir1.2-gtk-4.0 libgirepository-2.0-dev libcairo2-dev pkg-config \
+            xvfb xauth tshark poppler-utils gettext
+
+      - name: Installation de uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Installation de Python
+        run: uv python install 3.14
+
+      - name: Installation des dépendances (extras dev + api + ai, pygobject)
+        # pygobject n'est pas une dépendance du projet (la GUI utilise celui
+        # du système via le paquet) : installé ici dans le venv de test.
+        run: |
+          uv sync --extra dev --extra api --extra ai
+          uv pip install pygobject pycairo
+
+      - name: Tests sous Xvfb, aucun test GTK sauté
+        # Motifs de saut : tests/gtk4_display.py. -p no:cacheprovider :
+        # rien à conserver entre deux exécutions de ce job.
+        run: |
+          set -o pipefail
+          xvfb-run -a uv run pytest -q -rs --no-header -p no:cacheprovider \
+            --cov=netcross_gtk4 --cov-report=term --cov-fail-under=0 \
+            | tee /tmp/gtk4.txt
+          if grep -qE "pygobject absent|GTK4 absent|pas d'affichage pour GTK4" /tmp/gtk4.txt; then
+            echo "::error::des tests GTK4 ont été sautés alors que ce job installe GTK4 et Xvfb"
+            exit 1
+          fi
+          echo "tests GTK4 : tous exécutés"
+
   types:
     # Verification statique des types (issue #281).
     # NON BLOQUANT pour l instant : continue-on-error = true.
