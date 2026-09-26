@@ -42,7 +42,7 @@ flowchart TD
     netcross_api -->|"6 imports"| netcross_core
     netcross_report -->|"32 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
-    netcross_core -->|"17 imports"| pcap_parser
+    netcross_core -->|"18 imports"| pcap_parser
 ```
 
 ## Relations inter-modules

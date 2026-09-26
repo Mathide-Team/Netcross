@@ -5,17 +5,11 @@ la logique est couverte sans GTK par test_annotations_store.py.
 """
 
 import pytest
+from gtk4_display import exiger_gtk4_avec_affichage
 
 from netcross_core.forensic import read_annotations
 
-gi = pytest.importorskip("gi", reason="pygobject absent")
-try:
-    gi.require_version("Gtk", "4.0")
-    from gi.repository import Gtk
-except (ValueError, ImportError):
-    pytest.skip("GTK4 absent", allow_module_level=True)
-if not Gtk.init_check():
-    pytest.skip("pas d'affichage pour GTK4", allow_module_level=True)
+Gtk = exiger_gtk4_avec_affichage()
 
 from netcross_gtk4.annotations_panel import AnnotationsPanel  # noqa: E402
 
