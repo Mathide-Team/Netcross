@@ -47,6 +47,34 @@ En mode debug :
 NETCROSS_LOG_FILE=~/netcross-debug.log netcross-gui --debug
 ```
 
+## Utiliser `pcap_parser` comme bibliothèque (issue #446)
+
+`pcap_parser` est la couche la plus basse du projet : il n'importe pas `netcross_core` (contrat import-linter) et utilise loguru directement. Sans précaution, un script, un notebook ou du code tiers qui l'importe seul hériterait du handler par défaut de loguru, qui écrit sur stderr dès le niveau `DEBUG`.
+
+`pcap_parser/__init__.py` applique donc la [convention loguru pour les bibliothèques](https://loguru.readthedocs.io/en/stable/overview.html#suitable-for-scripts-and-libraries) : `logger.disable("pcap_parser")`. Les points d'entrée Netcross (CLI, GUI, API) le réactivent via `configure_logging()` (`logger.enable("pcap_parser")`), et `--debug`, `NETCROSS_DEBUG` et `NETCROSS_LOG_LEVEL` agissent alors aussi sur `pcap_parser`. `netcross_core.logging_config` importe `pcap_parser` en tête de module : le `disable` s'exécute toujours avant le premier `enable`, quel que soit l'ordre des imports.
+
+**Effet de bord à connaître** : utilisé seul, `pcap_parser` n'écrit plus rien, **pas même ses warnings ni ses erreurs**, tant que ses journaux ne sont pas réactivés. Deux façons de le faire :
+
+```python
+# 1. Avec la configuration Netcross (format, niveau, NETCROSS_LOG_FILE)
+from netcross_core.logging_config import configure_logging
+
+configure_logging("DEBUG")
+
+from pcap_parser import parse_capture
+```
+
+```python
+# 2. Avec loguru seul : importer pcap_parser AVANT d'appeler enable,
+#    sinon le disable de son __init__ annule le enable.
+import pcap_parser
+from loguru import logger
+
+logger.enable("pcap_parser")
+```
+
+Les processus fils de `parse_captures_parallel` réimportent `pcap_parser` et `netcross_core` : ils suivent `NETCROSS_DEBUG` et `NETCROSS_LOG_LEVEL`, hérités de l'environnement, mais pas l'option `--debug`, qui n'agit que dans le processus principal.
+
 ## Règles pour les contributeurs
 
 Ces règles sont vérifiées par `tests/test_loguru_regles.py` et `tests/test_loguru_formatting.py` :
