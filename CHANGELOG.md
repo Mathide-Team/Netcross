@@ -8,6 +8,14 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Ajouté
+- Matrice de parité GUI / CLI / API (#330), `docs/parite-surfaces.md` :
+  chaque fonction et sa disponibilité sur chaque surface, avec les écarts
+  classés par impact. Le principal : le JSON de l'API n'est pas celui de
+  `--json-report` (ni constats, ni triage, ni score de santé).
+  `tests/test_parite_surfaces.py` extrait les options argparse des 6 CLI,
+  les routes et paramètres FastAPI et les cases de la GUI (AST) : toute
+  option ou route non classée dans la page, ou tout décompte périmé, fait
+  échouer la CI.
 - `netcross_gtk4/bpf_panel.py` — décisions du panneau de filtres BPF de la
   capture live extraites de `app.py` et couvertes à **100 %** (62 tests) :
   conversion indice de menu ↔ filtre, infobulle, désolidarisation du menu sur
