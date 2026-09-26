@@ -2034,8 +2034,9 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_pdf_path_chosen")
             return
-        logger.debug("_on_pdf_path_chosen: chemin choisi")
-        self.export_pdf_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_pdf_path_chosen: chemin choisi {}", path)
+        self.export_pdf_to(path)
 
     def export_pdf_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""
@@ -2527,8 +2528,9 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_json_path_chosen")
             return
-        logger.debug("_on_json_path_chosen: chemin choisi")
-        self.export_json_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_json_path_chosen: chemin choisi {}", path)
+        self.export_json_to(path)
 
     def export_json_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""
@@ -2613,8 +2615,9 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_security_path_chosen")
             return
-        logger.debug("_on_security_path_chosen: chemin choisi")
-        self.export_security_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_security_path_chosen: chemin choisi {}", path)
+        self.export_security_to(path)
 
     def export_security_to(self, path):
         """Separe du dialogue pour etre pilote directement (tests). Synchrone :
