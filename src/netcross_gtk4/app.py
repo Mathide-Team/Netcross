@@ -177,8 +177,8 @@ class CaptureRow(Gtk.Box):
 
     def _deplacer(self, *, vers_le_haut):
         """Deplace la ligne d'un cran, ou ne fait rien si elle est au bord
-        logger.debug("CaptureRow._deplacer: vers_le_haut={} path={}", vers_le_haut, self.path)
         (voir `capture_list.deplacer_ligne`)."""
+        logger.debug("CaptureRow._deplacer: vers_le_haut={} path={}", vers_le_haut, self.path)
         capture_list.deplacer_ligne(self.get_parent(), vers_le_haut=vers_le_haut)
 
     def _on_remove(self, _btn):
@@ -310,6 +310,7 @@ class LiveCaptureRow(Gtk.Box):
     def _select_filter_index(self, index):
         """Positionne le menu (0 = titre, i = i-eme filtre) SANS recharger le
         champ filtre, et aligne l'infobulle sur la description du filtre."""
+        logger.debug("_select_filter_index: index={}", index)
         self._syncing_dropdown = True
         try:
             self.filter_dropdown.set_selected(index)
@@ -2033,8 +2034,9 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_pdf_path_chosen")
             return
-        logger.debug("_on_pdf_path_chosen: chemin choisi")
-        self.export_pdf_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_pdf_path_chosen: chemin choisi {}", path)
+        self.export_pdf_to(path)
 
     def export_pdf_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""
@@ -2526,8 +2528,9 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_json_path_chosen")
             return
-        logger.debug("_on_json_path_chosen: chemin choisi")
-        self.export_json_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_json_path_chosen: chemin choisi {}", path)
+        self.export_json_to(path)
 
     def export_json_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""
@@ -2612,8 +2615,9 @@ class MainWindow(Gtk.ApplicationWindow):
         except GLib.Error:
             logger.exception("échec dans _on_security_path_chosen")
             return
-        logger.debug("_on_security_path_chosen: chemin choisi")
-        self.export_security_to(gfile.get_path())
+        path = gfile.get_path()
+        logger.debug("_on_security_path_chosen: chemin choisi {}", path)
+        self.export_security_to(path)
 
     def export_security_to(self, path):
         """Separe du dialogue pour etre pilote directement (tests). Synchrone :
