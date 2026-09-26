@@ -57,6 +57,13 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - `docs/fingerprints-ja4-hassh.md` (#259)
 
 ### Corrigé
+- `CONTRIBUTING.md` décrivait la branche `dev` comme protégée alors
+  qu'aucune protection n'existait (`protected: false`) : c'est ce qui avait
+  permis de fusionner les PR #316 à #327 avec une CI rouge (#334). La règle
+  est désormais versionnée dans `.github/branch-protection/dev.json`, à
+  appliquer par un administrateur, et le workflow « Protection de dev »
+  (`scripts/check_branch_protection.py`) signale tout écart entre ce fichier
+  et la protection réelle.
 - Le tableau de bord analytique, la vue statistiques et la sélection de flux
   de la GUI plantaient silencieusement (`AttributeError` dans un callback
   `GLib.idle_add`) dès qu'un flux existait : les deux threads d'analyse
