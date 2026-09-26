@@ -34,6 +34,19 @@ Variables d'environnement :
 - ``NETCROSS_LOG_FILE`` : copie des logs dans ce fichier (rotation à
   10 Mo, 5 fichiers conservés), utile pour la GUI dont le stderr n'est
   pas visible.
+
+Journaux de ``pcap_parser`` (issue #446)
+-----------------------------------------
+
+``pcap_parser`` est la couche la plus basse : le contrat import-linter lui
+interdit d'importer ``netcross_core``, il utilise donc loguru directement.
+Pour rester silencieux en usage bibliothèque, son ``__init__`` appelle
+``logger.disable("pcap_parser")`` (convention loguru pour les
+bibliothèques). ``configure_logging`` le réactive avec
+``logger.enable("pcap_parser")``. ``pcap_parser`` est importé en tête de
+ce module (dépendance ``netcross_core`` -> ``pcap_parser``, conforme au
+contrat de couches) : son ``disable`` s'exécute donc toujours AVANT le
+premier ``enable``, quel que soit l'ordre des imports de l'appelant.
 """
 
 from __future__ import annotations
@@ -42,6 +55,12 @@ import os
 import sys
 
 from loguru import logger as _logger
+
+# Import pour son effet de bord (issue #446) : exécute
+# pcap_parser/__init__.py, donc son logger.disable("pcap_parser"), avant
+# tout appel à configure_logging -- sinon un import de pcap_parser postérieur
+# annulerait le logger.enable("pcap_parser") ci-dessous.
+import pcap_parser  # noqa: F401
 
 DEBUG_LEVELS = frozenset({"TRACE", "DEBUG"})
 DEFAULT_LEVEL = "INFO"
@@ -93,6 +112,10 @@ def configure_logging(level: str | None = None, *, log_file: str | None = None, 
     global _CONFIGURED, _LEVEL
     if _CONFIGURED and not force:
         return
+
+    # Issue #446 : pcap_parser se désactive dans son __init__ (usage
+    # bibliothèque) ; les points d'entrée Netcross le réactivent ici.
+    _logger.enable("pcap_parser")
 
     requested = (level or level_from_env()).strip().upper()
     niveau_inconnu = False
