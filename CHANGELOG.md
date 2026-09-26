@@ -8,6 +8,13 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Ajouté
+- Guide utilisateur (#465), `docs/guide/` : installation, préparation des
+  captures, première analyse pas à pas, interface graphique (captures
+  d'écran réelles), lecture du rapport et du score de santé, comparaison
+  avant/après, dépannage. Il s'appuie sur des captures d'exemple versionnées
+  (`docs/guide/exemples/`, 5 pertes connues entre LAN et WAN) et sur leur
+  générateur reproductible : chaque sortie citée a été obtenue avec ces
+  fichiers.
 - `netcross_gtk4/bpf_panel.py` — décisions du panneau de filtres BPF de la
   capture live extraites de `app.py` et couvertes à **100 %** (62 tests) :
   conversion indice de menu ↔ filtre, infobulle, désolidarisation du menu sur
@@ -57,6 +64,9 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - `docs/fingerprints-ja4-hassh.md` (#259)
 
 ### Corrigé
+- Page d'accueil de la documentation : la commande « Première analyse »
+  (`--capture point_a.pcapng --analyze`) échouait, car `--analyze`
+  n'existe pas et `--capture` exige `NOM=chemin`.
 - Le tableau de bord analytique, la vue statistiques et la sélection de flux
   de la GUI plantaient silencieusement (`AttributeError` dans un callback
   `GLib.idle_add`) dès qu'un flux existait : les deux threads d'analyse

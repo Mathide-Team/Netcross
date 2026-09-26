@@ -8,9 +8,10 @@ des CLI (`cross_capture_analyzer_cli`, `cross_capture_diff_cli`,
 
 ## Par où commencer
 
-- **Installation** : voir le README du dépôt (prérequis système,
-  `install.sh`, `uv sync`)
-- **Première analyse** : `cross_capture_analyzer_cli.py --capture point_a.pcapng --analyze`
+- **Utiliser Netcross** : le [guide utilisateur](guide/index.md), de
+  l'installation à la lecture du rapport, avec des captures d'exemple
+- **Première analyse** : `cross_capture_analyzer_cli.py --capture LAN=lan.pcapng --capture WAN=wan.pcapng`
+  (voir [Première analyse](guide/premiere-analyse.md))
 - **Comparaison de runs** : `cross_capture_diff_cli.py --baseline LAN=avant.pcapng --current LAN=apres.pcapng`
 - **API REST** : voir la spec OpenAPI (`docs/openapi.yaml`)
 

@@ -11,6 +11,11 @@ tunnels, DHCP, SIP, DNS, HTTP, RTP — plutôt que de deviner à partir d'une ca
 
 Auteur : **Mathilde Deuscher**
 
+> **Première utilisation ?** Le [guide utilisateur](docs/guide/index.md)
+> explique l'installation, la préparation des captures, une première
+> analyse sur des captures d'exemple fournies, l'interface graphique et la
+> lecture du rapport. Ce README sert de référence complète.
+
 ---
 
 ## Sommaire

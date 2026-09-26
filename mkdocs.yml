@@ -51,6 +51,15 @@ markdown_extensions:
 
 nav:
   - Accueil: index.md
+  - Guide utilisateur:
+      - Présentation: guide/index.md
+      - Installation: guide/installation.md
+      - Préparer les captures: guide/preparer-captures.md
+      - Première analyse: guide/premiere-analyse.md
+      - Interface graphique: guide/interface-graphique.md
+      - Lire le rapport: guide/lire-le-rapport.md
+      - Comparer deux situations: guide/comparer.md
+      - Dépannage: guide/depannage.md
   - Utilisation:
       - API REST: api-rest.md
       - Filtres BPF: bpf-filters.md
