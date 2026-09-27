@@ -20,7 +20,15 @@ Causes les plus fréquentes :
 |---|---|---|
 | `tshark introuvable dans le PATH` | Wireshark en ligne de commande absent | `sudo apt install tshark` ou `sudo dnf install wireshark-cli` |
 | `The file "..." doesn't exist` | Chemin erroné | Vérifier le chemin, relatif au dossier courant |
-| `You don't have permission to read the file` | Fichier illisible pour l'utilisateur | `chmod`, ou copier le fichier ailleurs |
+| `fichier de capture introuvable : ...` | Chemin erroné | Vérifier le chemin, relatif au dossier courant |
+| `droits insuffisants pour lire ... (proprietaire uid ..., droits ...)` | Fichier illisible pour l'utilisateur, souvent créé ou téléchargé en root | Appliquer la commande `chown`/`chmod` proposée dans le message |
+| `You don't have permission to read the file` | tshark confiné (paquet snap, AppArmor) qui ne peut pas ouvrir ce dossier | Netcross réessaie automatiquement en transmettant le fichier à tshark sur son entrée standard (ligne `lecture via l'entrée standard` dans le journal) ; si l'échec persiste, copier la capture dans votre dossier personnel |
+
+!!! tip "Pas besoin de root pour lire une capture"
+    Seule la capture en direct sur une interface demande des privilèges
+    (groupe `wireshark` ou capacités de `dumpcap`). Pour analyser un fichier,
+    les droits de lecture suffisent : lancer Netcross avec `sudo` empêche en
+    revanche l'interface graphique de s'afficher (voir plus bas).
 
 !!! warning "Capture tronquée"
     Une capture interrompue brutalement (disque plein, arrêt forcé) est lue
@@ -65,11 +73,25 @@ Une capture de plusieurs Go peut épuiser la mémoire.
 
 ## L'interface graphique ne démarre pas
 
+- `impossible d'ouvrir l'interface graphique (aucun affichage accessible)` :
+  la GUI a été lancée sans session graphique utilisable, le plus souvent en
+  root (`sudo`, `su`) ou via SSH. Relancez-la avec votre utilisateur habituel,
+  sans `sudo`. Sans affichage, toutes les analyses restent disponibles en
+  ligne de commande : `netcross --help` (depuis les sources :
+  `python3 src/cross_capture_analyzer_cli.py --help`).
 - `No module named 'gi'` : PyGObject est absent. Installez
   `python3-gi gir1.2-gtk-4.0` (Debian/Ubuntu) ou
   `python3-gobject gtk4` (RHEL/Rocky). Il ne s'installe pas avec pip.
 - Sur Rocky/RHEL 8, GTK4 n'est pas toujours disponible : utilisez la ligne
   de commande (`./install.sh --cli-only`), qui offre toutes les analyses.
+
+## Premier lancement
+
+Au premier démarrage, Netcross ne trouve encore ni filtres BPF enregistrés
+(`~/.netcross/bpf_filters.json`) ni, lancé depuis les sources, de catalogue
+de traduction compilé. Ces deux situations sont normales : le catalogue de
+filtres prédéfinis est proposé et l'interface s'affiche en français. Elles ne
+produisent plus de message `ERROR` ; le détail reste visible avec `--debug`.
 
 ## Obtenir plus de détails
 

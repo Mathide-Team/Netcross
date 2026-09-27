@@ -81,7 +81,7 @@ from pcap_parser.capture import (
     replay_capture,
     split_capture,
 )
-from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
+from pcap_parser.ek_source import CaptureAccessError, TsharkError, TsharkNotFoundError
 from pcap_parser.packet import RawPacket
 from pcap_parser.protocols import (
     compute_mos,
@@ -105,6 +105,7 @@ logger = _loguru_logger.bind(name=__name__)
 _loguru_logger.disable("pcap_parser")
 
 __all__ = [
+    "CaptureAccessError",
     "CaptureInfo",
     "CaptureRingBuffer",
     "RawPacket",

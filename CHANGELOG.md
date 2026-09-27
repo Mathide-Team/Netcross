@@ -72,6 +72,13 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - `docs/fingerprints-ja4-hassh.md` (#259)
 
 ### Corrigé
+- Premier démarrage (#468) : l'absence de `~/.netcross/bpf_filters.json` et
+  de catalogue de traduction n'est plus journalisée en `ERROR` avec trace ;
+  une capture introuvable ou illisible est signalée avant tshark avec la
+  cause et la commande de correction ; si tshark (snap, AppArmor) refuse
+  d'ouvrir un fichier pourtant lisible, il le reçoit sur son entrée
+  standard ; la GUI lancée sans affichage accessible (root, SSH) affiche un
+  message explicite et renvoie le code 2 au lieu d'une trace GTK.
 - Page d'accueil de la documentation : la commande « Première analyse »
   (`--capture point_a.pcapng --analyze`) échouait, car `--analyze`
   n'existe pas et `--capture` exige `NOM=chemin`.

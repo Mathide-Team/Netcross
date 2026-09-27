@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-160 modules · 240 classes · 541 fonctions publiques de module.
+160 modules · 241 classes · 545 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -254,6 +254,7 @@ classDiagram
     class TsharkError {
         <<RuntimeError>>
     }
+    class CaptureAccessError
     class EkRecord {
         <<dataclass>>
         +float ts
@@ -261,8 +262,10 @@ classDiagram
     }
     class mod_pcap_parser_ek_source["pcap_parser.ek_source"] {
         <<module>>
+        +check_capture_readable(path) None
+        +is_permission_error(exc) bool
         +redact_args(args) list
-        +iter_ek_records(path, interface, bpf_filter, display_filter, extra_prefs, extra_args, lua_scripts, stop_event) Iterator~EkRecord~
+        +iter_ek_records(path, interface, bpf_filter, display_filter, extra_prefs, extra_args, lua_scripts, stop_event, read_via_stdin) Iterator~EkRecord~
     }
 
     %% ===== pcap_parser.packet =====
@@ -410,6 +413,7 @@ classDiagram
     %% ===== relations =====
     CaptureStructure --> InterfaceRecord : interfaces
     CaptureInfo --> InterfaceRecord : interfaces
+    TsharkError <|-- CaptureAccessError
 ```
 
 ## `netcross_core`
@@ -3977,6 +3981,8 @@ classDiagram
     }
     class mod_netcross_gtk4_app["netcross_gtk4.app"] {
         <<module>>
+        +display_available() bool
+        +display_unavailable_message(environ, euid) str
         +main()
     }
 
