@@ -71,7 +71,7 @@ import csv
 import ipaddress
 import re
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -198,6 +198,7 @@ class AddressRedactor:
         """Tuples (adresse_reelle, pseudonyme, type), tries par type puis
         par pseudonyme -- ordre stable pour un export reproductible
         (--redact-map, tests)."""
+        logger.debug("AddressRedactor.entries()")
         return sorted(
             ((addr, pseudo, kind) for addr, (pseudo, kind) in self._map.items()),
             key=lambda t: (t[2], t[1]),
@@ -218,6 +219,7 @@ def redact_packets(packets) -> AddressRedactor:
     paquets) : construit un AddressRedactor neuf, redige `packets`,
     renvoie le redacteur (mapping/entries() consultables ensuite,
     notamment pour --redact-map)."""
+    logger.debug("redact_packets: packets={}", summarize(packets, "packets"))
     redactor = AddressRedactor()
     redactor.redact(packets)
     return redactor
@@ -230,6 +232,11 @@ def write_redaction_map_csv(redactor: AddressRedactor, path: str) -> None:
     permet de retrouver plus tard a quelle adresse reelle correspond un
     pseudonyme mentionne par un tiers (ex: un support vendeur qui cite
     192.0.2.4 dans sa reponse)."""
+    logger.debug(
+        "write_redaction_map_csv: redactor={} path={}",
+        summarize(redactor, "redactor"),
+        summarize(path, "path"),
+    )
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(["adresse_reelle", "pseudonyme", "type"])

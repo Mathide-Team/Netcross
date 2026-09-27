@@ -29,7 +29,7 @@ import html
 from datetime import datetime
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_report.security_report import (
     SEVERITIES,
     SecurityReport,
@@ -229,6 +229,7 @@ def _ligne_constat(i: dict, avec_cve: bool, detecteur: str | None = None) -> str
 
 
 def _cartes(d: dict) -> str:
+    logger.debug("_cartes: d={}", summarize(d, "d"))
     couleur = _SEVERITY_COLORS.get(d["level"] or "", _NEUTRAL)[0]
     niveau = d["level"] or "aucun constat"
     cartes = [
@@ -285,6 +286,13 @@ def render_security_html(
     `generated_at` : horodatage injectable, pour que les tests puissent
     comparer deux rendus a l'octet pres.
     """
+    logger.debug(
+        "render_security_html: sr={} title={} meta={} generated_at={}",
+        summarize(sr, "sr"),
+        summarize(title, "title"),
+        summarize(meta, "meta"),
+        summarize(generated_at, "generated_at"),
+    )
     data = security_report_to_dict(sr)
     horodatage = (generated_at or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -373,6 +381,7 @@ def render_security_html(
 def _notifications(items: list[dict]) -> str:
     """Tracabilite des notifications sortantes (issue #280) ; rien si aucune
     notification n'a ete demandee."""
+    logger.debug("_notifications: items={}", summarize(items, "items"))
     if not items:
         return ""
     lignes = "".join(f"<li>{_e(i.get('line', ''))}</li>" for i in items)
@@ -381,6 +390,7 @@ def _notifications(items: list[dict]) -> str:
 
 def _plugins(items: list[dict]) -> str:
     """Tracabilite des plugins (issue #284) ; rien si aucun plugin demande."""
+    logger.debug("_plugins: items={}", summarize(items, "items"))
     if not items:
         return ""
     lignes = "".join(f"<li>{_e(i.get('line', ''))}</li>" for i in items)
@@ -394,6 +404,13 @@ def generate_security_html(
     meta: dict | None = None,
 ) -> str:
     """Ecrit le rendu HTML dans `output_path` et renvoie ce chemin."""
+    logger.debug(
+        "generate_security_html: sr={} output_path={} title={} meta={}",
+        summarize(sr, "sr"),
+        summarize(output_path, "output_path"),
+        summarize(title, "title"),
+        summarize(meta, "meta"),
+    )
     chemin = Path(output_path)
     chemin.write_text(render_security_html(sr, title=title, meta=meta), encoding="utf-8")
     return str(chemin)

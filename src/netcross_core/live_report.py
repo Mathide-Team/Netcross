@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -222,6 +222,12 @@ class LiveReportWriter:
         render_html: Callable[[dict, list[dict], float], str] | None = None,
         interval: float = 5.0,
     ) -> None:
+        logger.debug(
+            "LiveReportWriter.__init__: out_dir={} render_html={} interval={}",
+            summarize(out_dir, "out_dir"),
+            summarize(render_html, "render_html"),
+            summarize(interval, "interval"),
+        )
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.render_html = render_html
@@ -250,6 +256,11 @@ class LiveReporter:
     interrompre la capture."""
 
     def __init__(self, writer: LiveReportWriter, aggregator: LiveAggregator | None = None) -> None:
+        logger.debug(
+            "LiveReporter.__init__: writer={} aggregator={}",
+            summarize(writer, "writer"),
+            summarize(aggregator, "aggregator"),
+        )
         self.writer = writer
         self.aggregator = aggregator or LiveAggregator()
         self._stop = threading.Event()

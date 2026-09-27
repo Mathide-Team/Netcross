@@ -22,7 +22,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.support.scrubber import TextScrubber
 
 logger = get_logger(__name__)
@@ -65,6 +65,7 @@ def findings_fingerprint(findings: Iterable[Mapping[str, Any]]) -> str:
     des compteurs volatils : deux analyses de la meme capture -- ou une tache
     planifiee qui retrouve le meme probleme toutes les heures -- donnent la
     meme empreinte."""
+    logger.debug("findings_fingerprint: findings={}", summarize(findings, "findings"))
     keys = sorted({finding_key(f) for f in findings})
     return hashlib.sha256(json.dumps(keys, ensure_ascii=False).encode("utf-8")).hexdigest()
 
@@ -99,6 +100,7 @@ class NotificationSummary:
         }
 
     def to_text(self) -> str:
+        logger.debug("NotificationSummary.to_text()")
         counts = ", ".join(f"{sev}={self.by_severity.get(sev, 0)}" for sev in SEVERITIES)
         lines = [
             f"{self.title} : niveau {self.level or 'aucun'}, score {self.score}/100",
@@ -145,8 +147,10 @@ def build_summary(
     L'empreinte ne porte que sur les constats AU-DESSUS du seuil : un
     constat faible qui change ne doit pas re-notifier une alerte critique."""
     if threshold not in SEVERITIES:
+        logger.trace("build_summary: refus, ValueError")
         raise ValueError(f"seuil inconnu : {threshold!r} (attendu : {', '.join(SEVERITIES)})")
     if detail not in DETAIL_LEVELS:
+        logger.trace("build_summary: refus, ValueError")
         raise ValueError(f"niveau de detail inconnu : {detail!r} (attendu : {', '.join(DETAIL_LEVELS)})")
     items = list(findings)
     by_severity = dict.fromkeys(SEVERITIES, 0)

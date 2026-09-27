@@ -55,7 +55,7 @@ from pathlib import Path
 
 # tomllib est dans la stdlib depuis Python 3.11.
 # Pour 3.9-3.10, tomli est un fallback optionnel.
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 try:
@@ -135,6 +135,7 @@ class NetcrossConfig:
 
 
 def _parse_bool(val: object) -> bool:
+    logger.debug("_parse_bool: val={}", summarize(val, "val"))
     if isinstance(val, bool):
         return val
     if isinstance(val, str):
@@ -153,6 +154,7 @@ def load_config(config_path: str | Path | None = None) -> NetcrossConfig:
     Retourne une ``NetcrossConfig`` avec les valeurs par défaut si aucun
     fichier n'est trouvé (pas d'erreur).
     """
+    logger.debug("load_config: config_path={}", summarize(config_path, "config_path"))
     if tomllib is None:
         return NetcrossConfig()
 
@@ -200,6 +202,7 @@ def load_config(config_path: str | Path | None = None) -> NetcrossConfig:
 
 def _find_config(config_path: str | Path | None) -> Path | None:
     """Trouve le fichier de configuration à charger."""
+    logger.debug("_find_config: config_path={}", summarize(config_path, "config_path"))
     if config_path is not None:
         return Path(config_path)
 

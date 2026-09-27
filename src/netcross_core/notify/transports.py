@@ -23,7 +23,7 @@ from email.message import EmailMessage
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.notify.summary import NotificationSummary
 
 logger = get_logger(__name__)
@@ -44,13 +44,16 @@ class Notifier(Protocol):
 
 def validate_http_url(url: str) -> str:
     """Refuse tout schema autre que http(s) (pas de file://, pas de ftp://)."""
+    logger.debug("validate_http_url: url={}", summarize(url, "url"))
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        logger.debug("validate_http_url: refus, ValueError")
         raise ValueError(f"URL invalide (http:// ou https:// attendu) : {url!r}")
     return url
 
 
 def _reason(exc: BaseException) -> str:
+    logger.debug("_reason: exc={}", summarize(exc, "exc"))
     if isinstance(exc, urllib.error.HTTPError):
         return f"HTTP {exc.code}"
     if isinstance(exc, TimeoutError | socket.timeout):
@@ -107,6 +110,7 @@ class WebhookNotifier:
 
 def slack_blocks(summary: NotificationSummary) -> list[dict[str, Any]]:
     """Mise en forme Block Kit du resume."""
+    logger.debug("slack_blocks: summary={}", summarize(summary, "summary"))
     counts = " · ".join(f"{sev} : {summary.by_severity.get(sev, 0)}" for sev in summary.by_severity)
     blocks: list[dict[str, Any]] = [
         {"type": "header", "text": {"type": "plain_text", "text": summary.title[:150]}},
@@ -180,6 +184,7 @@ class EmailNotifier:
             raise ValueError("aucun destinataire")
 
     def build_message(self, summary: NotificationSummary) -> EmailMessage:
+        logger.debug("EmailNotifier.build_message: summary={}", summarize(summary, "summary"))
         msg = EmailMessage()
         msg["Subject"] = f"[Netcross] {summary.level or 'aucun constat'} -- score {summary.score}/100"
         msg["From"] = self.sender

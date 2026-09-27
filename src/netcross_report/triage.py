@@ -58,7 +58,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_report.synthesis import Finding
 
 logger = get_logger(__name__)
@@ -142,6 +142,13 @@ def rank_segments(
     est marque `low_confidence=True` si la totalite de ses findings a
     poids non nul en dependent.
     """
+    logger.debug(
+        "rank_segments: findings={} severity_weights={} convergence_bonus={} min_score={}",
+        summarize(findings, "findings"),
+        summarize(severity_weights, "severity_weights"),
+        summarize(convergence_bonus, "convergence_bonus"),
+        summarize(min_score, "min_score"),
+    )
     weights = severity_weights or DEFAULT_SEVERITY_WEIGHTS
     by_segment: dict[str, list[Finding]] = defaultdict(list)
     for f in findings:
@@ -179,6 +186,7 @@ def rank_segments(
 
 
 def print_triage(ranked: list[SegmentScore], top_n: int = 5) -> None:
+    logger.debug("print_triage: ranked={} top_n={}", summarize(ranked, "ranked"), summarize(top_n, "top_n"))
     print("=" * 70)
     print(
         f"TRIAGE -- top {top_n} segments a regarder en premier "

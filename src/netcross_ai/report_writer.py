@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -67,6 +67,7 @@ def _sev(f: dict) -> str:
 
 def collect_facts(report: Any, ai: dict | None = None) -> dict:
     """Dictionnaire compact et JSON-serialisable des faits du rapport."""
+    logger.debug("collect_facts: report={} ai={}", summarize(report, "report"), summarize(ai, "ai"))
     findings = sorted(getattr(report, "security_findings", []) or [], key=lambda f: SEVERITY_ORDER.index(_sev(f)))
     flows = getattr(report, "flow_anomalies", []) or []
     ai = ai or {}
@@ -99,6 +100,7 @@ def collect_facts(report: Any, ai: dict | None = None) -> dict:
 
 
 def _correlations(report: Any, ai: dict | None) -> list[str]:
+    logger.debug("_correlations: report={} ai={}", summarize(report, "report"), summarize(ai, "ai"))
     by_host: dict[str, set[str]] = defaultdict(set)
     for f in getattr(report, "security_findings", []) or []:
         if f.get("host"):
@@ -122,6 +124,7 @@ def _correlations(report: Any, ai: dict | None) -> list[str]:
 
 
 def _recommendations(report: Any, ai: dict | None) -> list[str]:
+    logger.debug("_recommendations: report={} ai={}", summarize(report, "report"), summarize(ai, "ai"))
     recs: list[str] = []
     seen: set[str] = set()
 
@@ -158,6 +161,7 @@ def _recommendations(report: Any, ai: dict | None) -> list[str]:
 
 
 def template_summary(report: Any, ai: dict | None = None) -> Summary:
+    logger.debug("template_summary: report={} ai={}", summarize(report, "report"), summarize(ai, "ai"))
     facts = collect_facts(report, ai)
     sev = facts["constats_par_severite"]
     total = sum(sev.values())
@@ -186,12 +190,15 @@ def template_summary(report: Any, ai: dict | None = None) -> Summary:
 
 def parse_engine(spec: str, endpoint: str | None = None) -> tuple[str, str, str]:
     """``template`` | ``ollama:MODELE`` | ``llamacpp`` -> (moteur, modele, url)."""
+    logger.debug("parse_engine: spec={} endpoint={}", summarize(spec, "spec"), summarize(endpoint, "endpoint"))
     kind, _, model = spec.partition(":")
     if kind == "template":
         return "template", "", ""
     if kind not in DEFAULT_ENDPOINTS:
+        logger.debug("parse_engine: refus, WriterConfigError")
         raise WriterConfigError(f"moteur inconnu {spec!r} : template, ollama:MODELE ou llamacpp.")
     if kind == "ollama" and not model:
+        logger.debug("parse_engine: refus, WriterConfigError")
         raise WriterConfigError("ollama : preciser le modele (ex. ollama:llama3:8b-instruct-q4_K_M).")
     url = (endpoint or DEFAULT_ENDPOINTS[kind]).rstrip("/")
     check_local_endpoint(url)
@@ -216,6 +223,7 @@ def check_local_endpoint(url: str) -> None:
 
 
 def build_prompt(facts: dict) -> str:
+    logger.debug("build_prompt: facts={}", summarize(facts, "facts"))
     return (
         "Tu es analyste reseau. A partir des FAITS ci-dessous (issus d'une analyse de capture "
         "reseau par Netcross), redige en francais :\n"
@@ -228,6 +236,12 @@ def build_prompt(facts: dict) -> str:
 
 
 def _post_json(url: str, payload: dict, timeout: float) -> dict:
+    logger.debug(
+        "_post_json: url={} payload={} timeout={}",
+        summarize(url, "url"),
+        summarize(payload, "payload"),
+        summarize(timeout, "timeout"),
+    )
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST"
     )
@@ -236,6 +250,14 @@ def _post_json(url: str, payload: dict, timeout: float) -> dict:
 
 
 def llm_generate(kind: str, model: str, url: str, prompt: str, timeout: float = LLM_TIMEOUT_S) -> str:
+    logger.debug(
+        "llm_generate: kind={} model={} url={} prompt={} timeout={}",
+        summarize(kind, "kind"),
+        summarize(model, "model"),
+        summarize(url, "url"),
+        summarize(prompt, "prompt"),
+        summarize(timeout, "timeout"),
+    )
     check_local_endpoint(url)
     if kind == "ollama":
         payload = {"model": model, "prompt": prompt, "stream": False, "options": {"temperature": 0.2}}
@@ -245,6 +267,7 @@ def llm_generate(kind: str, model: str, url: str, prompt: str, timeout: float = 
             "content", ""
         )
     if not str(text).strip():
+        logger.debug("llm_generate: refus, RuntimeError")
         raise RuntimeError("reponse vide du modele")
     return str(text).strip()
 

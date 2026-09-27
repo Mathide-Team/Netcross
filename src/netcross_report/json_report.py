@@ -18,7 +18,7 @@ meme triage pour un meme Report.
 import datetime
 import json
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_report.synthesis import build_findings
 from netcross_report.triage import health_label, health_score, rank_segments
 
@@ -278,6 +278,27 @@ def generate_json_report(
     DiffFinding deja diagnostiques) : cle JSON de premier niveau
     distincte, meme convention d'absence que les autres objets Session 0.
     """
+    logger.debug(
+        "generate_json_report: r={} output_path={} title={} meta={} findings={} tls_findings={} "
+        "quic_findings={} flows={} conversations={} expert_events={} diagnoses={} compliance={} "
+        "wireshark_expert_events={} rule_engine_findings={} names={} security_report={}",
+        summarize(r, "r"),
+        summarize(output_path, "output_path"),
+        summarize(title, "title"),
+        summarize(meta, "meta"),
+        summarize(findings, "findings"),
+        summarize(tls_findings, "tls_findings"),
+        summarize(quic_findings, "quic_findings"),
+        summarize(flows, "flows"),
+        summarize(conversations, "conversations"),
+        summarize(expert_events, "expert_events"),
+        summarize(diagnoses, "diagnoses"),
+        summarize(compliance, "compliance"),
+        summarize(wireshark_expert_events, "wireshark_expert_events"),
+        summarize(rule_engine_findings, "rule_engine_findings"),
+        summarize(names, "names"),
+        summarize(security_report, "security_report"),
+    )
     if findings is None:
         findings = build_findings(r)
     ranked = rank_segments(list(findings) + list(tls_findings or []) + list(quic_findings or []))
@@ -438,6 +459,29 @@ def generate_json_diff(
     cle JSON distincte de "expert_events" (qui ne porte que des
     ExpertEvent de source "netcross").
     """
+    logger.debug(
+        "generate_json_diff: findings={} baseline={} current={} output_path={} title={} meta={} "
+        "tls_findings_baseline={} tls_findings_current={} quic_findings_baseline={} "
+        "quic_findings_current={} flows={} conversations={} expert_events={} diagnoses={} "
+        "compliance={} wireshark_expert_events={} names={}",
+        summarize(findings, "findings"),
+        summarize(baseline, "baseline"),
+        summarize(current, "current"),
+        summarize(output_path, "output_path"),
+        summarize(title, "title"),
+        summarize(meta, "meta"),
+        summarize(tls_findings_baseline, "tls_findings_baseline"),
+        summarize(tls_findings_current, "tls_findings_current"),
+        summarize(quic_findings_baseline, "quic_findings_baseline"),
+        summarize(quic_findings_current, "quic_findings_current"),
+        summarize(flows, "flows"),
+        summarize(conversations, "conversations"),
+        summarize(expert_events, "expert_events"),
+        summarize(diagnoses, "diagnoses"),
+        summarize(compliance, "compliance"),
+        summarize(wireshark_expert_events, "wireshark_expert_events"),
+        summarize(names, "names"),
+    )
     ranked = rank_segments(findings)
     score = health_score(ranked)
 

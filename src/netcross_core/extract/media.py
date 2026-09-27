@@ -37,7 +37,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from pcap_parser.protocols import compute_mos
 
 logger = get_logger(__name__)
@@ -136,6 +136,7 @@ class StreamQuality:
 
 def parse_rtp_header(data: bytes) -> tuple[int, int, int, int, bool, bytes] | None:
     """(pt, seq, ts, ssrc, marker, charge utile) ou None si pas du RTP v2."""
+    logger.debug("parse_rtp_header: data={}", summarize(data, "data"))
     if len(data) < 12 or data[0] >> 6 != 2:
         return None
     pt = data[1] & 0x7F
@@ -168,6 +169,7 @@ def parse_sdp(payload: bytes) -> _SdpMap:
     trouves dans une charge utile (SIP sur UDP/TCP). ``(None, None)``
     recoit aussi chaque correspondance : repli quand l'adresse ne colle pas
     (NAT, c= au niveau session seulement)."""
+    logger.debug("parse_sdp: payload={}", summarize(payload, "payload"))
     out: _SdpMap = {}
     if b"a=rtpmap:" not in payload:
         return out
@@ -198,6 +200,7 @@ def collect_streams(datagrams: Iterable[tuple]) -> list[RtpStream]:
     Un flux n'est retenu que s'il ressemble vraiment a du RTP : au moins
     MIN_STREAM_PACKETS paquets et des numeros de sequence majoritairement
     consecutifs (evite de prendre du DNS ou du QUIC pour de la voix)."""
+    logger.debug("collect_streams: datagrams={}", summarize(datagrams, "datagrams"))
     streams: dict[tuple, RtpStream] = {}
     sdp: _SdpMap = {}
     for point, arrival, src, sport, dst, dport, payload in datagrams:
@@ -275,6 +278,7 @@ def _ordered_unique(st: RtpStream) -> list[tuple[int, _RtpPacket]]:
 
 
 def analyse_stream(st: RtpStream) -> StreamQuality:
+    logger.debug("analyse_stream: st={}", summarize(st, "st"))
     exts = _extended(st.packets)
     unique = sorted(set(exts))
     expected = unique[-1] - unique[0] + 1
@@ -391,6 +395,7 @@ def decode_g711(codec: str, payload: bytes) -> bytes:
 def write_wav(st: RtpStream, path: Path) -> None:
     """Son du flux ; chaque paquet perdu devient un silence de meme duree."""
     if st.codec not in _G711:
+        logger.trace("write_wav: refus, ValueError")
         raise ValueError(f"codec audio {st.codec} non decode (seul G.711 PCMU/PCMA l'est)")
     ordered = _ordered_unique(st)
     frame_len = statistics.median(len(p.payload) for _, p in ordered) or 160
@@ -417,6 +422,7 @@ def depacketize_h264(ordered: Iterable[tuple[int, bytes]]) -> bytes:
     simple, STAP-A, FU-A). Un fragment FU-A dont un morceau manque est
     ecarte entier : le decodeur masque l'image plutot que d'avaler un NAL
     tronque."""
+    logger.debug("depacketize_h264: ordered={}", summarize(ordered, "ordered"))
     out = bytearray()
     frag: bytearray | None = None
     prev = None
@@ -457,6 +463,7 @@ def depacketize_h264(ordered: Iterable[tuple[int, bytes]]) -> bytes:
 def export_stream(st: RtpStream, out_dir: Path) -> Path:
     """Ecrit le contenu du flux ; ValueError si le codec n'est pas pris en charge."""
     if st.encrypted:
+        logger.trace("export_stream: refus, ValueError")
         raise ValueError("flux SRTP : contenu chiffre, non exporte")
     if st.kind == "audio":
         path = out_dir / "audio" / f"{st.file_stem}.wav"
@@ -467,6 +474,7 @@ def export_stream(st: RtpStream, out_dir: Path) -> Path:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         path.write_bytes(depacketize_h264((e, p.payload) for e, p in _ordered_unique(st)))
     else:
+        logger.trace("export_stream: refus, ValueError")
         raise ValueError(f"{st.kind} {st.codec or 'codec inconnu'} non exporte (pris en charge : G.711, H.264)")
     path.chmod(0o600)
     return path

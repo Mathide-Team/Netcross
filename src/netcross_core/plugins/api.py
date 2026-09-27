@@ -31,7 +31,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -151,25 +151,33 @@ def validate_finding(raw: Any) -> dict[str, Any]:
     vides ; `severity` dans SEVERITIES ; toutes les valeurs scalaires JSON
     (pas d'objet arbitraire qui casserait le JSON ou le HTML), sauf `cves`
     (liste de chaines). Les flottants non finis sont refuses."""
+    logger.debug("validate_finding: raw={}", summarize(raw, "raw"))
     if not isinstance(raw, Mapping):
+        logger.debug("validate_finding: refus, InvalidFindingError")
         raise InvalidFindingError(f"constat de type {type(raw).__name__}, dict attendu")
     finding = dict(raw)
     for key in REQUIRED_KEYS:
         if not isinstance(finding.get(key), str) or not finding[key].strip():
+            logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"cle {key!r} absente ou vide")
     severity = finding["severity"].lower()
     if severity not in SEVERITIES:
+        logger.debug("validate_finding: refus, InvalidFindingError")
         raise InvalidFindingError(f"severite {finding['severity']!r} inconnue (attendu : {', '.join(SEVERITIES)})")
     finding["severity"] = severity
     for key, value in finding.items():
         if not isinstance(key, str):
+            logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"cle non textuelle : {key!r}")
         if key == "cves":
             if not isinstance(value, list | tuple) or not all(isinstance(c, str) for c in value):
+                logger.debug("validate_finding: refus, InvalidFindingError")
                 raise InvalidFindingError("'cves' doit etre une liste de chaines")
             finding[key] = list(value)
         elif not isinstance(value, _SCALARS):
+            logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"valeur non scalaire pour {key!r} ({type(value).__name__})")
         elif isinstance(value, float) and not math.isfinite(value):
+            logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"valeur non finie pour {key!r}")
     return finding

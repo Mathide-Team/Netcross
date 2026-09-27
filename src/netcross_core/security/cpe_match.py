@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -122,11 +122,13 @@ def parse_banner(banner: str) -> ParsedBanner | None:
 
 def parse_all_banners(banner: str) -> list[ParsedBanner]:
     """Comme parse_banner(), mais renvoie tous les tokens reconnus (pas seulement le premier)."""
+    logger.debug("parse_all_banners: banner={}", summarize(banner, "banner"))
     parsed = []
     for token in banner.split():
         result = _parse_token(token)
         if result is not None:
             parsed.append(result)
+    logger.debug("parse_all_banners: {} token(s) reconnu(s) dans '{}'", len(parsed), banner)
     return parsed
 
 
@@ -185,13 +187,21 @@ def version_in_range(
 
     if not has_range:
         if exact is None or exact == "*":
+            logger.debug("version_in_range: produit entier concerne (pas de borne)")
             return True
-        return compare_versions(version, exact) == 0
+        result = compare_versions(version, exact) == 0
+        logger.debug("version_in_range: {} {}= {} -> {}", version, "=" if result else "!", exact, result)
+        return result
 
     if start_including is not None and compare_versions(version, start_including) < 0:
+        logger.debug("version_in_range: {} < start_including {} -> False", version, start_including)
         return False
     if start_excluding is not None and compare_versions(version, start_excluding) <= 0:
+        logger.debug("version_in_range: {} <= start_excluding {} -> False", version, start_excluding)
         return False
     if end_including is not None and compare_versions(version, end_including) > 0:
+        logger.debug("version_in_range: {} > end_including {} -> False", version, end_including)
         return False
-    return not (end_excluding is not None and compare_versions(version, end_excluding) >= 0)
+    result = not (end_excluding is not None and compare_versions(version, end_excluding) >= 0)
+    logger.debug("version_in_range: {} dans le range -> {}", version, result)
+    return result

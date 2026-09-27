@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -132,6 +132,7 @@ def normalize_header(s: str) -> str:
 def find_column(headers: list[str], *keywords: str) -> int | None:
     """Retourne l'indice de la premiere colonne dont l'en-tete normalise
     contient tous les mots-cles donnes, ou None."""
+    logger.debug("find_column: headers={} keywords={}", summarize(headers, "headers"), summarize(keywords, "keywords"))
     for i, h in enumerate(headers):
         nh = normalize_header(h)
         if all(kw in nh for kw in keywords):

@@ -188,4 +188,10 @@ def _best_window(answers: list[tuple[float, tuple[str, ...]]], window: float) ->
         ips = {ip for _, group in answers[start : end + 1] for ip in group}
         if len(ips) > len(best):
             best, best_n = ips, end - start + 1
+    logger.debug(
+        "_best_window: {} reponse(s), {} IP(s) distincte(s) sur {}s",
+        len(answers),
+        len(best),
+        window,
+    )
     return best, best_n

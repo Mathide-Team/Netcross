@@ -42,7 +42,7 @@ from typing import Callable
 
 from netcross_core.alarms import AlarmEngine, AlarmSignal
 from netcross_core.baseline_diff import DiffFinding, diff_reports
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt, Report
 from pcap_parser.capture import CaptureRingBuffer
 
@@ -135,6 +135,14 @@ class LiveDiffEngine:
         alarm_engine: AlarmEngine | None = None,
         ring_buffer: CaptureRingBuffer | None = None,
     ):
+        logger.debug(
+            "LiveDiffEngine.__init__: baseline_report={} config={} on_alarm={} alarm_engine={} ring_buffer={}",
+            summarize(baseline_report, "baseline_report"),
+            summarize(config, "config"),
+            summarize(on_alarm, "on_alarm"),
+            summarize(alarm_engine, "alarm_engine"),
+            summarize(ring_buffer, "ring_buffer"),
+        )
         self.baseline = baseline_report
         self.config = config or LiveDiffConfig()
         self.on_alarm = on_alarm

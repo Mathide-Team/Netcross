@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from netcross_core.causality import correlate_diagnosis_causes, correlate_event_causes
 from netcross_core.compliance import evaluate_compliance
 from netcross_core.correlate import build_conversations, build_flows
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.wireshark_expert import build_wireshark_expert_events
 from netcross_report.expert_events import build_diagnoses, build_expert_events
 
@@ -126,6 +126,14 @@ def build_session_objects(
     des ExpertEvent DEJA enrichis par `correlate_event_causes()`, et
     `build_diagnoses()` doit avoir groupe les evenements avant.
     """
+    logger.debug(
+        "build_session_objects: report={} findings={} flows={} all_packets={} wireshark_expert_events={}",
+        summarize(report, "report"),
+        summarize(findings, "findings"),
+        summarize(flows, "flows"),
+        summarize(all_packets, "all_packets"),
+        summarize(wireshark_expert_events, "wireshark_expert_events"),
+    )
     flow_objs = build_flows(flows) if flows else []
     conversations = build_conversations(flow_objs) if flow_objs else []
     expert_events = build_expert_events(findings)
@@ -168,6 +176,7 @@ def _truncated(items, top_n):
 
 
 def _format_flows(objs, top_n) -> list[str]:
+    logger.debug("_format_flows: objs={} top_n={}", summarize(objs, "objs"), summarize(top_n, "top_n"))
     lines = [f"Flux correles : {len(objs.flows)} ({len(objs.conversations)} conversation(s))"]
     # Tri par volume de paquets decroissant : sur une capture reelle, les
     # flux les plus bavards sont ceux qui portent le trafic a expliquer.
@@ -188,6 +197,12 @@ def _format_flows(objs, top_n) -> list[str]:
 
 
 def _format_events(events, title, top_n) -> list[str]:
+    logger.debug(
+        "_format_events: events={} title={} top_n={}",
+        summarize(events, "events"),
+        summarize(title, "title"),
+        summarize(top_n, "top_n"),
+    )
     lines = [f"{title} : {len(events)}"]
     shown, remaining = _truncated(events, top_n)
     for ev in shown:
@@ -207,6 +222,11 @@ def _format_events(events, title, top_n) -> list[str]:
 
 
 def _format_diagnoses(diagnoses, top_n) -> list[str]:
+    logger.debug(
+        "_format_diagnoses: diagnoses={} top_n={}",
+        summarize(diagnoses, "diagnoses"),
+        summarize(top_n, "top_n"),
+    )
     lines = [f"Diagnostics par segment : {len(diagnoses)}"]
     shown, remaining = _truncated(diagnoses, top_n)
     for diag in shown:
@@ -221,6 +241,7 @@ def _format_diagnoses(diagnoses, top_n) -> list[str]:
 
 
 def _compliance_counts(results) -> list[str]:
+    logger.debug("_compliance_counts: results={}", summarize(results, "results"))
     counts: dict[str, int] = {}
     for res in results:
         counts[res.status] = counts.get(res.status, 0) + 1
@@ -230,6 +251,7 @@ def _compliance_counts(results) -> list[str]:
 
 
 def _format_compliance(results, top_n) -> list[str]:
+    logger.debug("_format_compliance: results={} top_n={}", summarize(results, "results"), summarize(top_n, "top_n"))
     summary = ", ".join(_compliance_counts(results))
     lines = [f"Conformite aux referentiels : {len(results)} evaluee(s)" + (f" -- {summary}" if summary else "")]
 
@@ -264,6 +286,7 @@ def format_session_objects(objs, top_n=DEFAULT_TOP_N) -> list[str]:
     "Flux correles : 0" n'apparait que parce que l'appelant n'a pas
     passe `flows`.
     """
+    logger.debug("format_session_objects: objs={} top_n={}", summarize(objs, "objs"), summarize(top_n, "top_n"))
     lines = [_SEPARATOR, "EXPERTISE -- OBJETS ENRICHIS", _SEPARATOR, ""]
     if objs.flows:
         lines += [*_format_flows(objs, top_n), ""]
@@ -280,5 +303,6 @@ def format_session_objects(objs, top_n=DEFAULT_TOP_N) -> list[str]:
 def print_session_objects(objs, top_n=DEFAULT_TOP_N) -> None:
     """Ecrit `format_session_objects()` sur stdout -- pendant de
     `netcross_core.report_text.print_report()` pour les objets enrichis."""
+    logger.debug("print_session_objects: objs={} top_n={}", summarize(objs, "objs"), summarize(top_n, "top_n"))
     for line in format_session_objects(objs, top_n):
         print(line)

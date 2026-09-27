@@ -9,7 +9,7 @@ import statistics
 from collections import Counter, defaultdict
 
 from netcross_core.forensic import annotations_by_tag
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import (
     SEQ_GAP_CAPTURE_DROP,
     SEQ_GAP_INDETERMINATE,
@@ -64,6 +64,7 @@ def _linktype_lisible(code) -> str:
 
 
 def print_report(r: Report):
+    logger.debug("print_report: r={}", summarize(r, "r"))
     print("=" * 70)
     print("ANALYSE CROISEE DE CAPTURES")
     print("=" * 70)
@@ -916,6 +917,7 @@ _SEQ_GAP_LABELS = {
 def print_sequence_gaps(r: Report):
     """Detail de la section "Integrite de capture" : trous de sequence TCP par
     point, avec leur cause (capture / reseau / indeterminee)."""
+    logger.debug("print_sequence_gaps: r={}", summarize(r, "r"))
     print(
         "  (octets jamais vus a ce point alors que des octets posterieurs l'ont ete, sans retransmission ulterieure ;"
     )
@@ -954,6 +956,7 @@ def print_annotations(annotations: list[PacketAnnotation]):
     de la passer ici, symetrique de `write_detail_csv` ci-dessous qui
     prend `flows`/`points` directement plutot que de deduire un chemin
     de capture."""
+    logger.debug("print_annotations: annotations={}", summarize(annotations, "annotations"))
     print("\n-- Annotations (etiquettes et signets sur paquets) --")
     if not annotations:
         print("  aucune annotation (pas de sidecar, ou sidecar vide)")
@@ -970,6 +973,14 @@ def write_detail_csv(path, flows, points, names=None):
     """Ecrit le detail par flux en CSV. Si ``names`` (une
     ``netcross_core.naming.NameTable``) est fourni, les colonnes src/dst
     affichent les noms logiques resolus a la place des adresses brutes."""
+
+    logger.debug(
+        "write_detail_csv: path={} flows={} points={} names={}",
+        summarize(path, "path"),
+        summarize(flows, "flows"),
+        summarize(points, "points"),
+        summarize(names, "names"),
+    )
 
     def _label(addr) -> str:
         if names is None:

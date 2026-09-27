@@ -41,7 +41,7 @@ import statistics
 from dataclasses import dataclass
 
 from netcross_core.baseline_profile import build_baseline_profile
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -103,6 +103,7 @@ def _topological_points(report) -> list[str]:
     -- l'appelant retombe alors sur l'ordre de `report.pairs`, qui est
     toujours defini.
     """
+    logger.debug("_topological_points: report={}", summarize(report, "report"))
     edges = list(getattr(report, "topology_edges", None) or [])
     if not edges:
         return []
@@ -133,6 +134,7 @@ def _ordered_pairs(report) -> list[tuple[str, str]]:
     deduit quand c'est possible. `report.pairs` reste la source de verite
     des segments EXISTANTS : la topologie ne sert qu'a les trier, jamais a
     en ajouter ou en retirer."""
+    logger.debug("_ordered_pairs: report={}", summarize(report, "report"))
     pairs = list(report.pairs)
     order = _topological_points(report)
     if not order:
@@ -157,6 +159,7 @@ def build_path_metrics(report) -> list[SegmentMetrics]:
     """Une entree par segment de `report.pairs`, ordonnee le long du chemin
     observe. Pure fonction de regroupement : aucune capture relue, aucun
     seuil applique."""
+    logger.debug("build_path_metrics: report={}", summarize(report, "report"))
     metrics = []
     for a, b in _ordered_pairs(report):
         delays = list(report.latency.get((a, b), []) or [])
@@ -198,6 +201,7 @@ def rank_path_segments(metrics) -> list[SegmentMetrics]:
     les classer les mettrait a egalite avec des segments sains alors qu'on
     ne sait rien d'eux.
     """
+    logger.debug("rank_path_segments: metrics={}", summarize(metrics, "metrics"))
     return sorted(
         (seg for seg in metrics if seg.measured),
         key=lambda seg: (
@@ -213,6 +217,7 @@ def degradation_summary(metrics) -> str:
     """Phrase de tete de section : ou la qualite se degrade-t-elle ?
     Descriptive et chiffree, jamais prescriptive -- les recommandations
     restent du ressort des Finding/ExpertEvent."""
+    logger.debug("degradation_summary: metrics={}", summarize(metrics, "metrics"))
     ranked = rank_path_segments(metrics)
     if not metrics:
         return "Aucun segment exploitable : la topologie n'a pas pu etre deduite de ces captures."

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.tshark_stats.models import ApplicationStat
 from netcross_core.tshark_stats.parse_utils import (
     is_filter_line,
@@ -32,6 +32,11 @@ def parse_http_stat(text: str, application: str = "http") -> list[ApplicationSta
     Retourne une liste (typiquement un seul record agregeant les
     metriques) ; vide si aucune metrique identifiable.
     """
+    logger.debug(
+        "parse_http_stat: text={} application={}",
+        summarize(text, "text"),
+        summarize(application, "application"),
+    )
     metrics: dict[str, float] = {}
     raw: dict[str, str] = {}
     for line in text.splitlines():

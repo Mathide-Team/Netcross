@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -173,6 +173,7 @@ def group_by_detector(items: list) -> list[DetectorGroup]:
     tries par gravite du pire constat, puis par priorite metier du
     detecteur, puis par libelle. L'ordre interne (gravite, CVSS) est
     conserve."""
+    logger.debug("group_by_detector: items={}", summarize(items, "items"))
     groups: dict[str | None, DetectorGroup] = {}
     for it in items:
         det = it.get("detector") if isinstance(it, dict) else it.detector
@@ -314,6 +315,7 @@ def _to_item(raw) -> SecurityItem | None:
     """Dict amont -> SecurityItem ; None pour une entree inexploitable
     (pas un dict) plutot que de faire echouer tout le rapport."""
     if not isinstance(raw, dict):
+        logger.trace("_to_item: entree de type {} ignoree (dict attendu)", type(raw).__name__)
         return None
     cvss = _opt_float(raw.get("cvss"))
     plugin = _opt_str(raw.get("plugin"))
@@ -356,6 +358,11 @@ def _cve_matches_service(cve: SecurityItem, entry: ServiceEntry) -> bool:
 
 
 def _build_services(fingerprints, cves: list[SecurityItem]) -> list[ServiceEntry]:
+    logger.debug(
+        "_build_services: fingerprints={} cves={}",
+        summarize(fingerprints, "fingerprints"),
+        summarize(cves, "cves"),
+    )
     merged: dict[tuple, ServiceEntry] = {}
     for raw in fingerprints or []:
         if not isinstance(raw, dict):
@@ -438,6 +445,20 @@ def build_security_report(report) -> SecurityReport:
         dash.by_severity[item.severity] += 1
     dash.score = min(100, sum(SEVERITY_WEIGHTS[sev] * n for sev, n in dash.by_severity.items()))
     dash.level = next((sev for sev in SEVERITIES if dash.by_severity[sev]), None)
+    logger.debug(
+        "build_security_report: {}/{} constat(s) exploitables, {} exploit(s), {} anomalie(s), {} CVE, "
+        "{} service(s) dont {} vulnerable(s), {} actif(s), score {} niveau {}",
+        len(items),
+        len(report.security_findings or []),
+        len(exploits),
+        len(anomalies),
+        len(cves),
+        dash.services_total,
+        dash.services_vulnerable,
+        dash.assets_total,
+        dash.score,
+        dash.level,
+    )
     return SecurityReport(
         services=services,
         exploits=exploits,
@@ -570,6 +591,12 @@ def _format_asset(asset: dict) -> str:
 
 
 def _section(title: str, rows: list[str], empty_msg: str) -> list[str]:
+    logger.debug(
+        "_section: title={} rows={} empty_msg={}",
+        summarize(title, "title"),
+        summarize(rows, "rows"),
+        summarize(empty_msg, "empty_msg"),
+    )
     lines = ["", f"-- {title} --"]
     if not rows:
         lines.append(f"  {empty_msg}")
@@ -584,6 +611,7 @@ def _detector_rows(items: list[SecurityItem]) -> list[str]:
     """Rendu condense par detecteur (#347) : une ligne de synthese par
     detecteur, puis ses premiers constats. Aucun detecteur n'est masque,
     quel que soit le volume des autres."""
+    logger.debug("_detector_rows: items={}", summarize(items, "items"))
     rows: list[str] = []
     for g in group_by_detector(items):
         rows.append(f"  [{g.severity}] {g.label} : {len(g.items)} constat(s)")
@@ -602,6 +630,7 @@ def _bar(score: int, width: int = 20) -> str:
 def format_security_report(sr: SecurityReport) -> list[str]:
     """Rendu texte du rapport, une chaine par ligne (jamais de `print()`
     ici, meme separation que `netcross_report.session_objects`)."""
+    logger.debug("format_security_report: sr={}", summarize(sr, "sr"))
     d = sr.dashboard
     lines = ["=" * 70, "RAPPORT DE SECURITE (detection passive de vulnerabilites)", "=" * 70]
 
@@ -685,6 +714,7 @@ def security_report_to_dict(sr: SecurityReport) -> dict:
     du projet veut qu'une information absente soit dite, pas passee sous
     silence.
     """
+    logger.debug("security_report_to_dict: sr={}", summarize(sr, "sr"))
     return {
         "dashboard": {
             "score": sr.dashboard.score,

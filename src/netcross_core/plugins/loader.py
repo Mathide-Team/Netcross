@@ -116,6 +116,7 @@ def _check_kind(obj: Any, kind: str, label: str) -> Any:
     proto = Detector if kind == "detector" else Exporter
     method = "analyse" if kind == "detector" else "export"
     if not isinstance(getattr(obj, "name", None), str) or not callable(getattr(obj, method, None)):
+        logger.trace("_check_kind: refus, PluginLoadError")
         raise PluginLoadError(f"{label} : ne respecte pas le protocole {proto.__name__} (name + {method}())")
     return obj
 

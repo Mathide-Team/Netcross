@@ -148,11 +148,13 @@ def build_pack(
     sont conserves. ``seed`` : graine du melange (tests uniquement).
     """
     if not consent:
+        logger.trace("build_pack: refus, ModelPackError")
         raise ModelPackError(
             "export refuse sans consentement explicite (--consent) : le paquet est destine a etre partage."
         )
     check_name(name)
     if baseline is None and not training:
+        logger.trace("build_pack: refus, ModelPackError")
         raise ModelPackError("rien a exporter : fournir une baseline et/ou un jeu d'entrainement.")
     scrubber = TextScrubber()
     rng = random.Random(seed)
@@ -167,6 +169,7 @@ def build_pack(
     for sample, label in training or []:
         label = label.strip().lower()
         if not _LABEL_RE.match(label):
+            logger.trace("build_pack: refus, ModelPackError")
             raise ModelPackError(f"etiquette invalide : {label!r} (ex. normal, tunnel, c2, exfiltration)")
         pack.training.append((sample_vector(sample), label))
     pack.training = [([_round(x) for x in v], label) for v, label in pack.training]

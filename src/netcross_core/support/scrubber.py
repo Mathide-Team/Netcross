@@ -67,7 +67,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -240,6 +240,7 @@ class TextScrubber:
 
     def __init__(self) -> None:
         # valeur reelle -> pseudonyme
+        logger.debug("TextScrubber.__init__()")
         self._map: dict[str, str] = {}
         # valeur reelle -> categorie (pour l'export du mapping)
         self._kind: dict[str, str] = {}
@@ -275,6 +276,7 @@ class TextScrubber:
         Destine a un fichier conserve PAR L'OPERATEUR, jamais joint au
         ticket -- il annulerait l'anonymisation.
         """
+        logger.debug("TextScrubber.mapping_csv_rows()")
         return sorted((real, pseudo, self._kind[real]) for real, pseudo in self._map.items())
 
     # -- scrubbing --------------------------------------------------------
@@ -357,6 +359,7 @@ class TextScrubber:
 
     def scrub_lines(self, lines) -> tuple[list[str], ScrubReport]:
         """``scrub`` applique a une sequence de lignes, rapport agrege."""
+        logger.debug("TextScrubber.scrub_lines: lines={}", summarize(lines, "lines"))
         out: list[str] = []
         agg = ScrubReport()
         for line in lines:

@@ -190,10 +190,31 @@ def _classify_flow(flow: FlowStat, thresholds: FlowStatsThresholds) -> str:
         flow.payload_bytes >= thresholds.min_flow_payload_bytes
         and flow.byte_entropy_ratio >= thresholds.high_byte_entropy_ratio
     ):
+        logger.debug(
+            "_classify_flow: {} -> {} (entropie_ratio={}, payload={} octets)",
+            flow.src,
+            CLASSIFICATION_OBFUSCATED,
+            round(flow.byte_entropy_ratio, 3),
+            flow.payload_bytes,
+        )
         return CLASSIFICATION_OBFUSCATED
     if flow.median_size < thresholds.small_packet_threshold and flow.regularity_cv < 0.5:
+        logger.debug(
+            "_classify_flow: {} -> {} (mediane={}, regularite={})",
+            flow.src,
+            CLASSIFICATION_INTERACTIVE,
+            round(flow.median_size, 1),
+            round(flow.regularity_cv, 3),
+        )
         return CLASSIFICATION_INTERACTIVE
     if flow.median_size > thresholds.large_packet_threshold and flow.upload_ratio > 0.8:
+        logger.debug(
+            "_classify_flow: {} -> {} (mediane={}, ratio_up={})",
+            flow.src,
+            CLASSIFICATION_TRANSFER,
+            round(flow.median_size, 1),
+            round(flow.upload_ratio, 3),
+        )
         return CLASSIFICATION_TRANSFER
     return CLASSIFICATION_NORMAL
 
