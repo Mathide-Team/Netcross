@@ -214,6 +214,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/report:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Report
+      description: 'Rapport structuré d''une analyse terminée : le même document que
+
+        ``netcross --json-report --security-report`` et que l''export JSON de la
+
+        GUI (``findings``, ``triage``, ``health_score``, ``security_report``...).
+
+
+        Issue #330 : ``GET /analyses/{analysis_id}`` sert la copie brute des
+
+        mesures ; cette route sert les constats et le score de santé. 409 pour
+
+        une analyse enregistrée avant l''ajout de cette route (à relancer).'
+      operationId: get_analysis_report_analyses__analysis_id__report_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/security:
     get:
       tags:
