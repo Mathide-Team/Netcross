@@ -91,6 +91,7 @@ def extract_rtp(layers: dict, udp_payload: bytes) -> dict | None:
         pt = hex_or_dec_to_int(g(rtp, "rtp_rtp_p_type"))
         if seq is not None and ts is not None and ssrc is not None:
             return {"pt": pt, "seq": seq, "ts": ts, "ssrc": ssrc}
+        logger.trace("extract_rtp: couche rtp incomplete (seq={}, ts={}, ssrc={}), repli heuristique", seq, ts, ssrc)
 
     return _parse_rtp_heuristic(udp_payload)
 
@@ -108,11 +109,13 @@ def _parse_rtp_heuristic(payload: bytes) -> dict | None:
     cc = b0 & 0xF
     header_len = 12 + cc * 4
     if header_len > len(payload):
+        logger.trace("_parse_rtp_heuristic: {} CSRC annonces, en-tete plus long que la charge utile", cc)
         return None
     pt = payload[1] & 0x7F
     seq = int.from_bytes(payload[2:4], "big")
     ts = int.from_bytes(payload[4:8], "big")
     ssrc = int.from_bytes(payload[8:12], "big")
+    logger.trace("_parse_rtp_heuristic: RTP reconnu sans dissecteur (pt={}, ssrc={:#x})", pt, ssrc)
     return {"pt": pt, "seq": seq, "ts": ts, "ssrc": ssrc}
 
 
@@ -124,7 +127,10 @@ def extract_dhcp(layers: dict) -> dict | None:
         return None
     msg_code = hex_or_dec_to_int(g(dhcp, "dhcp_dhcp_type"))
     if msg_code is None:
+        logger.trace("extract_dhcp: couche dhcp sans dhcp.type, ignoree")
         return None
+    if msg_code not in DHCP_MESSAGE_TYPES:
+        logger.trace("extract_dhcp: type de message DHCP inconnu {}", msg_code)
     return {
         "xid": hex_or_dec_to_int(g(dhcp, "dhcp_dhcp_id")),
         "msg_type": DHCP_MESSAGE_TYPES.get(msg_code, str(msg_code)),
@@ -149,6 +155,7 @@ def extract_sip(layers: dict, payload: bytes) -> dict | None:
                 "user_agent": g(sip, "sip_sip_User-Agent"),
                 "server": g(sip, "sip_sip_Server"),
             }
+        logger.trace("extract_sip: couche sip sans methode ni ligne de statut, repli heuristique")
 
     return _parse_sip_heuristic(payload)
 
@@ -217,9 +224,12 @@ def extract_dns(layers: dict) -> dict | None:
         return None
     txn_id = hex_or_dec_to_int(g(dns, "dns_dns_id"))
     if txn_id is None:
+        logger.trace("extract_dns: couche dns sans dns.id, ignoree")
         return None
     qry_name = g(dns, "dns_dns_qry_name")
     if isinstance(qry_name, list):
+        # plusieurs questions dans un meme paquet : rarissime, seule la premiere est gardee
+        logger.trace("extract_dns: {} questions dans le paquet, premiere retenue", len(qry_name))
         qry_name = qry_name[0] if qry_name else None
     return {
         "txn_id": txn_id,
@@ -245,6 +255,8 @@ def _dns_answers(dns: dict) -> tuple[str, ...]:
         for ip in val if isinstance(val, list) else [val]:
             if ip and ip not in out:
                 out.append(str(ip))
+    if len(out) > 1:
+        logger.trace("_dns_answers: {} adresses A/AAAA distinctes", len(out))
     return tuple(out)
 
 
@@ -286,6 +298,7 @@ def extract_http(layers: dict) -> dict | None:
     is_request = as_bool(g(http, "http_http_request"))
     is_response = as_bool(g(http, "http_http_response"))
     if not is_request and not is_response:
+        logger.trace("extract_http: couche http ni requete ni reponse (continuation), ignoree")
         return None
     if is_request:
         uri = g(http, "http_http_request_full_uri") or g(http, "http_http_request_uri")
@@ -457,6 +470,7 @@ def extract_tls_certificate(layers: dict) -> dict | None:
         dates = [dates] if dates is not None else []
     if len(dates) < 2:
         return None  # pas de certificat (dates de validite) dans ce paquet
+    logger.trace("extract_tls_certificate: certificat present, {} date(s) de validite dans la chaine", len(dates))
     san = g(tls, "x509ce_x509ce_dNSName")
     if san is None:
         san = ()
@@ -523,6 +537,8 @@ def extract_tls_handshake(layers: dict) -> dict | None:
 
     content_types = _as_int_set(g(tls, "tls_tls_record_content_type"))
     handshake_types = _as_int_set(g(tls, "tls_tls_handshake_type"))
+    if handshake_types:
+        logger.trace("extract_tls_handshake: types de handshake en clair {}", sorted(handshake_types))
 
     return {
         "client_hello": 1 in handshake_types,
@@ -544,4 +560,6 @@ def compute_mos(delay_ms: float, loss_pct: float):
     R = max(0.0, min(100.0, R))  # noqa: N806
     mos = 1.0 if R <= 0 else 1 + 0.035 * R + 7e-06 * R * (R - 60) * (100 - R)
     mos = max(1.0, min(4.5, mos))
+    # appele par flux RTP (pas par paquet) : DEBUG acceptable
+    logger.debug("compute_mos: delai {:.1f} ms, perte {:.2f} % -> R={:.1f}, MOS={:.2f}", d, loss_pct, R, mos)
     return R, mos

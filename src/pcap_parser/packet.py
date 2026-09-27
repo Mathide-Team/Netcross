@@ -509,7 +509,9 @@ def build_packet(ts_seconds: float, layers: dict) -> RawPacket | None:
         root_hw = g(stp, "stp_stp_root_hw")
         stp_root_id = f"{root_prio}/{root_hw}" if root_prio is not None and root_hw is not None else None
     else:
-        return None  # ni IP, ni ARP, ni STP : LLDP, CDP, etc. -- toujours hors perimetre
+        # ni IP, ni ARP, ni STP : LLDP, CDP, etc. -- toujours hors perimetre
+        logger.trace("build_packet: trame hors perimetre ({}) ignoree", g(frame, "frame_frame_protocols"))
+        return None
 
     tcp, udp, icmp = innermost["tcp"], innermost["udp"], innermost["icmp"]
     icmpv6 = innermost["icmpv6"]
