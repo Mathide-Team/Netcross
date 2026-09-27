@@ -141,9 +141,12 @@ class SecurityItem:
 def detector_label(detector: str | None) -> str:
     """Libelle affiche d'un detecteur (issue #348)."""
     if detector is None:
+        logger.debug("detector_label: si detector is None -> retour 'Autres constats'")
         return "Autres constats"
     if detector.startswith("plugin:"):
+        logger.debug("detector_label: si detector.startswith('plugin:') -> retour chaîne formatée")
         return f"Plugin {detector[len('plugin:') :]}"
+    logger.debug("detector_label: retour DETECTOR_LABELS.get(…)")
     return DETECTOR_LABELS.get(detector, detector)
 
 
@@ -155,6 +158,7 @@ def is_expert_info(item) -> bool:
         source, det = item.get("source"), item.get("detector")
     else:
         source, det = getattr(item, "source", None), item.detector
+    logger.debug("is_expert_info: retour source == 'expert_info' or det == DETECTOR_EXPERT…")
     return source == "expert_info" or det == DETECTOR_EXPERT_INFO
 
 
@@ -187,8 +191,10 @@ def group_by_detector(items: list) -> list[DetectorGroup]:
 
     def rank(g: DetectorGroup):
         prio = _DETECTOR_PRIORITY.index(g.detector) if g.detector in _DETECTOR_PRIORITY else len(_DETECTOR_PRIORITY)
+        logger.debug("group_by_detector.rank: retour tuple de 3")
         return (SEVERITIES.index(g.severity), prio, g.label)
 
+    logger.debug("group_by_detector: retour sorted(…)")
     return sorted(groups.values(), key=rank)
 
 
@@ -215,6 +221,7 @@ class ServiceEntry:
 
     @property
     def vulnerable(self) -> bool:
+        logger.debug("ServiceEntry.vulnerable: retour self.severity is not None")
         return self.severity is not None
 
 
@@ -269,24 +276,30 @@ class SecurityReport:
 
 def _opt_str(value) -> str | None:
     if value is None:
+        logger.debug("_opt_str: si value is None -> retour None")
         return None
     text = str(value).strip()
+    logger.debug("_opt_str: retour text or None")
     return text or None
 
 
 def _opt_int(value) -> int | None:
     try:
+        logger.debug("_opt_int: retour int(…)")
         return int(value)
     except (TypeError, ValueError):
         logger.exception("échec dans _opt_int")
+        logger.debug("_opt_int: except (TypeError, ValueError) -> retour None")
         return None
 
 
 def _opt_float(value) -> float | None:
     try:
+        logger.debug("_opt_float: retour float(…)")
         return float(value)
     except (TypeError, ValueError):
         logger.exception("échec dans _opt_float")
+        logger.debug("_opt_float: except (TypeError, ValueError) -> retour None")
         return None
 
 
@@ -294,20 +307,29 @@ def severity_from_cvss(cvss: float) -> str:
     """Tranches CVSS v3 de la NVD : >=9.0 critique, >=7.0 elevee, >=4.0
     moyenne, sinon faible (0.0 = 'none' inclus)."""
     if cvss >= 9.0:
+        logger.debug("severity_from_cvss: si cvss >= 9.0 -> retour 'critique'")
         return "critique"
     if cvss >= 7.0:
+        logger.debug("severity_from_cvss: si cvss >= 7.0 -> retour 'elevee'")
         return "elevee"
     if cvss >= 4.0:
+        logger.debug("severity_from_cvss: si cvss >= 4.0 -> retour 'moyenne'")
         return "moyenne"
+    logger.debug("severity_from_cvss: retour 'faible'")
     return "faible"
 
 
 def _normalise_severity(raw, cvss: float | None) -> str:
     key = _opt_str(raw)
     if key is not None and key.lower() in _SEVERITY_ALIASES:
+        logger.debug(
+            "_normalise_severity: si key is not None and key.lower() in _SEVERITY_ALIASES -> retour _SEVERITY_ALIASES…"
+        )
         return _SEVERITY_ALIASES[key.lower()]
     if cvss is not None:
+        logger.debug("_normalise_severity: si cvss is not None -> retour severity_from_cvss(…)")
         return severity_from_cvss(cvss)
+    logger.debug("_normalise_severity: retour 'faible'")
     return "faible"
 
 
@@ -316,11 +338,13 @@ def _to_item(raw) -> SecurityItem | None:
     (pas un dict) plutot que de faire echouer tout le rapport."""
     if not isinstance(raw, dict):
         logger.trace("_to_item: entree de type {} ignoree (dict attendu)", type(raw).__name__)
+        logger.debug("_to_item: si not isinstance(raw, dict) -> retour None")
         return None
     cvss = _opt_float(raw.get("cvss"))
     plugin = _opt_str(raw.get("plugin"))
     detector = _opt_str(raw.get("detector")) or (f"plugin:{plugin}" if plugin else None)
     category = _CATEGORY_ALIASES.get((_opt_str(raw.get("category")) or "").lower(), CATEGORY_ANOMALY)
+    logger.debug("_to_item: retour SecurityItem(…)")
     return SecurityItem(
         category=category,
         severity=_normalise_severity(raw.get("severity"), cvss),
@@ -340,6 +364,7 @@ def _to_item(raw) -> SecurityItem | None:
 
 
 def _item_sort_key(item: SecurityItem):
+    logger.debug("_item_sort_key: retour tuple de 4")
     return (SEVERITIES.index(item.severity), -(item.cvss or 0.0), item.cve_id or "", item.detail)
 
 
@@ -349,11 +374,17 @@ def _cve_matches_service(cve: SecurityItem, entry: ServiceEntry) -> bool:
     precise. Un constat sans nom de service ou sans version identique ne
     rattache jamais rien (pas de correspondance approximative)."""
     if cve.service is None or cve.service.lower() != entry.service.lower():
+        logger.debug(
+            "_cve_matches_service: si cve.service is None or cve.service.lower() != entry.service… -> retour False"
+        )
         return False
     if cve.version != entry.version:
+        logger.debug("_cve_matches_service: si cve.version != entry.version -> retour False")
         return False
     if cve.host is not None and cve.host != entry.host:
+        logger.debug("_cve_matches_service: si cve.host is not None and cve.host != entry.host -> retour False")
         return False
+    logger.debug("_cve_matches_service: retour not (cve.port is not None and cve.port != entry.p…")
     return not (cve.port is not None and cve.port != entry.port)
 
 
@@ -402,6 +433,7 @@ def _build_services(fingerprints, cves: list[SecurityItem]) -> list[ServiceEntry
 
     def _rank(e: ServiceEntry):
         sev = SEVERITIES.index(e.severity) if e.severity else len(SEVERITIES)
+        logger.debug("_build_services._rank: retour tuple de 7")
         return (
             sev,
             -len(e.cve_ids),
@@ -412,6 +444,7 @@ def _build_services(fingerprints, cves: list[SecurityItem]) -> list[ServiceEntry
             e.fingerprint or "",
         )
 
+    logger.debug("_build_services: retour sorted(…)")
     return sorted(merged.values(), key=_rank)
 
 
@@ -475,13 +508,17 @@ def build_security_report(report) -> SecurityReport:
 
 def _target(host: str | None, port: int | None) -> str:
     if host is None:
+        logger.debug("_target: si host is None -> retour ''")
         return ""
+    logger.debug("_target: retour f'(host):(port)' if port is not None else host")
     return f"{host}:{port}" if port is not None else host
 
 
 def _service_label(service: str | None, version: str | None) -> str:
     if service is None:
+        logger.debug("_service_label: si service is None -> retour ''")
         return ""
+    logger.debug("_service_label: retour f'(service)/(version)' if version else service")
     return f"{service}/{version}" if version else service
 
 
@@ -508,6 +545,7 @@ def _format_item(item: SecurityItem) -> str:
             line += f" (points {', '.join(shown_points)})"
     if item.plugin:
         line += f" [plugin {item.plugin}]"
+    logger.debug("_format_item: retour ' ' + line")
     return "  " + line
 
 
@@ -530,6 +568,7 @@ def _format_fingerprint(entry: ServiceEntry) -> str:
     """Rend la partie empreinte d'une ligne de service, ou "" si l'entree
     n'en porte pas (cas des services detectes par banniere, CVE-1)."""
     if not entry.fingerprint:
+        logger.debug("_format_fingerprint: si not entry.fingerprint -> retour ''")
         return ""
     prefixe = _FINGERPRINT_PREFIXES.get(entry.service.lower(), "empreinte")
     rendu = f" {prefixe}={entry.fingerprint}"
@@ -538,6 +577,7 @@ def _format_fingerprint(entry: ServiceEntry) -> str:
         if len(lisible) > MAX_READABLE_LEN:
             lisible = lisible[: MAX_READABLE_LEN - 3] + "..."
         rendu += f" [{lisible}]"
+    logger.debug("_format_fingerprint: retour rendu={}", summarize(rendu, "rendu"))
     return rendu
 
 
@@ -555,6 +595,7 @@ def _format_service(entry: ServiceEntry) -> str:
         line += " -- aucune vulnerabilite connue"
     if entry.points:
         line += f" (point(s) {', '.join(entry.points)})"
+    logger.debug("_format_service: retour line={}", summarize(line, "line"))
     return line
 
 
@@ -563,7 +604,9 @@ def asset_os_label(asset: dict) -> str:
     « OS inconnu » -- toujours une hypothese, jamais un diagnostic."""
     os_guess = asset.get("os_guess") or {}
     if not os_guess:
+        logger.debug("asset_os_label: si not os_guess -> retour 'OS inconnu'")
         return "OS inconnu"
+    logger.debug("asset_os_label: retour chaîne formatée")
     return f"{os_guess.get('family', '?')} (confiance {os_guess.get('confidence', '?')})"
 
 
@@ -574,6 +617,7 @@ def asset_ports_label(asset: dict) -> str:
         label = f"{p.get('transport')}/{p.get('port')}"
         service = " ".join(x for x in (p.get("service"), p.get("version")) if x)
         parts.append(f"{label} {service}" if service else label)
+    logger.debug("asset_ports_label: retour ', '.join(…)")
     return ", ".join(parts)
 
 
@@ -587,6 +631,7 @@ def _format_asset(asset: dict) -> str:
     line += f", {asset.get('packet_count', 0)} paquets"
     if asset.get("points"):
         line += f" (point(s) {', '.join(asset['points'])})"
+    logger.debug("_format_asset: retour line={}", summarize(line, "line"))
     return line
 
 
@@ -600,10 +645,12 @@ def _section(title: str, rows: list[str], empty_msg: str) -> list[str]:
     lines = ["", f"-- {title} --"]
     if not rows:
         lines.append(f"  {empty_msg}")
+        logger.debug("_section: si not rows -> retour lines={}", summarize(lines, "lines"))
         return lines
     lines.extend(rows[:MAX_ROWS_PER_SECTION])
     if len(rows) > MAX_ROWS_PER_SECTION:
         lines.append(f"  ... {len(rows) - MAX_ROWS_PER_SECTION} ligne(s) supplementaire(s) non affichee(s)")
+    logger.debug("_section: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
@@ -619,11 +666,13 @@ def _detector_rows(items: list[SecurityItem]) -> list[str]:
         rest = len(g.items) - MAX_ROWS_PER_DETECTOR
         if rest > 0:
             rows.append(f"      ... {rest} autre(s) constat(s) {g.label} (liste complete : --json-report ou HTML)")
+    logger.debug("_detector_rows: retour rows={}", summarize(rows, "rows"))
     return rows
 
 
 def _bar(score: int, width: int = 20) -> str:
     filled = round(width * score / 100)
+    logger.debug("_bar: retour '#' * filled + '-' * (width - filled)")
     return "#" * filled + "-" * (width - filled)
 
 
@@ -688,6 +737,7 @@ def format_security_report(sr: SecurityReport) -> list[str]:
         lines += _section("Notifications", [f"  {n.get('line', '')}" for n in sr.notifications], "")
     if sr.plugins:
         lines += _section("Plugins", [f"  {p.get('line', '')}" for p in sr.plugins], "")
+    logger.debug("format_security_report: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
@@ -695,6 +745,7 @@ def print_security_report(sr: SecurityReport) -> None:
     """Ecrit `format_security_report()` sur stdout."""
     for line in format_security_report(sr):
         print(line)
+    logger.debug("print_security_report: fin")
 
 
 # -- serialisation (socle commun aux sorties JSON, HTML et PDF) -------------
