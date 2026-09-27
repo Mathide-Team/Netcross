@@ -47,7 +47,7 @@ import time
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gio, GLib, Gtk  # noqa: E402 -- doit suivre gi.require_version()
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402 -- doit suivre gi.require_version()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Les 2 imports suivants doivent rester apres l'ajout ci-dessus : c'est ce qui rend
@@ -2646,6 +2646,38 @@ class NetcrossApp(Gtk.Application):
         self.main_window.present()
 
 
+def display_available() -> bool:
+    """Un affichage GTK4 est-il reellement accessible ?
+
+    ``Gtk.init_check()`` seul ne suffit pas (GTK 4.22 renvoie ``True`` sans
+    DISPLAY ni WAYLAND_DISPLAY, cf. tests/gtk4_display.py) : le critere fiable
+    est l'existence d'un ``Gdk.Display`` par defaut.
+    """
+    return bool(Gtk.init_check()) and Gdk.Display.get_default() is not None
+
+
+def display_unavailable_message(environ=None, euid=None) -> str:
+    """Message affiche quand GTK4 ne peut pas ouvrir d'affichage (#468) :
+    cause probable et alternatives, plutot qu'une trace Gtk-CRITICAL."""
+    env = os.environ if environ is None else environ
+    if euid is None:
+        euid = os.geteuid() if hasattr(os, "geteuid") else -1
+    lines = ["Netcross : impossible d'ouvrir l'interface graphique (aucun affichage accessible)."]
+    if not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
+        lines.append("  Cause : ni DISPLAY ni WAYLAND_DISPLAY ne sont definis (session SSH, console, service...).")
+    if euid == 0:
+        lines.append(
+            "  Cause probable : lancement en root (sudo/su). La session graphique appartient a votre "
+            "utilisateur : relancez Netcross sans sudo."
+        )
+    lines += [
+        "  Les captures n'ont pas besoin de root : les droits de lecture du fichier suffisent.",
+        "  Sans affichage, utilisez la ligne de commande : netcross --help "
+        "(depuis les sources : python3 src/cross_capture_analyzer_cli.py --help)",
+    ]
+    return "\n".join(lines)
+
+
 def main():
     # --debug est propre a Netcross : retire avant Gtk.Application.run, qui
     # refuserait une option inconnue.
@@ -2654,6 +2686,10 @@ def main():
         argv = [a for a in argv if a != DEBUG_FLAG]
         enable_debug()
     logger.debug("main: démarrage de la GUI GTK4, argv={} debug={}", argv[1:], is_debug_enabled())
+    if not display_available():
+        logger.error("main: GTK4 ne peut pas s'initialiser, aucun affichage accessible")
+        print(display_unavailable_message(), file=sys.stderr)
+        return 2
     app = NetcrossApp()
     return app.run(argv)
 

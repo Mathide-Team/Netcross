@@ -47,9 +47,23 @@ from pathlib import Path
 from loguru import logger
 
 from pcap_parser.capfile import detect_format, first_timestamp, format_extension, has_packets, split_by_size
-from pcap_parser.ek_source import TsharkError, TsharkNotFoundError, iter_ek_records
+from pcap_parser.ek_source import (
+    CaptureAccessError,
+    TsharkError,
+    TsharkNotFoundError,
+    is_permission_error,
+    iter_ek_records,
+)
 from pcap_parser.packet import RawPacket, build_packet
 from pcap_parser.remote import CaptureSource, parse_source
+
+
+def _collect_packets(packets: list[RawPacket], path: str, *, read_via_stdin: bool) -> None:
+    records = iter_ek_records(path=path, read_via_stdin=True) if read_via_stdin else iter_ek_records(path=path)
+    for record in records:
+        pkt = build_packet(record.ts, record.layers)
+        if pkt is not None:
+            packets.append(pkt)
 
 
 def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
@@ -68,14 +82,33 @@ def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
     logger.debug("parse_capture: lecture de {}", path)
     packets: list[RawPacket] = []
     try:
-        for record in iter_ek_records(path=path):
-            pkt = build_packet(record.ts, record.layers)
-            if pkt is not None:
-                packets.append(pkt)
-    except (TsharkNotFoundError, TsharkError) as e:
-        logger.exception("échec dans parse_capture({}) : {}", path, e)
-        if raise_on_error:
+        try:
+            _collect_packets(packets, path, read_via_stdin=False)
+        except CaptureAccessError as denied:
+            logger.debug("parse_capture: accès refusé avant tshark : {}", denied)
             raise
+        except TsharkError as first:
+            if not is_permission_error(first):
+                raise
+            # Le fichier est lisible par l'utilisateur (verifie en amont) mais
+            # tshark refuse de l'ouvrir : tshark confine (snap, AppArmor) ou
+            # lance sous une autre identite. On lui transmet le contenu sur
+            # l'entree standard. #468
+            logger.warning(
+                "parse_capture: tshark ne peut pas ouvrir {} lui-même, lecture via l'entrée standard",
+                path,
+            )
+            packets.clear()
+            _collect_packets(packets, path, read_via_stdin=True)
+    except (TsharkNotFoundError, TsharkError) as e:
+        if raise_on_error:
+            # l'appelant journalise l'echec : eviter la trace en double (#468)
+            logger.debug("parse_capture: échec pour {}, remonté à l'appelant : {}", path, e)
+            raise
+        if isinstance(e, CaptureAccessError):
+            logger.error("parse_capture: {}", e)
+        else:
+            logger.exception("échec dans parse_capture({}) : {}", path, e)
         print(f"impossible de lire {path} : {e}", file=sys.stderr)
         return []
     logger.debug("parse_capture: {} -> {} paquet(s)", path, len(packets))

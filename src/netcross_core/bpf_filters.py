@@ -157,7 +157,8 @@ def load_bpf_filters(path: str | Path | None = None) -> list[BPFFilter]:
     try:
         data = json.loads(source.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        logger.exception("échec dans load_bpf_filters")
+        # premier lancement : aucun filtre sauvegarde, ce n'est pas une erreur (#468)
+        logger.debug("load_bpf_filters: {} absent, aucun filtre utilisateur", source)
         return []
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         logger.exception(f"échec dans load_bpf_filters: {exc}")

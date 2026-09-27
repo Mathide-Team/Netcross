@@ -36,7 +36,7 @@ from netcross_core.fingerprint.report import compute_pkt_fingerprints
 from netcross_core.logging_config import get_logger
 from netcross_core.models import Pkt
 from pcap_parser.capinfos_source import read_capture_comment
-from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
+from pcap_parser.ek_source import CaptureAccessError, TsharkError, TsharkNotFoundError
 from pcap_parser.packet import RawPacket
 from pcap_parser.protocols import compute_mos
 
@@ -163,7 +163,11 @@ def parse_capture(label, path, raise_on_error=False) -> list[Pkt]:
     try:
         raw_packets = pcap_parser.parse_capture(path, raise_on_error=True)
     except (TsharkNotFoundError, TsharkError) as e:
-        logger.exception("parse_capture: lecture de {} ({}) impossible: {}", path, label, e)
+        if isinstance(e, CaptureAccessError):
+            # erreur utilisateur (droits, chemin) : message clair, sans trace (#468)
+            logger.error("parse_capture: point {} : {}", label, e)
+        else:
+            logger.exception("parse_capture: lecture de {} ({}) impossible: {}", path, label, e)
         if raise_on_error:
             raise
         print(f"[{label}] impossible de lire {path} : {e}", file=sys.stderr)
