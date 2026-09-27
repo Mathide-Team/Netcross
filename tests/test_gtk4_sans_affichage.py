@@ -23,7 +23,7 @@ def test_message_root_sans_affichage():
 
 def test_message_utilisateur_avec_display():
     msg = app.display_unavailable_message(environ={"DISPLAY": ":0"}, euid=1000)
-    assert "root" not in msg
+    assert "sans sudo" not in msg
     assert "ni DISPLAY" not in msg
 
 
