@@ -52,7 +52,9 @@ def parse_http_stat(text: str, application: str = "http") -> list[ApplicationSta
         metrics[label] = count
         raw[label] = m.group(2)
     if not metrics:
+        logger.debug("parse_http_stat: aucune métrique HTTP trouvée")
         return []
+    logger.debug("parse_http_stat: {} métrique(s) HTTP", len(metrics))
     return [
         ApplicationStat(
             application=application,
