@@ -116,7 +116,9 @@ def _match_pattern(
     groupe de `rule_ids_to_match` doit etre present dans
     `rule_ids_by_segment`."""
     groups_to_match, _, _, _ = pattern
-    return all(group & rule_ids_by_segment for group in groups_to_match)
+    matched = all(group & rule_ids_by_segment for group in groups_to_match)
+    logger.debug("_match_pattern: correspondance={}", matched)
+    return matched
 
 
 def correlate_event_causes(events: list[ExpertEvent]) -> list[ExpertEvent]:

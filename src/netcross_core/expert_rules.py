@@ -2080,7 +2080,9 @@ def get_rule(rule_id: str) -> Rule | None:
     """Regle du catalogue pour cet id, `None` si absente -- jamais de
     KeyError, meme discipline defensive que get() ailleurs dans ce projet
     (_flag_label/_flag_severity/_remediation_for cote wireshark_expert.py)."""
-    return _BY_ID.get(rule_id)
+    rule = _BY_ID.get(rule_id)
+    logger.debug("get_rule: id={} trouve={}", rule_id, rule is not None)
+    return rule
 
 
 def list_rules(domain: str | None = None) -> list[Rule]:
@@ -2092,5 +2094,8 @@ def list_rules(domain: str | None = None) -> list[Rule]:
     directement depuis un Finding deja construit."""
     logger.debug("list_rules: domain={}", summarize(domain, "domain"))
     if domain is None:
+        logger.debug("list_rules: {} regle(s) sans filtre", len(_RULE_CATALOG))
         return list(_RULE_CATALOG)
-    return [r for r in _RULE_CATALOG if r.domain == domain]
+    filtered = [r for r in _RULE_CATALOG if r.domain == domain]
+    logger.debug("list_rules: {} regle(s) pour domain={}", len(filtered), domain)
+    return filtered
