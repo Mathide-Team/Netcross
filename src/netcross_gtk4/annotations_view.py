@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from netcross_core.forensic import annotations_by_tag, annotations_sidecar_path, read_annotations, write_annotations
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import PacketAnnotation
 
 logger = get_logger(__name__)
@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 def available_tags(annotations: list[PacketAnnotation]) -> list[str]:
     """Liste triee des tags distincts presents, pour peupler la ListBox
     de filtre (un toggle par tag, voir docstring du module)."""
+    logger.debug("available_tags: retour sorted(…)")
     return sorted(annotations_by_tag(annotations).keys())
 
 
@@ -42,13 +43,16 @@ def filter_by_tags(annotations: list[PacketAnnotation], selected_tags: set[str])
     (ex. stats_view.build_query), plutot qu'une liste vide qui forcerait
     l'appelant a distinguer "aucun tag coche" de "aucune annotation"."""
     if not selected_tags:
+        logger.debug("filter_by_tags: si not selected_tags -> retour list(…)")
         return list(annotations)
+    logger.debug("filter_by_tags: retour liste")
     return [ann for ann in annotations if ann.tag in selected_tags]
 
 
 def format_annotation_row(annotation: PacketAnnotation) -> str:
     """Formate une annotation pour une ligne de ListBox."""
     suffix = f" -- {annotation.comment}" if annotation.comment else ""
+    logger.debug("format_annotation_row: retour chaîne formatée")
     return f"[{annotation.tag}] trame #{annotation.frame_number}{suffix}"
 
 
@@ -68,6 +72,7 @@ def add_annotation(
     fonction avec le texte saisi par l'analyste, qui peut etre vide."""
     tag = tag.strip()
     if not tag:
+        logger.debug("add_annotation: si not tag -> levée ValueError")
         raise ValueError("le tag d'une annotation ne peut pas etre vide")
     logger.debug("add_annotation: trame={} tag={}", frame_number, tag)
     return [*annotations, PacketAnnotation(frame_number=frame_number, tag=tag, comment=comment, color=color)]
@@ -102,7 +107,9 @@ def parse_frame_number(text: str) -> int:
         logger.debug("parse_frame_number: saisie invalide {!r}", text)
         raise ValueError(f"numero de trame invalide : {text!r}") from None
     if number < 1:
+        logger.debug("parse_frame_number: si number < 1 -> levée ValueError")
         raise ValueError("le numero de trame commence a 1")
+    logger.debug("parse_frame_number: retour number={}", summarize(number, "number"))
     return number
 
 
@@ -140,22 +147,28 @@ class AnnotationStore:
             # JSON valide mais pas une liste d'annotations
             self.errors[label] = f"{annotations_sidecar_path(path)} illisible : {exc}"
             logger.warning(f"annotations {label} : {self.errors[label]}")
+        logger.debug("AnnotationStore._load_one: fin")
 
     def labels(self) -> list[str]:
+        logger.debug("AnnotationStore.labels: retour liste")
         return [label for label, _path in self.captures]
 
     def writable_labels(self) -> list[str]:
+        logger.debug("AnnotationStore.writable_labels: retour liste")
         return [label for label in self.labels() if label not in self.errors]
 
     def _path(self, label: str) -> str:
         for known, path in self.captures:
             if known == label:
+                logger.debug("AnnotationStore._path: si known == label -> retour path={}", summarize(path, "path"))
                 return path
         logger.trace("AnnotationStore._path: refus, KeyError")
+        logger.debug("AnnotationStore._path: levée KeyError")
         raise KeyError(f"point inconnu : {label}")
 
     def _save(self, label: str, annotations: list[PacketAnnotation]) -> None:
         if label in self.errors:
+            logger.debug("AnnotationStore._save: si label in self.errors -> levée ValueError")
             raise ValueError(f"point {label} en lecture seule : {self.errors[label]}")
         write_annotations(self._path(label), annotations)  # OSError remonte : l'appelant l'affiche
         self.by_label[label] = annotations
@@ -173,17 +186,21 @@ class AnnotationStore:
             comment.strip(),
         )
         self._save(label, updated)
+        logger.debug("AnnotationStore.add: fin")
 
     def remove(self, label: str, frame_number: int, tag: str) -> None:
         logger.debug("AnnotationStore.remove: point={} trame={} tag={}", label, frame_number, tag)
         self._save(label, remove_annotation(self.by_label.get(label, []), frame_number, tag))
+        logger.debug("AnnotationStore.remove: fin")
 
     def tags(self) -> list[str]:
+        logger.debug("AnnotationStore.tags: retour available_tags(…)")
         return available_tags([a for anns in self.by_label.values() for a in anns])
 
     def rows(self, selected_tags: set[str] | None = None) -> list[tuple[str, PacketAnnotation]]:
         """(point, annotation) filtrees par tag (aucun tag coche : tout),
         dans l'ordre des points puis des trames."""
+        logger.debug("AnnotationStore.rows: retour liste")
         return [
             (label, ann)
             for label in self.labels()
@@ -192,4 +209,5 @@ class AnnotationStore:
 
 
 def _ann_key(ann: PacketAnnotation) -> tuple[int, str]:
+    logger.debug("_ann_key: retour tuple de 2")
     return (ann.frame_number, ann.tag)
