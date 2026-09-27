@@ -26,6 +26,13 @@ captures d'exemple de [Première analyse](premiere-analyse.md).
    Netcross le retrouve seul, comme en ligne de commande sans `--order`.
 4. Choisissez les options, puis cliquez sur **Lancer l'analyse**.
 
+Une seule capture suffit. Le rapport omet alors les sections qui comparent
+des points entre eux (topologie, pertes, latence, sauts de routeur) : il
+l'indique par une ligne « Capture unique : sections multi-points omises ».
+Avec un pcapng pris sur plusieurs interfaces, cochez « Séparer les
+interfaces d'un pcapng » : chaque interface devient un point, et l'analyse
+croisée se fait entre elles (voir [Préparer les captures](preparer-captures.md)).
+
 Options principales :
 
 | Case ou champ | Effet | Équivalent en ligne de commande |
@@ -38,11 +45,23 @@ Options principales :
 | Diagnostic TLS, Diagnostic QUIC/HTTP3 | Certificats, négociations, QUIC | `--tls`, `--quic` |
 | Rapport de sécurité | Vulnérabilités et tentatives d'attaque | `--security-report` |
 | Fenêtre temporelle (ms) | Précision des mesures de débit (réduire pour les micro-rafales) | `--bucket-ms` |
+| Séparer les interfaces d'un pcapng | Un fichier capturé sur plusieurs interfaces devient un point par interface, nommé `NOM:INTERFACE` | `--split-interfaces` |
+
+Réglages fins, à ne modifier qu'en connaissance de cause :
+
+| Champ ou bouton | Effet | Équivalent en ligne de commande |
+|---|---|---|
+| Fenêtre NAT (ms) | Écart maximal entre deux observations d'un même paquet traduit par un NAT. Actif seulement avec la corrélation tolérante au NAT (défaut : 200 ms) | `--nat-window-ms` |
+| Coupure silencieuse (s) | Silence au-delà duquel une connexion inactive est signalée comme coupée par un NAT ou un pare-feu. 0 = défaut (60 s) | `--idle-timeout-seconds` |
+| Table des noms... / Retirer | Charge un fichier JSON ou YAML de noms lisibles des hôtes (`srv-ad`, `imprimante-rdc`...), repris dans les exports CSV et JSON | `--names` |
+| Seuil doublons (ms) | Écart maximal pour considérer deux paquets identiques comme doublons | `--duplicate-threshold-ms` |
 
 En haut de l'onglet, deux cases changent de mode :
 
 - **Mode comparaison** : deux listes de captures, Baseline et Courant,
-  pour comparer deux situations (voir [Comparer deux situations](comparer.md)) ;
+  pour comparer deux situations. Ce mode a ses propres cases : seuils de
+  pertes et de latence, Diagnostic TLS/QUIC et « Triage des écarts »
+  (voir [Comparer deux situations](comparer.md)) ;
 - **Capture en direct** : un nom, une interface réseau et un filtre BPF
   facultatif par point, au lieu de fichiers. Démarrage et arrêt manuels,
   ou durée maximale. Demande les droits de capture (voir

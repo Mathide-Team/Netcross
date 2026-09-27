@@ -70,7 +70,10 @@ sudo tcpdump -i eth0 -s 0 -w poste.pcapng host 203.0.113.10
   `NOM:INTERFACE`, et l'analyse croisée se fait entre elles :
   `--capture SITE=site.pcapng --split-interfaces`. Attention : sans
   `-I none`, `mergecap` fusionne les interfaces décrites à l'identique,
-  qui ne sont alors plus séparables.
+  qui ne sont alors plus séparables. Dans l'interface graphique, cochez
+  « Séparer les interfaces d'un pcapng ». Avec l'API, passez
+  `split_interfaces=true` à `POST /captures/multi` (voir
+  [Automatiser avec l'API](api.md)).
 - **Des données sensibles** : `--redact` remplace les adresses IP et MAC
   par des pseudonymes avant l'analyse, par exemple pour transmettre un
   rapport à un prestataire.

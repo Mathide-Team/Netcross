@@ -32,6 +32,7 @@ sécurité...), mais c'est à plusieurs points qu'il apporte le plus.
 | 4. Ou avec l'interface graphique | [Interface graphique](interface-graphique.md) |
 | 5. Comprendre ce que dit le rapport | [Lire le rapport](lire-le-rapport.md) |
 | 6. Comparer avant/après un changement | [Comparer deux situations](comparer.md) |
+| 7. Intégrer Netcross à d'autres outils | [Automatiser avec l'API](api.md) |
 | En cas de souci | [Dépannage](depannage.md) |
 
 Deux captures d'exemple sont fournies dans
@@ -52,4 +53,5 @@ guide ont été obtenues avec ces fichiers.
 | `netcross-ai-models` | `python3 src/netcross_ai_models_cli.py` | Modèles du module IA local ([Module IA](../module-ia.md)) |
 
 Une API REST est également disponible pour l'intégrer à d'autres outils :
-voir [API REST](../api-rest.md).
+voir [Automatiser avec l'API](api.md) pour l'essentiel, et
+[API REST](../api-rest.md) pour la référence complète.
