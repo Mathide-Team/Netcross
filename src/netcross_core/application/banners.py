@@ -395,9 +395,18 @@ def extract_banners(proto: str, sport: int | None, dport: int | None, payload: b
                 banners = _greeting_banners(payload, sport)
         elif sport == 53:
             banners = _dns_banners(payload, proto)
+        if banners:
+            logger.trace(
+                "extract_banners: {} banniere(s) {} (port source {}){}",
+                len(banners),
+                "/".join(sorted({b.protocol for b in banners})),
+                sport,
+                ", tronque a " + str(MAX_BANNERS_PER_PACKET) if len(banners) > MAX_BANNERS_PER_PACKET else "",
+            )
         return tuple(banners[:MAX_BANNERS_PER_PACKET])
-    except (ValueError, IndexError, struct.error, UnicodeError):
-        logger.exception("échec dans extract_banners")
+    except (ValueError, IndexError, struct.error, UnicodeError) as exc:
+        # charge utile malformee : resultat attendu, a chaque paquet -> TRACE sans traceback
+        logger.trace("extract_banners: charge utile {} malformee ({} octets) : {!r}", proto, len(payload), exc)
         return ()
 
 
@@ -439,6 +448,11 @@ def build_service_fingerprints(packets: Iterable[Pkt]) -> list[dict]:
                 }
             elif len(b.raw) > len(entry["banner"]):
                 entry["banner"] = b.raw
+    logger.debug(
+        "build_service_fingerprints: {} logiciel(s) identifie(s) sur {} hote(s)",
+        len(found),
+        len({(e["point"], e["host"]) for e in found.values()}),
+    )
     return sorted(
         found.values(),
         key=lambda e: (e["point"], e["host"], e["port"] or 0, e["service"].lower(), e["version"] or "", e["role"]),
