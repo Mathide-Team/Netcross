@@ -19,7 +19,7 @@ from collections.abc import Iterable
 
 from netcross_core.fingerprint import ssh_hassh, tls_ja4
 from netcross_core.fingerprint.known import identify_tool, load_known_fingerprints
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import ROLE_CLIENT, ROLE_SERVER, Pkt
 
 logger = get_logger(__name__)
@@ -62,6 +62,7 @@ def build_fingerprint_records(packets: Iterable[Pkt], known: dict | None = None)
                 pk.ssh_hassh_readable,
                 identify_tool("hassh", pk.ssh_hassh, known),
             )
+    logger.debug("build_fingerprint_records: retour sorted(…)")
     return sorted(found.values(), key=lambda e: (e["point"], e["host"], e["port"] or 0, e["fingerprint"]))
 
 
@@ -78,6 +79,7 @@ def _add(
 ) -> None:
     key = (point, host, port, service, fingerprint)
     if key in found:
+        logger.debug("_add: si key in found -> retour")
         return
     found[key] = {
         "service": service,
@@ -90,6 +92,7 @@ def _add(
         "banner": banner or "",
         "fingerprint": fingerprint,
     }
+    logger.debug("_add: fin")
 
 
 def compute_pkt_fingerprints(proto: str, sport: int | None, dport: int | None, payload: bytes | None) -> dict:
@@ -110,12 +113,17 @@ def compute_pkt_fingerprints(proto: str, sport: int | None, dport: int | None, p
         "ssh_hassh_readable": None,
     }
     if not payload or proto != "TCP":
+        logger.debug(
+            "compute_pkt_fingerprints: si not payload or proto != 'TCP' -> retour empty={}", summarize(empty, "empty")
+        )
         return empty
     ja4 = tls_ja4.identify(payload)
     if ja4 is not None:
         empty["tls_ja4"], empty["tls_ja4_readable"] = ja4
+        logger.debug("compute_pkt_fingerprints: si ja4 is not None -> retour empty={}", summarize(empty, "empty"))
         return empty
     hassh = ssh_hassh.identify(payload, sport, dport)
     if hassh is not None:
         empty["ssh_hassh"], empty["ssh_hassh_role"], empty["ssh_hassh_readable"] = hassh
+    logger.debug("compute_pkt_fingerprints: retour empty={}", summarize(empty, "empty"))
     return empty
