@@ -18,7 +18,9 @@ captures d'exemple de [Première analyse](premiere-analyse.md).
 
 1. **Ajouter une capture** ouvre un sélecteur de fichiers. Répétez
    l'opération pour chaque point.
-2. Renommez chaque point dans le champ de gauche (`LAN`, `WAN`...).
+2. Renommez chaque point dans le champ de gauche (`LAN`, `WAN`...). Deux
+   lignes de même nom forment un seul point : ce sont les fichiers
+   successifs d'une capture en rotation, lus dans l'ordre de la liste.
 3. **Rangez les points dans l'ordre du chemin réseau** avec les flèches,
    du plus proche de la source au plus éloigné. Contrairement à la ligne
    de commande, l'interface utilise cet ordre tel quel par défaut. Si vous

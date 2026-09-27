@@ -469,6 +469,12 @@ class CaptureListPanel(Gtk.Box):
             )
         )
         add_btn = Gtk.Button(label="Ajouter une capture")
+        # Issue #671 : rotation, comme --capture NOM=a,b de la CLI.
+        add_btn.set_tooltip_text(
+            "Sélection multiple possible. Deux lignes portant le même nom forment un seul point : "
+            "les segments successifs d'une capture en rotation, lus dans l'ordre de la liste "
+            "(équivalent de --capture NOM=a,b)."
+        )
         add_btn.connect("clicked", self._on_add_clicked)
         header.append(add_btn)
         self.append(header)

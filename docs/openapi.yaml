@@ -121,7 +121,12 @@ paths:
 
         Issue #474 lot 2 : un seul fichier est accepté, par exemple un pcapng
 
-        multi-interfaces avec ``split_interfaces=true`` (un point par interface).'
+        multi-interfaces avec ``split_interfaces=true`` (un point par interface).
+
+
+        Issue #671 : ``rotation=true`` accepte une étiquette répétée, dont les
+
+        fichiers sont lus à la suite comme un seul point.'
       operationId: upload_multi_capture_captures_multi_post
       security:
       - APIKeyHeader: []
@@ -653,6 +658,13 @@ components:
           description: 'true : un point par interface/section d''un pcapng multi-interfaces,
             étiqueté ETIQUETTE:INTERFACE (équivalent de --split-interfaces) ; `points_order`
             cite alors ces étiquettes'
+          default: false
+        rotation:
+          type: boolean
+          title: Rotation
+          description: 'true : une étiquette répétée dans labels désigne les segments
+            successifs d''un même point (capture en rotation), dans l''ordre des fichiers
+            (équivalent de --capture NOM=a,b)'
           default: false
       type: object
       required:

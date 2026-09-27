@@ -63,7 +63,10 @@ sudo tcpdump -i eth0 -s 0 -w poste.pcapng host 203.0.113.10
 - **Une capture découpée en plusieurs fichiers** (rotation `tcpdump -C` ou
   `tshark -b`) : donnez tous les fichiers au même point, séparés par des
   virgules et dans l'ordre chronologique, sans les fusionner :
-  `--capture LAN=lan_00001.pcapng,lan_00002.pcapng`.
+  `--capture LAN=lan_00001.pcapng,lan_00002.pcapng`. Dans l'interface
+  graphique, ajoutez chaque fichier et donnez le même nom à toutes ces
+  lignes, dans l'ordre chronologique. Avec l'API, répétez l'étiquette dans
+  `labels` et ajoutez `rotation=true`.
 - **Plusieurs captures dans un seul fichier pcapng** (capture sur plusieurs
   interfaces, fichiers concaténés, `mergecap -I none`) : ajoutez
   `--split-interfaces`. Chaque interface du fichier devient un point nommé

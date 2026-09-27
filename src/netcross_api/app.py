@@ -78,6 +78,11 @@ _NAT_WINDOW_FORM = Form(
 )
 _TLS_FORM = Form(default=False, description="true : diagnostic TLS (équivalent de --tls)")
 _QUIC_FORM = Form(default=False, description="true : diagnostic QUIC/HTTP3 (équivalent de --quic)")
+_ROTATION_FORM = Form(
+    default=False,
+    description="true : une étiquette répétée dans labels désigne les segments successifs d'un même point "
+    "(capture en rotation), dans l'ordre des fichiers (équivalent de --capture NOM=a,b)",
+)
 _SPLIT_INTERFACES_FORM = Form(
     default=False,
     description="true : un point par interface/section d'un pcapng multi-interfaces, étiqueté "
@@ -553,12 +558,14 @@ async def upload_capture(
     return await _dispatch([(label, path)], metadata, None, multi=False, wait=wait, options=options)
 
 
-def _parse_labels(labels: str, file_count: int) -> list[str]:
+def _parse_labels(labels: str, file_count: int, rotation: bool = False) -> list[str]:
     """Étiquettes des captures, une par fichier, dans l'ordre des fichiers.
 
     Issue #354 : une étiquette manquante ou dupliquée est refusée (400)
     plutôt que remplacée en silence par ``point-N`` -- l'ordre des points et
-    les segments de la réponse en dépendent.
+    les segments de la réponse en dépendent. Issue #671 : avec ``rotation``,
+    une étiquette répétée est acceptée ; ses fichiers sont les segments
+    successifs d'un même point.
     """
     logger.debug(
         "_parse_labels: labels={} file_count={}",
@@ -574,11 +581,17 @@ def _parse_labels(labels: str, file_count: int) -> list[str]:
             f"{len([lbl for lbl in label_list if lbl])} reçue(s))",
         )
     doublons = sorted({lbl for lbl in label_list if label_list.count(lbl) > 1})
-    if doublons:
+    if doublons and not rotation:
         logger.debug("_parse_labels: refus, HTTPException")
         raise HTTPException(status_code=400, detail=f"Étiquettes dupliquées : {', '.join(doublons)}")
     logger.debug("_parse_labels: retour label_list={}", summarize(label_list, "label_list"))
     return label_list
+
+
+def _points(label_list: list[str]) -> list[str]:
+    """Points distincts, dans l'ordre de leur première étiquette (issue #671)."""
+    logger.debug('_points: retour list(…)')
+    return list(dict.fromkeys(label_list))
 
 
 def _parse_points_order(points_order: str, label_list: list[str]) -> list[str] | None:
@@ -664,6 +677,7 @@ async def upload_multi_capture(
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
     split_interfaces: bool = _SPLIT_INTERFACES_FORM,
+    rotation: bool = _ROTATION_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -678,6 +692,9 @@ async def upload_multi_capture(
 
     Issue #474 lot 2 : un seul fichier est accepté, par exemple un pcapng
     multi-interfaces avec ``split_interfaces=true`` (un point par interface).
+
+    Issue #671 : ``rotation=true`` accepte une étiquette répétée, dont les
+    fichiers sont lus à la suite comme un seul point.
     """
     options = _options(
         nat_tolerant,
@@ -698,10 +715,10 @@ async def upload_multi_capture(
     if len(files) > _MAX_FILES:
         logger.debug("upload_multi_capture: si len(files) > _MAX_FILES -> levée HTTPException")
         raise HTTPException(status_code=400, detail=f"Au plus {_MAX_FILES} fichiers par requête")
-    label_list = _parse_labels(labels, len(files))
+    label_list = _parse_labels(labels, len(files), rotation)
     if not split_interfaces:
         # Sans séparation, l'ordre est validé avant de lire les fichiers.
-        order_list = _parse_points_order(points_order, label_list)
+        order_list = _parse_points_order(points_order, _points(label_list))
 
     captures: list[tuple[str, str]] = []
     try:
@@ -721,7 +738,7 @@ async def upload_multi_capture(
         captures = _split_captures(captures)
         label_list = [label for label, _path in captures]
         try:
-            order_list = _parse_points_order(points_order, label_list)
+            order_list = _parse_points_order(points_order, _points(label_list))
         except HTTPException:
             _cleanup_captures(captures)
             logger.debug("upload_multi_capture: points_order invalide après séparation -> relance")
@@ -732,6 +749,7 @@ async def upload_multi_capture(
         "labels": label_list,
         "points_order": order_list,
         "split_interfaces": split_interfaces,
+        "rotation": rotation,
     }
     logger.debug("upload_multi_capture: retour await _dispatch(captures, metadata, order_list, m…")
     return await _dispatch(captures, metadata, order_list, multi=True, wait=wait, options=options)
