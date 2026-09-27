@@ -41,7 +41,9 @@ def parse_dns_stat(text: str, application: str = "dns") -> list[ApplicationStat]
         metrics[label] = count
         raw[label] = m.group(2)
     if not metrics:
+        logger.debug("parse_dns_stat: aucune métrique DNS trouvée")
         return []
+    logger.debug("parse_dns_stat: {} métrique(s) DNS", len(metrics))
     return [
         ApplicationStat(
             application=application,

@@ -70,4 +70,5 @@ def parse_io_stat(text: str, name: str = "io_stat") -> MetricSeries:
             key = value_headers[i] if i < len(value_headers) else f"value_{i}"
             values[key] = parsed
         points.append(MetricPoint(start=start, end=end, values=values))
+    logger.debug("parse_io_stat: {} point(s) de mesure", len(points))
     return MetricSeries(name=name, points=tuple(points))

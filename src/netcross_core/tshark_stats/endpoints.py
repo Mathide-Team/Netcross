@@ -62,4 +62,5 @@ def parse_endpoints(text: str, protocol: str = "tcp") -> list[EndpointStat]:
                 **attrs,  # type: ignore[arg-type]
             )
         )
+    logger.debug("parse_endpoints: {} endpoint(s) {}", len(out), protocol)
     return out
