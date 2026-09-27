@@ -130,6 +130,7 @@ def _parse_capture_args(raw_list, flag_name):
             )
             sys.exit(1)
         captures.extend((label, path) for path in paths)
+    logger.debug("_parse_capture_args: retour captures")
     return captures
 
 
@@ -177,6 +178,7 @@ def _load_packets(scenario_name, captures, parallel, parallel_workers):
                 f"l'analyse continue sur les fichiers restants, mais le resultat est incomplet.",
                 file=sys.stderr,
             )
+        logger.debug("_load_packets: retour all_packets")
         return all_packets
 
     # Meme correction que sur l'analyzer (issue #287) : cette branche
@@ -204,6 +206,7 @@ def _load_packets(scenario_name, captures, parallel, parallel_workers):
             "l'analyse continue sur les fichiers restants, mais le resultat est incomplet.",
             file=sys.stderr,
         )
+    logger.debug("_load_packets: retour all_packets")
     return all_packets
 
 
@@ -228,6 +231,7 @@ def _parse_live_spec(spec):
         logger.exception(f"échec dans _parse_live_spec: {exc}")
         print(f"Source invalide pour --live-current {label} : {exc}", file=sys.stderr)
         sys.exit(1)
+    logger.debug("_parse_live_spec: retour tuple")
     return label, iface, bpf or None
 
 
@@ -319,6 +323,7 @@ def _run_live_captures(live_specs, duration):
     all_packets = []
     for label, _iface, _bpf in points:
         all_packets.extend(packets_by_point[label])
+    logger.debug("_run_live_captures: retour all_packets")
     return all_packets
 
 
@@ -330,6 +335,7 @@ def _analyse_packets(all_packets, points_order, args):
         summarize(args, "args"),
     )
     flows = correlate(all_packets, args.nat_tolerant, args.nat_window_ms)
+    logger.debug("_analyse_packets: retour analyse(...)")
     return analyse(
         flows,
         points_order,
@@ -360,6 +366,7 @@ def _run_scenario(name, captures, points_order, args, redactor=None):
         # adresse reelle presente des deux cotes doit obtenir le meme
         # pseudonyme, sans quoi le diff entre les deux perdrait tout son sens.
         redactor.redact(all_packets)
+    logger.debug("_run_scenario: retour tuple")
     return _analyse_packets(all_packets, points_order, args), all_packets
 
 
@@ -677,6 +684,7 @@ def main():
                 found = parse_tls_capture(label, path)
                 print(f"[{scenario_name}/{label}] {len(found)} evenements TLS trouves dans {path}")
                 events.extend(found)
+            logger.debug("_tls_findings: retour diagnose_tls(...)")
             return diagnose_tls(build_handshake_status(events), points_order)
 
         print("\n-- TLS : BASELINE --")
@@ -707,6 +715,7 @@ def main():
                 found = parse_quic_capture(label, path)
                 print(f"[{scenario_name}/{label}] {len(found)} paquets QUIC Initial trouves dans {path}")
                 events.extend(found)
+            logger.debug("_quic_findings: retour diagnose_quic(...)")
             return diagnose_quic(events, points_order)
 
         print("\n-- QUIC : BASELINE --")

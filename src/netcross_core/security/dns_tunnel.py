@@ -119,8 +119,10 @@ class DnsTunnelResult:
 def shannon_entropy(text: str) -> float:
     """Entropie de Shannon de `text`, en bits par caractere (0.0 si vide)."""
     if not text:
+        logger.debug("shannon_entropy: retour 0.0")
         return 0.0
     n = len(text)
+    logger.debug("shannon_entropy: retour valeur")
     return -sum((c / n) * math.log2(c / n) for c in Counter(text).values())
 
 
@@ -130,13 +132,16 @@ def split_domain(name: str) -> tuple[str, str]:
     generique (`co.uk`). Un nom sans sous-domaine renvoie `(nom, "")`."""
     labels = [lb for lb in name.lower().strip(".").split(".") if lb]
     if len(labels) <= 2:
+        logger.debug("split_domain: retour tuple")
         return ".".join(labels), ""
     keep = 3 if (len(labels[-1]) == 2 and labels[-2] in _GENERIC_SLDS and len(labels) > 3) else 2
+    logger.debug("split_domain: retour tuple")
     return ".".join(labels[-keep:]), ".".join(labels[:-keep])
 
 
 def _is_ignored(name: str) -> bool:
     lowered = name.lower().strip(".")
+    logger.debug("_is_ignored: retour any(...)")
     return any(lowered == s or lowered.endswith("." + s) for s in _IGNORED_SUFFIXES)
 
 
@@ -147,15 +152,18 @@ class _DomainState:
 
 
 def _frames(frames: Iterable[int | None]) -> list[int]:
+    logger.debug("_frames: retour valeur")
     return [f for f in frames if f is not None][:_MAX_FRAMES]
 
 
 def _regular_timing(timestamps: list[float], t: DnsTunnelThresholds) -> bool:
     if len(timestamps) < t.regular_min_queries:
+        logger.debug("_regular_timing: retour False")
         return False
     ordered = sorted(timestamps)
     deltas = [b - a for a, b in zip(ordered, ordered[1:], strict=False)]
     avg = mean(deltas)
+    logger.debug("_regular_timing: retour booleen")
     return avg > 0 and pstdev(deltas) / avg <= t.regular_max_cv
 
 

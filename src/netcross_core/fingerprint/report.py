@@ -62,6 +62,7 @@ def build_fingerprint_records(packets: Iterable[Pkt], known: dict | None = None)
                 pk.ssh_hassh_readable,
                 identify_tool("hassh", pk.ssh_hassh, known),
             )
+    logger.debug("build_fingerprint_records: retour sorted(...)")
     return sorted(found.values(), key=lambda e: (e["point"], e["host"], e["port"] or 0, e["fingerprint"]))
 
 
@@ -78,6 +79,7 @@ def _add(
 ) -> None:
     key = (point, host, port, service, fingerprint)
     if key in found:
+        logger.debug("_add: retour (None implicite)")
         return
     found[key] = {
         "service": service,
@@ -110,12 +112,15 @@ def compute_pkt_fingerprints(proto: str, sport: int | None, dport: int | None, p
         "ssh_hassh_readable": None,
     }
     if not payload or proto != "TCP":
+        logger.debug("compute_pkt_fingerprints: retour empty")
         return empty
     ja4 = tls_ja4.identify(payload)
     if ja4 is not None:
         empty["tls_ja4"], empty["tls_ja4_readable"] = ja4
+        logger.debug("compute_pkt_fingerprints: retour empty")
         return empty
     hassh = ssh_hassh.identify(payload, sport, dport)
     if hassh is not None:
         empty["ssh_hassh"], empty["ssh_hassh_role"], empty["ssh_hassh_readable"] = hassh
+    logger.debug("compute_pkt_fingerprints: retour empty")
     return empty

@@ -52,13 +52,18 @@ def freeze(value: Any) -> Any:
     """Copie profonde figee : dict -> MappingProxyType, list/set -> tuple,
     dataclass/objet -> vue `ReadOnlyView`. Les scalaires traversent."""
     if isinstance(value, (*_SCALARS, bytes)):
+        logger.debug("freeze: retour value")
         return value
     if isinstance(value, Mapping):
+        logger.debug("freeze: retour MappingProxyType(...)")
         return MappingProxyType({k: freeze(v) for k, v in value.items()})
     if isinstance(value, list | tuple | set | frozenset):
+        logger.debug("freeze: retour tuple(...)")
         return tuple(freeze(v) for v in value)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        logger.debug("freeze: retour ReadOnlyView(...)")
         return ReadOnlyView(value)
+    logger.debug("freeze: retour deepcopy(...)")
     return copy.deepcopy(value)
 
 
@@ -77,6 +82,7 @@ class ReadOnlyView:
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):
             raise AttributeError(name)
+        logger.debug("__getattr__: retour freeze(...)")
         return freeze(getattr(object.__getattribute__(self, "_target"), name))
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -86,6 +92,7 @@ class ReadOnlyView:
         raise PluginAccessError(f"lecture seule : impossible de supprimer {name!r}")
 
     def __repr__(self) -> str:
+        logger.debug("__repr__: retour valeur")
         return f"ReadOnlyView({type(object.__getattribute__(self, '_target')).__name__})"
 
 
@@ -99,12 +106,15 @@ class _Packets:
         self._items = items
 
     def __len__(self) -> int:
+        logger.debug("__len__: retour len(...)")
         return len(self._items)
 
     def __getitem__(self, index: int) -> ReadOnlyView:
+        logger.debug("__getitem__: retour ReadOnlyView(...)")
         return ReadOnlyView(self._items[index])
 
     def __iter__(self) -> Iterator[ReadOnlyView]:
+        logger.debug("__iter__: retour valeur")
         return (ReadOnlyView(p) for p in self._items)
 
 
@@ -123,6 +133,7 @@ class DetectorContext:
 
     @classmethod
     def build(cls, packets: list[Any], report: Any) -> DetectorContext:
+        logger.debug("build: retour cls(...)")
         return cls(
             packets=_Packets(packets),
             report=ReadOnlyView(report),
@@ -180,4 +191,5 @@ def validate_finding(raw: Any) -> dict[str, Any]:
         elif isinstance(value, float) and not math.isfinite(value):
             logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"valeur non finie pour {key!r}")
+    logger.debug("validate_finding: retour finding")
     return finding

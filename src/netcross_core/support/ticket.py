@@ -79,9 +79,11 @@ class Consent:
     source: str = "cli"  # "cli", "gui", "api" -- d'ou vient l'accord
 
     def allows(self, scope: str) -> bool:
+        logger.debug("allows: retour booleen")
         return self.granted and scope in self.scopes
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict")
         return {
             "accorde": self.granted,
             "portees": list(self.scopes),
@@ -111,6 +113,7 @@ class SupportTicket:
     self_check: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict")
         return {
             "schema_version": SCHEMA_VERSION,
             "ticket_id": self.ticket_id,
@@ -127,6 +130,7 @@ class SupportTicket:
         }
 
     def to_json(self, *, indent: int = 2) -> str:
+        logger.debug("to_json: retour dumps(...)")
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False, sort_keys=False)
 
 
@@ -141,6 +145,7 @@ def collect_environment() -> dict[str, str | None]:
     """
     logger.debug("collect_environment()")
     tshark = shutil.which("tshark")
+    logger.debug("collect_environment: retour dict")
     return {
         "systeme": platform.system(),
         "version_systeme": platform.release(),
@@ -160,6 +165,7 @@ def format_exception(exc: BaseException) -> tuple[str, str, list[str]]:
     """
     lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
     flat = [ln.rstrip("\n") for chunk in lines for ln in chunk.splitlines()]
+    logger.debug("format_exception: retour tuple")
     return type(exc).__name__, str(exc), flat
 
 
@@ -346,7 +352,9 @@ def write_support_map_csv(scrubber: TextScrubber, path: str) -> str:
 
 def _csv(value: str) -> str:
     if any(c in value for c in ',"\n'):
+        logger.debug("_csv: retour valeur")
         return '"' + value.replace('"', '""') + '"'
+    logger.debug("_csv: retour value")
     return value
 
 

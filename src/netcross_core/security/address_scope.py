@@ -26,6 +26,7 @@ TEST_NET_RANGES = (
 
 def _parse(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     try:
+        logger.debug("_parse: retour ip_address(...)")
         return ipaddress.ip_address(address)
     except ValueError:
         # appele pour chaque adresse de chaque paquet : niveau TRACE (NETCROSS_LOG_LEVEL=TRACE)
@@ -36,6 +37,7 @@ def _parse(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None
 def is_test_net(address: str) -> bool:
     """Vrai pour une adresse dans une plage TEST-NET (RFC 5737)."""
     addr = _parse(address)
+    logger.debug("is_test_net: retour booleen")
     return addr is not None and any(addr in net for net in TEST_NET_RANGES)
 
 
@@ -44,7 +46,10 @@ def is_external(address: str, *, treat_test_net_as_external: bool = False) -> bo
     TEST-NET ne le sont que si `treat_test_net_as_external`."""
     addr = _parse(address)
     if addr is None:
+        logger.debug("is_external: retour False")
         return False
     if treat_test_net_as_external and any(addr in net for net in TEST_NET_RANGES):
+        logger.debug("is_external: retour True")
         return True
+    logger.debug("is_external: retour valeur")
     return addr.is_global

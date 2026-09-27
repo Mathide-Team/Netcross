@@ -49,6 +49,7 @@ def nombre_de_lignes(listbox: _RowSource) -> int:
     nombre = 0
     while listbox.get_row_at_index(nombre) is not None:
         nombre += 1
+    logger.debug("nombre_de_lignes: retour nombre")
     return nombre
 
 
@@ -59,11 +60,13 @@ def lignes(listbox: _RowSource) -> list[Any]:
     while (row := listbox.get_row_at_index(i)) is not None:
         contenus.append(row.get_child())
         i += 1
+    logger.debug("lignes: retour contenus")
     return contenus
 
 
 def nom_de_point(nom: str, index: int) -> str:
     """Nom saisi, ou ``POINT<n>`` (n a partir de 1) si le champ est vide."""
+    logger.debug("nom_de_point: retour booleen")
     return nom or f"{PREFIXE_POINT}{index + 1}"
 
 
@@ -101,6 +104,7 @@ def deplacer_ligne(row: Any, *, vers_le_haut: bool) -> bool:
     ligne a bouge."""
     listbox = row.get_parent()
     if listbox is None:
+        logger.debug("deplacer_ligne: retour False")
         return False
     cible = indice_apres_deplacement(row.get_index(), nombre_de_lignes(listbox), vers_le_haut)
     if cible is None:
@@ -110,6 +114,7 @@ def deplacer_ligne(row: Any, *, vers_le_haut: bool) -> bool:
     listbox.remove(row)
     listbox.insert(row, cible)
     listbox.select_row(row)
+    logger.debug("deplacer_ligne: retour True")
     return True
 
 
@@ -119,11 +124,13 @@ def retirer_ligne(row: Any, on_change: Callable[[], Any] | None = None) -> bool:
     a ete retiree."""
     listbox = row.get_parent()
     if listbox is None:
+        logger.debug("retirer_ligne: retour False")
         return False
     logger.debug("retirer_ligne: retrait d'une ligne, on_change={}", on_change is not None)
     listbox.remove(row)
     if on_change is not None:
         on_change()
+    logger.debug("retirer_ligne: retour True")
     return True
 
 

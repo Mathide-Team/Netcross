@@ -105,16 +105,20 @@ def detect_file_type(data: bytes) -> str | None:
     """
     for magic, ftype in _MAGIC_BYTES:
         if data[: len(magic)] == magic:
+            logger.debug("detect_file_type: retour ftype")
             return ftype
+    logger.debug("detect_file_type: retour None")
     return None
 
 
 def _mime_to_type(content_type: str | None) -> str | None:
     """Convertit un Content-Type MIME en type simplifié."""
     if not content_type:
+        logger.debug("_mime_to_type: retour None")
         return None
     # Enlever les paramètres (charset, boundary...)
     mime = content_type.split(";")[0].strip().lower()
+    logger.debug("_mime_to_type: retour get(...)")
     return _MIME_TO_TYPE.get(mime, mime.split("/")[-1] if "/" in mime else mime)
 
 
@@ -127,11 +131,14 @@ def _hash_payload(payload_hash: str | None) -> tuple[str | None, str | None]:
     utilise le hash tel quel pour les deux champs.
     """
     if not payload_hash:
+        logger.debug("_hash_payload: retour tuple")
         return None, None
     # payload_hash est un SHA256 hex (64 chars) -- on le reporte tel quel.
     if len(payload_hash) == 64:
+        logger.debug("_hash_payload: retour tuple")
         return None, payload_hash
     # Sinon, on ne sait pas quel algo c'est -- on le met dans md5.
+    logger.debug("_hash_payload: retour tuple")
     return payload_hash, None
 
 
@@ -161,6 +168,7 @@ class ExtractionResult:
 
     @property
     def has_files(self) -> bool:
+        logger.debug("has_files: retour bool(...)")
         return bool(self.files)
 
     @property
@@ -168,6 +176,7 @@ class ExtractionResult:
         grouped: dict[str, list[ExtractedFile]] = {}
         for f in self.files:
             grouped.setdefault(f.type_detected, []).append(f)
+        logger.debug("files_by_type: retour grouped")
         return grouped
 
 
@@ -204,6 +213,7 @@ def _extract_http(packets: list[Pkt]) -> list[ExtractedFile]:
                 frame_number=pkt.frame_number,
             )
         )
+    logger.debug("_extract_http: retour files")
     return files
 
 
@@ -252,6 +262,7 @@ def _extract_email(packets: list[Pkt]) -> list[ExtractedFile]:
                 frame_number=pkt.frame_number,
             )
         )
+    logger.debug("_extract_email: retour files")
     return files
 
 
@@ -288,6 +299,7 @@ def _extract_smb(packets: list[Pkt]) -> list[ExtractedFile]:
                 frame_number=pkt.frame_number,
             )
         )
+    logger.debug("_extract_smb: retour files")
     return files
 
 
@@ -320,6 +332,7 @@ def _extract_ftp(packets: list[Pkt]) -> list[ExtractedFile]:
                 frame_number=pkt.frame_number,
             )
         )
+    logger.debug("_extract_ftp: retour files")
     return files
 
 
@@ -353,4 +366,5 @@ def detect_extracted_files(
     # Pkt ne retient pas le payload brut, donc on ne fait que les métadonnées.
     # L'écriture sur disque nécessiterait de relire le pcap avec tshark.
 
+    logger.debug("detect_extracted_files: retour ExtractionResult(...)")
     return ExtractionResult(files=files)

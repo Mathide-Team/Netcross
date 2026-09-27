@@ -82,6 +82,7 @@ class HostAsset:
     def sorted_ports(self) -> list[ExposedService]:
         """Ports exposes, tries (port, transport) -- ordre stable pour
         l'affichage et les exports (voir to_records)."""
+        logger.debug("sorted_ports: retour liste")
         return [self.ports[key] for key in sorted(self.ports)]
 
 
@@ -101,6 +102,7 @@ class AssetInventory:
     def sorted_hosts(self) -> list[HostAsset]:
         """Hotes tries par IP -- ordre stable pour l'affichage et les
         exports (voir to_records)."""
+        logger.debug("sorted_hosts: retour liste")
         return [self.hosts[ip] for ip in sorted(self.hosts)]
 
     def to_records(self) -> list[dict]:
@@ -140,6 +142,7 @@ class AssetInventory:
                     "is_new": host.ip in self.new_hosts,
                 }
             )
+        logger.debug("to_records: retour records")
         return records
 
 
@@ -159,9 +162,12 @@ def load_baseline_hosts(path: str | Path) -> set[str]:
         logger.exception("échec dans load_baseline_hosts")
         return set()
     if isinstance(data, list):
+        logger.debug("load_baseline_hosts: retour valeur")
         return {str(ip) for ip in data}
     if isinstance(data, dict) and isinstance(data.get("hosts"), list):
+        logger.debug("load_baseline_hosts: retour valeur")
         return {str(ip) for ip in data["hosts"]}
+    logger.debug("load_baseline_hosts: retour set(...)")
     return set()
 
 
@@ -170,6 +176,7 @@ def _get_or_create(hosts: dict[str, HostAsset], ip: str) -> HostAsset:
     if host is None:
         host = HostAsset(ip=ip)
         hosts[ip] = host
+    logger.debug("_get_or_create: retour host")
     return host
 
 
@@ -190,9 +197,11 @@ def _record_banner_service(host: HostAsset, pkt: Pkt) -> None:
     porte -- le logiciel annonce tourne sur pkt.src, sur le port par
     lequel il vient de repondre."""
     if not pkt.service_banners:
+        logger.debug("_record_banner_service: retour (None implicite)")
         return
     target_port = pkt.sport if pkt.sport is not None else pkt.dport
     if target_port is None:
+        logger.debug("_record_banner_service: retour (None implicite)")
         return
     transport = PROTO_TCP if pkt.proto == "TCP" else PROTO_UDP
     key = (target_port, transport)
@@ -301,4 +310,5 @@ def build_asset_inventory(all_packets: list[Pkt], baseline_hosts: set[str] | Non
     baseline = baseline_hosts or set()
     new_hosts = tuple(sorted(ip for ip in hosts if baseline and ip not in baseline))
 
+    logger.debug("build_asset_inventory: retour AssetInventory(...)")
     return AssetInventory(hosts=hosts, new_hosts=new_hosts, baseline_size=len(baseline))

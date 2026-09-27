@@ -94,11 +94,13 @@ class RtpStream:
 
     @property
     def label(self) -> str:
+        logger.debug("label: retour valeur")
         return f"{self.point} {self.src}:{self.sport} -> {self.dst}:{self.dport} ssrc=0x{self.ssrc:08x}"
 
     @property
     def file_stem(self) -> str:
         raw = f"{self.point}_{self.src}_{self.sport}-{self.dst}_{self.dport}_{self.ssrc:08x}"
+        logger.debug("file_stem: retour sub(...)")
         return re.sub(r"[^A-Za-z0-9_.-]", "-", raw)
 
 
@@ -128,6 +130,7 @@ class StreamQuality:
     note: str | None = None
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict(...)")
         return dict(self.__dict__)
 
 
@@ -138,21 +141,26 @@ def parse_rtp_header(data: bytes) -> tuple[int, int, int, int, bool, bytes] | No
     """(pt, seq, ts, ssrc, marker, charge utile) ou None si pas du RTP v2."""
     logger.debug("parse_rtp_header: data={}", summarize(data, "data"))
     if len(data) < 12 or data[0] >> 6 != 2:
+        logger.debug("parse_rtp_header: retour None")
         return None
     pt = data[1] & 0x7F
     if 72 <= pt <= 76:  # RTCP (SR/RR/SDES/BYE/APP) multiplexe
+        logger.debug("parse_rtp_header: retour None")
         return None
     hlen = 12 + (data[0] & 0x0F) * 4
     if data[0] & 0x10:  # extension d'en-tete
         if len(data) < hlen + 4:
+            logger.debug("parse_rtp_header: retour None")
             return None
         hlen += 4 + struct.unpack_from("!H", data, hlen + 2)[0] * 4
     end = len(data)
     if data[0] & 0x20:  # bourrage
         end -= data[-1]
     if hlen > end:
+        logger.debug("parse_rtp_header: retour None")
         return None
     seq, ts, ssrc = struct.unpack_from("!HII", data, 2)
+    logger.debug("parse_rtp_header: retour tuple")
     return pt, seq, ts, ssrc, bool(data[1] & 0x80), data[hlen:end]
 
 
@@ -172,6 +180,7 @@ def parse_sdp(payload: bytes) -> _SdpMap:
     logger.debug("parse_sdp: payload={}", summarize(payload, "payload"))
     out: _SdpMap = {}
     if b"a=rtpmap:" not in payload:
+        logger.debug("parse_sdp: retour out")
         return out
     session_addr: str | None = None
     media: tuple[str, int, bool] | None = None
@@ -191,6 +200,7 @@ def parse_sdp(payload: bytes) -> _SdpMap:
             entry = (codec, int(r.group(3)), kind, media[2])
             for key in ((media_addr or session_addr, media[1]), (None, None)):
                 out.setdefault(key, {})[int(r.group(1))] = entry
+    logger.debug("parse_sdp: retour out")
     return out
 
 
@@ -237,6 +247,7 @@ def collect_streams(datagrams: Iterable[tuple]) -> list[RtpStream]:
             st.codec, st.clock_rate, st.kind = static
         kept.append(st)
     kept.sort(key=lambda s: (s.point, s.packets[0].arrival))
+    logger.debug("collect_streams: retour kept")
     return kept
 
 
@@ -247,6 +258,7 @@ def _extended(packets: list[_RtpPacket]) -> list[int]:
     """Numeros de sequence etendus (bouclage a 65536 deroule)."""
     out: list[int] = []
     if not packets:
+        logger.debug("_extended: retour out")
         return out
     highest = packets[0].seq
     for p in packets:
@@ -255,18 +267,24 @@ def _extended(packets: list[_RtpPacket]) -> list[int]:
         ext = min((base - 0x10000 + p.seq, base + p.seq, base + 0x10000 + p.seq), key=lambda c: abs(c - ref))
         out.append(ext)
         highest = max(highest, ext)
+    logger.debug("_extended: retour out")
     return out
 
 
 def verdict(degradation: int | None) -> str:
     if degradation is None:
+        logger.debug("verdict: retour 'non evaluee'")
         return "non evaluee"
     if degradation < 5:
+        logger.debug("verdict: retour 'imperceptible'")
         return "imperceptible"
     if degradation < 15:
+        logger.debug("verdict: retour 'legere'")
         return "legere"
     if degradation < 35:
+        logger.debug("verdict: retour 'genante'")
         return "genante"
+    logger.debug("verdict: retour 'severe'")
     return "severe"
 
 
@@ -274,6 +292,7 @@ def _ordered_unique(st: RtpStream) -> list[tuple[int, _RtpPacket]]:
     seen: dict[int, _RtpPacket] = {}
     for ext, p in zip(_extended(st.packets), st.packets):
         seen.setdefault(ext, p)
+    logger.debug("_ordered_unique: retour sorted(...)")
     return sorted(seen.items())
 
 
@@ -336,6 +355,7 @@ def analyse_stream(st: RtpStream) -> StreamQuality:
     if st.encrypted:
         q.note = (q.note + " ; " if q.note else "") + "flux SRTP : contenu chiffre, non exportable"
     q.verdict = verdict(q.degradation)
+    logger.debug("analyse_stream: retour q")
     return q
 
 
@@ -360,6 +380,7 @@ def _video_frames(ordered: list[tuple[int, _RtpPacket]]) -> tuple[int, int]:
     if current_ts is not None:
         frames += 1
         damaged += current_bad
+    logger.debug("_video_frames: retour tuple")
     return frames, damaged
 
 
@@ -370,6 +391,7 @@ def _ulaw_sample(b: int) -> int:
     b = ~b & 0xFF
     exp, mant = (b >> 4) & 0x07, b & 0x0F
     s = (((mant << 3) + 0x84) << exp) - 0x84
+    logger.debug("_ulaw_sample: retour conditionnel")
     return -s if b & 0x80 else s
 
 
@@ -377,6 +399,7 @@ def _alaw_sample(b: int) -> int:
     b ^= 0x55
     exp, mant = (b >> 4) & 0x07, b & 0x0F
     s = (mant << 4) + 8 if exp == 0 else ((mant << 4) + 0x108) << (exp - 1)
+    logger.debug("_alaw_sample: retour conditionnel")
     return s if b & 0x80 else -s
 
 
@@ -389,6 +412,7 @@ _G711 = {
 def decode_g711(codec: str, payload: bytes) -> bytes:
     """PCM 16 bits little-endian depuis une charge utile G.711."""
     table = _G711[codec]
+    logger.debug("decode_g711: retour join(...)")
     return b"".join(table[x] for x in payload)
 
 
@@ -457,6 +481,7 @@ def depacketize_h264(ordered: Iterable[tuple[int, bytes]]) -> bytes:
             if frag is not None and fu & 0x40:
                 out += _START + frag
                 frag = None
+    logger.debug("depacketize_h264: retour bytes(...)")
     return bytes(out)
 
 
@@ -477,4 +502,5 @@ def export_stream(st: RtpStream, out_dir: Path) -> Path:
         logger.trace("export_stream: refus, ValueError")
         raise ValueError(f"{st.kind} {st.codec or 'codec inconnu'} non exporte (pris en charge : G.711, H.264)")
     path.chmod(0o600)
+    logger.debug("export_stream: retour path")
     return path

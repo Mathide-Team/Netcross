@@ -62,10 +62,13 @@ def filtre_a_l_indice(index, filtres):
     n'existe plus.
     """
     if index is None:
+        logger.debug("filtre_a_l_indice: retour None")
         return None
     position = index - DECALAGE_TITRE
     if position < 0 or position >= len(filtres):
+        logger.debug("filtre_a_l_indice: retour None")
         return None
+    logger.debug("filtre_a_l_indice: retour valeur")
     return filtres[position]
 
 
@@ -83,7 +86,9 @@ def infobulle_du_menu(index, filtres, indice_hint=None):
     """
     flt = filtre_a_l_indice(index, filtres)
     if flt is None:
+        logger.debug("infobulle_du_menu: retour indice_hint")
         return indice_hint
+    logger.debug("infobulle_du_menu: retour booleen")
     return flt.description or flt.name
 
 
@@ -120,7 +125,9 @@ def doit_desolidariser_le_menu(index, filtres, texte_du_champ):
     """
     flt = filtre_a_l_indice(index, filtres)
     if flt is None:
+        logger.debug("doit_desolidariser_le_menu: retour False")
         return False
+    logger.debug("doit_desolidariser_le_menu: retour booleen")
     return (texte_du_champ or "").strip() != flt.expression
 
 
@@ -139,6 +146,7 @@ class DemandeSauvegarde:
 
     @property
     def acceptee(self) -> bool:
+        logger.debug("acceptee: retour booleen")
         return self.filtre is not None
 
 
@@ -182,12 +190,14 @@ def indice_du_filtre_nomme(nom, filtres):
     choisirait a nouveau sans savoir s'il vient d'en creer un doublon.
     """
     if not nom:
+        logger.debug("indice_du_filtre_nomme: retour None")
         return None
     cible = nom.casefold()
     for position, flt in enumerate(filtres):
         if flt.name.casefold() == cible:
             logger.debug("indice_du_filtre_nomme: {} -> indice {}", nom, position + DECALAGE_TITRE)
             return position + DECALAGE_TITRE
+    logger.debug("indice_du_filtre_nomme: retour None")
     return None
 
 
@@ -219,6 +229,7 @@ def indice_apres_deplacement(index, nombre_de_lignes, vers_le_haut):
     (cf. lot 5).
     """
     if index is None or index < 0 or index >= nombre_de_lignes:
+        logger.debug("indice_apres_deplacement: retour None")
         return None
     logger.debug(
         "indice_apres_deplacement: index={} lignes={} vers_le_haut={}",
@@ -228,5 +239,7 @@ def indice_apres_deplacement(index, nombre_de_lignes, vers_le_haut):
     )
     cible = index - 1 if vers_le_haut else index + 1
     if cible < 0 or cible >= nombre_de_lignes:
+        logger.debug("indice_apres_deplacement: retour None")
         return None
+    logger.debug("indice_apres_deplacement: retour cible")
     return cible

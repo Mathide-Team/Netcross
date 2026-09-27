@@ -232,6 +232,7 @@ class DgaAlert:
 
     @property
     def point(self) -> str | None:
+        logger.debug("point: retour conditionnel")
         return self.points[0] if self.points else None
 
 
@@ -244,10 +245,12 @@ class DgaResult:
 
     @property
     def suspicious(self) -> bool:
+        logger.debug("suspicious: retour bool(...)")
         return bool(self.alerts)
 
 
 def _is_vowel(c: str) -> bool:
+    logger.debug("_is_vowel: retour booleen")
     return c in "aeiou"
 
 
@@ -263,7 +266,9 @@ def _consonant_ratio(text: str) -> float:
                 consonants += 1
     total = consonants + vowels
     if total == 0:
+        logger.debug("_consonant_ratio: retour 0.0")
         return 0.0
+    logger.debug("_consonant_ratio: retour valeur")
     return consonants / total
 
 
@@ -272,8 +277,10 @@ def _rare_bigram_ratio(text: str) -> float:
     text = text.lower()
     bigrams = [text[i : i + 2] for i in range(len(text) - 1) if text[i : i + 2].isalpha()]
     if not bigrams:
+        logger.debug("_rare_bigram_ratio: retour 0.0")
         return 0.0
     rare = sum(1 for bg in bigrams if bg not in _COMMON_BIGRAMS)
+    logger.debug("_rare_bigram_ratio: retour valeur")
     return rare / len(bigrams)
 
 

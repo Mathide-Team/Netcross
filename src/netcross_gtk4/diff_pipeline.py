@@ -202,6 +202,7 @@ def run_diff_pipeline(
     text = buf.getvalue()
     _log("Comparaison terminée.")
 
+    logger.debug("run_diff_pipeline: retour DiffResult(...)")
     return DiffResult(
         mode="diff",
         findings=findings,
