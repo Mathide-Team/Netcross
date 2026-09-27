@@ -286,6 +286,147 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/text:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Text
+      description: 'Rapport texte, identique à la sortie standard de ``netcross --triage``
+
+        (plus TLS, QUIC et sécurité quand ils ont été calculés). Issue #670.'
+      operationId: get_analysis_text_analyses__analysis_id__text_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/detail.csv:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Detail Csv
+      description: 'Détail par flux en CSV, identique à ``--detail-csv``. Issue #670.'
+      operationId: get_analysis_detail_csv_analyses__analysis_id__detail_csv_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/pdf:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Pdf
+      description: 'Rapport PDF, identique à ``--pdf-report`` : produit en fin d''analyse
+
+        si elle a été lancée avec ``pdf=true`` (409 sinon). Issue #670.'
+      operationId: get_analysis_pdf_analyses__analysis_id__pdf_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/pdf: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/security:
     get:
       tags:
@@ -557,6 +698,19 @@ components:
           description: Écart maximal en ms entre deux copies d'un même paquet (équivalent
             de --duplicate-threshold-ms)
           default: 1.0
+        pdf:
+          type: boolean
+          title: Pdf
+          description: 'true : produit le rapport PDF en fin d''analyse, servi par
+            GET /analyses/{id}/pdf (équivalent de --pdf-report)'
+          default: false
+        topn_charts:
+          type: integer
+          minimum: 1.0
+          title: Topn Charts
+          description: Nombre d'entrées des graphiques Top-N du PDF (équivalent de
+            --topn-charts)
+          default: 5
       type: object
       required:
       - file
@@ -647,6 +801,19 @@ components:
           description: Écart maximal en ms entre deux copies d'un même paquet (équivalent
             de --duplicate-threshold-ms)
           default: 1.0
+        pdf:
+          type: boolean
+          title: Pdf
+          description: 'true : produit le rapport PDF en fin d''analyse, servi par
+            GET /analyses/{id}/pdf (équivalent de --pdf-report)'
+          default: false
+        topn_charts:
+          type: integer
+          minimum: 1.0
+          title: Topn Charts
+          description: Nombre d'entrées des graphiques Top-N du PDF (équivalent de
+            --topn-charts)
+          default: 5
         split_interfaces:
           type: boolean
           title: Split Interfaces

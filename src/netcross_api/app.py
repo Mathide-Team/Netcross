@@ -35,9 +35,10 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.security import APIKeyHeader
 
+from netcross_api.exports import PdfUnavailableError, detail_csv, pdf_report, text_report
 from netcross_api.models import (
     AnalysisAccepted,
     AnalysisStatus,
@@ -78,6 +79,14 @@ _NAT_WINDOW_FORM = Form(
 )
 _TLS_FORM = Form(default=False, description="true : diagnostic TLS (équivalent de --tls)")
 _QUIC_FORM = Form(default=False, description="true : diagnostic QUIC/HTTP3 (équivalent de --quic)")
+_PDF_FORM = Form(
+    default=False,
+    description="true : produit le rapport PDF en fin d'analyse, servi par GET /analyses/{id}/pdf "
+    "(équivalent de --pdf-report)",
+)
+_TOPN_CHARTS_FORM = Form(
+    default=5, ge=1, description="Nombre d'entrées des graphiques Top-N du PDF (équivalent de --topn-charts)"
+)
 _SPLIT_INTERFACES_FORM = Form(
     default=False,
     description="true : un point par interface/section d'un pcapng multi-interfaces, étiqueté "
@@ -236,6 +245,9 @@ class ApiAnalysisOptions:
     detect_duplicates: bool = False
     exclude_duplicates: bool = False
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS
+    # Issue #670 : PDF produit en fin d'analyse (--pdf-report, --topn-charts).
+    pdf: bool = False
+    topn_charts: int = 5
 
 
 def _options(
@@ -296,10 +308,10 @@ def _analyse_captures(
     order_list: list[str] | None,
     multi: bool,
     options: ApiAnalysisOptions | None = None,
-) -> tuple[dict, dict, dict]:
+) -> tuple[dict, dict, dict, dict]:
     """Analyse complète (corrélation, sécurité) ; retourne le document brut,
-    le résumé et le rapport structuré (celui de ``--json-report``, issue
-    #330). Exécuté hors de la boucle asyncio."""
+    le résumé, le rapport structuré (celui de ``--json-report``, issue
+    #330) et les exports (issue #670). Exécuté hors de la boucle asyncio."""
     options = options or ApiAnalysisOptions()
     all_packets = []
     for label, path in captures:
@@ -333,6 +345,7 @@ def _analyse_captures(
             bucket_seconds=options.bucket_ms / 1000.0,
             nat_tolerant=options.nat_tolerant,
             rtp_clock_rate=options.rtp_clock_rate,
+            topn=options.topn_charts,
             idle_timeout_seconds=options.idle_timeout_seconds,
             exclude_duplicates=options.exclude_duplicates,
             duplicate_counts=duplicate_counts,
@@ -353,9 +366,10 @@ def _analyse_captures(
         meta = {"Source": "API REST"}
         if options.redact:
             meta["Anonymisation"] = "adresses IP/MAC anonymisees (redact)"
+        findings = build_findings(report)
         structured = build_json_report_document(
             report,
-            findings=build_findings(report),
+            findings=findings,
             security_report=security_report,
             tls_findings=tls_findings,
             quic_findings=quic_findings,
@@ -363,9 +377,19 @@ def _analyse_captures(
         )
         if options.redact:
             structured["security_report_absent"] = "non disponible avec l'anonymisation (redact=true)"
+        # Issue #670 : exports produits tant que Report et flux sont en mémoire.
+        export_docs: dict = {
+            "text": text_report(report, findings, security_report, tls_findings, quic_findings),
+            "detail_csv": detail_csv(flows, list(report.points)),
+        }
+        if options.pdf:
+            export_docs["pdf"] = pdf_report(report, findings, security_report, tls_findings, quic_findings, meta)
     except AnalysisError:
         logger.debug("_analyse_captures: except AnalysisError -> relance de l'exception en cours")
         raise
+    except PdfUnavailableError as exc:
+        logger.warning("pdf demandé mais indisponible : {}", exc)
+        raise AnalysisError(str(exc)) from exc
     except Exception as exc:
         logger.exception("échec de l'analyse des captures")
         raise AnalysisError(f"Erreur d'analyse: {exc}") from exc
@@ -379,8 +403,8 @@ def _analyse_captures(
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
-    logger.debug("_analyse_captures: retour tuple de 3")
-    return report_document(report), summary, structured
+    logger.debug("_analyse_captures: retour tuple de 4")
+    return report_document(report), summary, structured, export_docs
 
 
 _SPLIT_PREFIX = "netcross-api-split-"
@@ -437,7 +461,7 @@ def _run_job(
 ) -> None:
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
-        document, summary, structured = _analyse_captures(captures, order_list, multi, options)
+        document, summary, structured, export_docs = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
         store.fail(analysis_id, str(exc))
@@ -445,7 +469,7 @@ def _run_job(
         logger.exception("analyse {} : erreur interne", analysis_id)
         store.fail(analysis_id, f"Erreur interne: {exc}")
     else:
-        store.complete(analysis_id, document, summary, report=structured)
+        store.complete(analysis_id, document, summary, report=structured, exports=export_docs)
     finally:
         _cleanup_captures(captures)
     logger.debug("_run_job: fin")
@@ -518,6 +542,8 @@ async def upload_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    pdf: bool = _PDF_FORM,
+    topn_charts: int = _TOPN_CHARTS_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -543,6 +569,8 @@ async def upload_capture(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        pdf=pdf,
+        topn_charts=topn_charts,
     )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
@@ -663,6 +691,8 @@ async def upload_multi_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    pdf: bool = _PDF_FORM,
+    topn_charts: int = _TOPN_CHARTS_FORM,
     split_interfaces: bool = _SPLIT_INTERFACES_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
@@ -691,6 +721,8 @@ async def upload_multi_capture(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        pdf=pdf,
+        topn_charts=topn_charts,
     )
     if not files:
         logger.debug("upload_multi_capture: si not files -> levée HTTPException")
@@ -805,6 +837,69 @@ async def get_analysis_report(analysis_id: str, _auth: None = Depends(_verify_ap
     doc["_analysis_id"] = analysis_id
     logger.debug("get_analysis_report: retour JSONResponse(…)")
     return JSONResponse(content=doc)
+
+
+def _export(analysis_id: str, nom: str, absent: str):
+    """Export ``nom`` d'une analyse terminée (issue #670) ; 409 s'il manque."""
+    entry = _completed_entry(analysis_id)
+    contenu = (entry.get("exports") or {}).get(nom)
+    if contenu is None:
+        logger.debug("_export: si export absent -> levée HTTPException")
+        raise HTTPException(status_code=409, detail=f"Analyse {analysis_id} : {absent}")
+    logger.debug("_export: retour contenu={}", summarize(contenu, "contenu"))
+    return contenu
+
+
+_EXPORT_RELANCER = "enregistree avant les exports (version anterieure) : la relancer"
+
+
+@app.get(
+    "/analyses/{analysis_id}/text",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/plain": {}}}},
+    response_class=PlainTextResponse,
+)
+async def get_analysis_text(analysis_id: str, _auth: None = Depends(_verify_api_key)) -> PlainTextResponse:
+    """Rapport texte, identique à la sortie standard de ``netcross --triage``
+    (plus TLS, QUIC et sécurité quand ils ont été calculés). Issue #670."""
+    contenu = _export(analysis_id, "text", _EXPORT_RELANCER)
+    logger.debug("get_analysis_text: retour PlainTextResponse(…)")
+    return PlainTextResponse(contenu, media_type="text/plain; charset=utf-8")
+
+
+@app.get(
+    "/analyses/{analysis_id}/detail.csv",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+    response_class=Response,
+)
+async def get_analysis_detail_csv(analysis_id: str, _auth: None = Depends(_verify_api_key)) -> Response:
+    """Détail par flux en CSV, identique à ``--detail-csv``. Issue #670."""
+    contenu = _export(analysis_id, "detail_csv", _EXPORT_RELANCER)
+    logger.debug("get_analysis_detail_csv: retour Response(…)")
+    return Response(
+        content=contenu,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-detail.csv"'},
+    )
+
+
+@app.get(
+    "/analyses/{analysis_id}/pdf",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"application/pdf": {}}}},
+    response_class=Response,
+)
+async def get_analysis_pdf(analysis_id: str, _auth: None = Depends(_verify_api_key)) -> Response:
+    """Rapport PDF, identique à ``--pdf-report`` : produit en fin d'analyse
+    si elle a été lancée avec ``pdf=true`` (409 sinon). Issue #670."""
+    contenu = _export(analysis_id, "pdf", "PDF non demande : relancer l'analyse avec pdf=true")
+    logger.debug("get_analysis_pdf: retour Response(…)")
+    return Response(
+        content=contenu,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}.pdf"'},
+    )
 
 
 @app.get(

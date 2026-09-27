@@ -82,6 +82,10 @@ _COLONNES = {
     "structured_json": "TEXT",
     "summary_json": "TEXT",
     "error": "TEXT",
+    # Issue #670 : exports texte, CSV du détail et PDF.
+    "text_report": "TEXT",
+    "detail_csv": "TEXT",
+    "pdf": "BLOB",
     "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
 }
 
@@ -117,6 +121,7 @@ class AnalysesStore:
             "report": None,
             "summary": None,
             "error": None,
+            "exports": {},
         }
         with self._lock:
             self._store[analysis_id] = entry
@@ -124,10 +129,26 @@ class AnalysesStore:
         logger.debug("AnalysesStore.create_pending: retour analysis_id={}", summarize(analysis_id, "analysis_id"))
         return analysis_id
 
-    def complete(self, analysis_id: str, document: dict, summary: dict, report: dict | None = None) -> None:
+    def complete(
+        self,
+        analysis_id: str,
+        document: dict,
+        summary: dict,
+        report: dict | None = None,
+        exports: dict | None = None,
+    ) -> None:
         """Passe l'analyse en ``completed`` avec son document brut, son
-        résumé et son rapport structuré (celui de ``--json-report``)."""
-        self._update(analysis_id, status=COMPLETED, document=document, report=report, summary=summary, error=None)
+        résumé, son rapport structuré (celui de ``--json-report``) et ses
+        exports (issue #670 : ``text``, ``detail_csv``, ``pdf``)."""
+        self._update(
+            analysis_id,
+            status=COMPLETED,
+            document=document,
+            report=report,
+            summary=summary,
+            error=None,
+            exports=dict(exports or {}),
+        )
         logger.debug("AnalysesStore.complete: fin")
 
     def fail(self, analysis_id: str, error: str) -> None:
@@ -195,10 +216,14 @@ class AnalysesStore:
         interrompues = []
         with closing(self._connect()) as conn, conn:
             rows = conn.execute(
-                "SELECT id, status, metadata, document_json, structured_json, summary_json, error"
-                " FROM analyses ORDER BY created_at"
+                "SELECT id, status, metadata, document_json, structured_json, summary_json, error,"
+                " text_report, detail_csv, pdf FROM analyses ORDER BY created_at"
             ).fetchall()
-        for analysis_id, status, metadata, document_json, structured_json, summary_json, error in rows:
+        for row in rows:
+            analysis_id, status, metadata, document_json, structured_json, summary_json, error = row[:7]
+            exports = {
+                nom: valeur for nom, valeur in zip(("text", "detail_csv", "pdf"), row[7:], strict=True) if valeur
+            }
             entry = {
                 "status": status if status in STATUTS else FAILED,
                 "metadata": json.loads(metadata or "{}"),
@@ -206,6 +231,7 @@ class AnalysesStore:
                 "report": json.loads(structured_json) if structured_json else None,
                 "summary": json.loads(summary_json) if summary_json else None,
                 "error": error,
+                "exports": exports,
             }
             if entry["status"] == PENDING:
                 entry.update(status=FAILED, error=ERREUR_INTERROMPUE)
@@ -224,14 +250,17 @@ class AnalysesStore:
         if not self._db_path:
             logger.debug("AnalysesStore._persist: si not self._db_path -> retour")
             return
+        exports = entry.get("exports") or {}
         with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
-                INSERT INTO analyses (id, status, metadata, document_json, structured_json, summary_json, error)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO analyses (id, status, metadata, document_json, structured_json, summary_json, error,
+                    text_report, detail_csv, pdf)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET status = excluded.status, metadata = excluded.metadata,
                     document_json = excluded.document_json, structured_json = excluded.structured_json,
-                    summary_json = excluded.summary_json, error = excluded.error
+                    summary_json = excluded.summary_json, error = excluded.error,
+                    text_report = excluded.text_report, detail_csv = excluded.detail_csv, pdf = excluded.pdf
                 """,
                 (
                     analysis_id,
@@ -241,6 +270,9 @@ class AnalysesStore:
                     json.dumps(entry["report"], ensure_ascii=False) if entry.get("report") is not None else None,
                     json.dumps(entry["summary"], ensure_ascii=False) if entry["summary"] is not None else None,
                     entry["error"],
+                    exports.get("text"),
+                    exports.get("detail_csv"),
+                    exports.get("pdf"),
                 ),
             )
         logger.debug("AnalysesStore._persist: fin")
