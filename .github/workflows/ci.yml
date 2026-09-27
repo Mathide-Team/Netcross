@@ -1,5 +1,18 @@
 name: CI
 
+# Issue #463 : concentration des workflows. Anciennement trois workflows
+# parallèles (ci.yml, docs.yml, i18n.yml) se déclenchaient sur les mêmes
+# push/PR vers main/dev. Ils sont fusionnés ici en un seul, réduisant le
+# nombre de runs simultanés et le temps d'attente des checks requis.
+#
+# Jobs :
+#   quality     — lint, format, import-linter, tests (check requis)
+#   gtk4        — tests GTK4 sous Xvfb (check requis)
+#   packaging   — construction + test de fumée deb/rpm (check requis)
+#   types       — mypy (non bloquant, continue-on-error)
+#   documentation — mkdocs build --strict (check requis, ex docs.yml)
+#   i18n        — catalogues gettext à jour et valides (ex i18n.yml check)
+
 "on":
   push:
     branches: [main, dev]
@@ -256,3 +269,80 @@ jobs:
             build-rpm/dist/*.rpm
           retention-days: 7
           if-no-files-found: warn
+
+  documentation:
+    # Ex docs.yml (issue #282). Check requis par la protection de dev :
+    # le nom du job doit rester « Construction (mkdocs build --strict) ».
+    # Pas de if: -- check_branch_protection.py --hors-ligne ignore les jobs
+    # conditionnels.
+    name: Construction (mkdocs build --strict)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v7
+
+      - name: Installation de Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Installation de mkdocs-material
+        run: pip install mkdocs-material pymdown-extensions
+
+      - name: Construction (strict -- échoue sur lien mort)
+        run: mkdocs build --strict
+
+      - name: Upload de l'artefact (site HTML)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mkdocs-site
+          path: site/
+
+  i18n:
+    # Ex i18n.yml check (issue #299). Vérifie que les catalogues de traduction
+    # gettext sont à jour avec les sources, valides et compilables.
+    # Non requis par la protection de dev : peut avoir un if: de filtre, mais
+    # les fichiers concernés (src/**/*.py, lang/**) couvrent la majeure partie
+    # du code, donc le job tourne sur toutes les PR/push.
+    name: i18n (catalogues à jour)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du dépôt (historique complet pour le diff)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Installation de Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Installer gettext
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gettext
+
+      - name: Catalogues à jour et valides
+        id: sync
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+        run: ./scripts/i18n-update.sh --check
+
+      - name: Compilation de toutes les locales
+        run: ./scripts/i18n-update.sh --compile "$RUNNER_TEMP/locale"
+
+      - name: Résumé
+        if: always()
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          since=()
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then since=(--since "$BASE"); fi
+          python3 scripts/i18n_report.py --compiled "$RUNNER_TEMP/locale" "${since[@]}"
+          python3 scripts/i18n_report.py --markdown --compiled "$RUNNER_TEMP/locale" "${since[@]}" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/i18n_report.py --strict > /dev/null
+
+      - name: Catalogues désynchronisés
+        if: steps.sync.outcome == 'failure'
+        run: echo "::warning::catalogues à régénérer -- le job update ouvre la PR de mise à jour"
