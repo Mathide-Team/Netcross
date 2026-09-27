@@ -159,6 +159,7 @@ def _ylabel(series: MetricSeries) -> str:
 
 
 def _save(fig, path: str) -> str:
+    logger.debug("_save: fig={} path={}", summarize(fig, "fig"), summarize(path, "path"))
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -168,6 +169,7 @@ def _save(fig, path: str) -> str:
 def render_line(series: MetricSeries, path: str) -> str | None:
     """Trace une courbe lineaire. Retourne le chemin PNG ou None si
     la serie est vide."""
+    logger.debug("render_line: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -185,6 +187,7 @@ def render_line(series: MetricSeries, path: str) -> str | None:
 def render_area(series: MetricSeries, path: str) -> str | None:
     """Trace une aire remplie sous la courbe. Retourne le chemin PNG
     ou None si la serie est vide."""
+    logger.debug("render_area: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -203,6 +206,7 @@ def render_area(series: MetricSeries, path: str) -> str | None:
 def render_bars(series: MetricSeries, path: str) -> str | None:
     """Trace un diagramme en barres. Utilise labels si fournis, sinon
     des index. Retourne le chemin PNG ou None si la serie est vide."""
+    logger.debug("render_bars: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -223,6 +227,7 @@ def render_histogram(series: MetricSeries, path: str) -> str | None:
     """Trace un histogramme (distribution) des valeurs. Ignore
     timestamps et labels. Retourne le chemin PNG ou None si la serie
     est vide ou contient moins de 2 valeurs distinctes."""
+    logger.debug("render_histogram: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -241,6 +246,7 @@ def render_histogram(series: MetricSeries, path: str) -> str | None:
 def render_scatter(series: MetricSeries, path: str) -> str | None:
     """Trace un nuage de points. Utilise timestamps si fournis, sinon
     des index. Retourne le chemin PNG ou None si la serie est vide."""
+    logger.debug("render_scatter: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
