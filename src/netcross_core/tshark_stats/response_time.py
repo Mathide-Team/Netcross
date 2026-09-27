@@ -27,6 +27,7 @@ _LABELED_RE = re.compile(r"^\s*(.+?)\s{2,}([\d.,]+)\s*$")
 
 def _match(label: str, *keywords: str) -> bool:
     low = label.lower()
+    logger.debug("_match: retour any(…)")
     return any(kw in low for kw in keywords)
 
 

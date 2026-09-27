@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 
 def _metric_pmtud_blackhole_total(report) -> float:
     """Nombre total de noirs PMTUD detectes, tous segments confondus."""
+    logger.debug("_metric_pmtud_blackhole_total: retour float(…)")
     return float(sum(report.pmtud_blackhole.values()))
 
 
@@ -36,7 +37,9 @@ def _metric_loss_rate_pct(report) -> float:
     volume)."""
     seen = sum(report.seen_count.values())
     if not seen:
+        logger.debug("_metric_loss_rate_pct: si not seen -> retour 0.0")
         return 0.0
+    logger.debug("_metric_loss_rate_pct: retour sum(report.loss_count.values()) / seen * 100.0")
     return sum(report.loss_count.values()) / seen * 100.0
 
 
@@ -46,7 +49,9 @@ def _metric_tcp_retransmission_rate_pct(report) -> float:
     indicateur de sante du chemin. Agrege sur tous les points."""
     total_segments = sum(report.tcp_total_segments.values()) if hasattr(report, "tcp_total_segments") else 0
     if not total_segments:
+        logger.debug("_metric_tcp_retransmission_rate_pct: si not total_segments -> retour 0.0")
         return 0.0
+    logger.debug("_metric_tcp_retransmission_rate_pct: retour sum(report.tcp_retransmissions.values()) / total_…")
     return sum(report.tcp_retransmissions.values()) / total_segments * 100.0
 
 
@@ -55,7 +60,9 @@ def _metric_avg_rtt_ms(report) -> float:
     cle de performance. Moyenne sur tous les segments."""
     values = [v for v in report.rtt_ms.values() if v and v > 0] if hasattr(report, "rtt_ms") else []
     if not values:
+        logger.debug("_metric_avg_rtt_ms: si not values -> retour 0.0")
         return 0.0
+    logger.debug("_metric_avg_rtt_ms: retour sum(values) / len(values)")
     return sum(values) / len(values)
 
 
@@ -67,7 +74,9 @@ def _metric_throughput_mbps(report) -> float:
         max(report.capture_duration.values()) if hasattr(report, "capture_duration") and report.capture_duration else 0
     )
     if duration <= 0:
+        logger.debug("_metric_throughput_mbps: si duration <= 0 -> retour 0.0")
         return 0.0
+    logger.debug("_metric_throughput_mbps: retour total_bytes * 8 / 1000000 / duration")
     return total_bytes * 8 / 1_000_000 / duration
 
 
@@ -76,7 +85,9 @@ def _metric_latency_ms(report) -> float:
     bout est une metrique SLO fondamentale. Moyenne sur tous les segments."""
     values = [v for v in report.latency_ms.values() if v and v > 0] if hasattr(report, "latency_ms") else []
     if not values:
+        logger.debug("_metric_latency_ms: si not values -> retour 0.0")
         return 0.0
+    logger.debug("_metric_latency_ms: retour sum(values) / len(values)")
     return sum(values) / len(values)
 
 
@@ -85,7 +96,9 @@ def _metric_jitter_ms(report) -> float:
     est une metrique SLO. Moyenne sur tous les segments."""
     values = [v for v in report.jitter_ms.values() if v and v > 0] if hasattr(report, "jitter_ms") else []
     if not values:
+        logger.debug("_metric_jitter_ms: si not values -> retour 0.0")
         return 0.0
+    logger.debug("_metric_jitter_ms: retour sum(values) / len(values)")
     return sum(values) / len(values)
 
 

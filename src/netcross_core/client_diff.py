@@ -122,6 +122,7 @@ def _build_signature(packets):
             sig.dhcp_vendor_classes[pk.dhcp_vendor_class] += 1
         if pk.sip_user_agent:
             sig.sip_user_agents[pk.sip_user_agent] += 1
+    logger.debug("_build_signature: retour sig={}", summarize(sig, "sig"))
     return sig
 
 
@@ -143,6 +144,7 @@ def build_client_report(
     Report deviendraient incomparables entre eux."""
     flows = correlate(packets, nat_tolerant, nat_window_ms)
     report = analyse(flows, points_order, packets, bucket_seconds, nat_tolerant, rtp_clock_rate)
+    logger.debug("build_client_report: retour ClientReport(…)")
     return ClientReport(
         client=client,
         ips=tuple(sorted(ips)),
@@ -243,6 +245,7 @@ def _print_signature(sig, indent="  "):
     if sig.sip_user_agents:
         top = sig.sip_user_agents.most_common(3)
         print(f"{indent}SIP User-Agent    : " + ", ".join(f"{v} ({n})" for v, n in top))
+    logger.debug("_print_signature: fin")
 
 
 def print_client_comparison(result: ClientComparisonResult) -> None:
@@ -278,6 +281,7 @@ def print_client_comparison(result: ClientComparisonResult) -> None:
             before = "n/a" if f.before is None else f"{f.before:.2f}"
             after = "n/a" if f.after is None else f"{f.after:.2f}"
             print(f"    {marker} [{f.category}] {f.segment} : {f.message} (reference={before}, {name}={after})")
+    logger.debug("print_client_comparison: fin")
 
 
 def write_client_diff_csv(result: ClientComparisonResult, path: str) -> None:
