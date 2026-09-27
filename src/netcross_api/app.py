@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
@@ -56,6 +57,8 @@ from netcross_core.security.findings import apply_security_findings, scan_captur
 from netcross_report.json_report import build_json_report_document
 from netcross_report.security_report import build_security_report
 from netcross_report.synthesis import build_findings
+from pcap_parser.capture import split_by_interface
+from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
 
 logger = get_logger(__name__)
 # Singleton pour éviter B008 (File() in argument defaults).
@@ -75,6 +78,11 @@ _NAT_WINDOW_FORM = Form(
 )
 _TLS_FORM = Form(default=False, description="true : diagnostic TLS (équivalent de --tls)")
 _QUIC_FORM = Form(default=False, description="true : diagnostic QUIC/HTTP3 (équivalent de --quic)")
+_SPLIT_INTERFACES_FORM = Form(
+    default=False,
+    description="true : un point par interface/section d'un pcapng multi-interfaces, étiqueté "
+    "ETIQUETTE:INTERFACE (équivalent de --split-interfaces) ; `points_order` cite alors ces étiquettes",
+)
 _REDACT_FORM = Form(
     default=False,
     description="true : anonymise les adresses IP/MAC avant analyse (équivalent de --redact) ; "
@@ -375,6 +383,51 @@ def _analyse_captures(
     return report_document(report), summary, structured
 
 
+_SPLIT_PREFIX = "netcross-api-split-"
+
+
+def _cleanup_captures(captures: list[tuple[str, str]]) -> None:
+    """Supprime les fichiers temporaires des captures, et le répertoire de
+    travail de ``split_interfaces`` qui les contient (issue #474 lot 2)."""
+    logger.debug("_cleanup_captures: captures={}", summarize(captures, "captures"))
+    for _label, path in captures:
+        Path(path).unlink(missing_ok=True)
+        if Path(path).parent.name.startswith(_SPLIT_PREFIX):
+            shutil.rmtree(Path(path).parent, ignore_errors=True)
+    logger.debug("_cleanup_captures: fin")
+
+
+def _split_captures(captures: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """split_interfaces (issue #474 lot 2) : comme ``--split-interfaces`` de la
+    CLI, remplace chaque fichier qui contient plusieurs captures (interfaces
+    ou sections pcapng) par un point ``ETIQUETTE:INTERFACE`` par capture. Un
+    fichier à une seule capture est gardé tel quel. Les fichiers extraits
+    vont dans un répertoire temporaire supprimé avec eux en fin d'analyse ;
+    le fichier d'origine est supprimé dès qu'il a été séparé."""
+    logger.debug("_split_captures: captures={}", summarize(captures, "captures"))
+    expanded: list[tuple[str, str]] = []
+    for index, (label, path) in enumerate(captures):
+        workdir = tempfile.mkdtemp(prefix=_SPLIT_PREFIX)
+        try:
+            slices = split_by_interface(path, workdir)
+        except (OSError, TsharkNotFoundError, TsharkError) as exc:
+            shutil.rmtree(workdir, ignore_errors=True)
+            # Tout ce qui a déjà été reçu ou séparé est supprimé.
+            _cleanup_captures(expanded + captures[index:])
+            logger.debug("_split_captures: except -> levée HTTPException")
+            raise HTTPException(
+                status_code=400, detail=f"{label} : séparation des interfaces impossible ({exc})"
+            ) from exc
+        if len(slices) <= 1:
+            shutil.rmtree(workdir, ignore_errors=True)
+            expanded.append((label, path))
+            continue
+        Path(path).unlink(missing_ok=True)
+        expanded.extend((f"{label}:{s.name}", str(s.path)) for s in slices)
+    logger.debug("_split_captures: retour expanded={}", summarize(expanded, "expanded"))
+    return expanded
+
+
 def _run_job(
     analysis_id: str,
     captures: list[tuple[str, str]],
@@ -394,8 +447,7 @@ def _run_job(
     else:
         store.complete(analysis_id, document, summary, report=structured)
     finally:
-        for _label, path in captures:
-            Path(path).unlink(missing_ok=True)
+        _cleanup_captures(captures)
     logger.debug("_run_job: fin")
 
 
@@ -611,6 +663,7 @@ async def upload_multi_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    split_interfaces: bool = _SPLIT_INTERFACES_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -622,6 +675,9 @@ async def upload_multi_capture(
     amont -> aval, sinon il est déduit du trafic. Le résumé (``?wait=true``
     ou ``/status``) détaille les pertes et le délai de chaque segment.
     Options d'analyse : comme ``POST /captures`` (issue #330).
+
+    Issue #474 lot 2 : un seul fichier est accepté, par exemple un pcapng
+    multi-interfaces avec ``split_interfaces=true`` (un point par interface).
     """
     options = _options(
         nat_tolerant,
@@ -636,14 +692,16 @@ async def upload_multi_capture(
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
     )
-    if not files or len(files) < 2:
-        logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
-        raise HTTPException(status_code=400, detail="Au moins 2 fichiers sont requis pour l'analyse multi-points")
+    if not files:
+        logger.debug("upload_multi_capture: si not files -> levée HTTPException")
+        raise HTTPException(status_code=400, detail="Au moins 1 fichier est requis")
     if len(files) > _MAX_FILES:
         logger.debug("upload_multi_capture: si len(files) > _MAX_FILES -> levée HTTPException")
         raise HTTPException(status_code=400, detail=f"Au plus {_MAX_FILES} fichiers par requête")
     label_list = _parse_labels(labels, len(files))
-    order_list = _parse_points_order(points_order, label_list)
+    if not split_interfaces:
+        # Sans séparation, l'ordre est validé avant de lire les fichiers.
+        order_list = _parse_points_order(points_order, label_list)
 
     captures: list[tuple[str, str]] = []
     try:
@@ -659,7 +717,22 @@ async def upload_multi_capture(
         logger.debug("upload_multi_capture: except BaseException -> relance de l'exception en cours")
         raise
 
-    metadata = {"files": [f.filename for f in files], "labels": label_list, "points_order": order_list}
+    if split_interfaces:
+        captures = _split_captures(captures)
+        label_list = [label for label, _path in captures]
+        try:
+            order_list = _parse_points_order(points_order, label_list)
+        except HTTPException:
+            _cleanup_captures(captures)
+            logger.debug("upload_multi_capture: points_order invalide après séparation -> relance")
+            raise
+
+    metadata = {
+        "files": [f.filename for f in files],
+        "labels": label_list,
+        "points_order": order_list,
+        "split_interfaces": split_interfaces,
+    }
     logger.debug("upload_multi_capture: retour await _dispatch(captures, metadata, order_list, m…")
     return await _dispatch(captures, metadata, order_list, multi=True, wait=wait, options=options)
 

@@ -84,7 +84,12 @@ def test_metadonnees_conservees():
     analysis_id = _post().json()["analysis_id"]
     meta = store.get(analysis_id)["metadata"]
     options = meta.pop("options")  # issue #330 : options d'analyse retenues
-    assert meta == {"files": ["lan.pcap", "dc.pcap"], "labels": ["LAN", "DC"], "points_order": ["LAN", "DC"]}
+    assert meta == {
+        "files": ["lan.pcap", "dc.pcap"],
+        "labels": ["LAN", "DC"],
+        "points_order": ["LAN", "DC"],
+        "split_interfaces": False,
+    }
     assert options["nat_tolerant"] is False and options["redact"] is False
 
 
@@ -107,10 +112,97 @@ def test_etiquettes_et_ordre_invalides_refuses(labels, points_order, fragment):
     assert store.list_ids() == []
 
 
-def test_un_seul_fichier_refuse():
+def test_un_seul_fichier_accepte_capture_unique():
+    # Issue #474 lot 2 : une capture seule, sans analyse croisée.
     response = _post(labels="LAN", points_order=None, noms=("lan.pcap",))
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["points"] == ["LAN"]
+    assert body["segments"] == []
+
+
+def test_aucun_fichier_refuse():
+    response = client.post("/captures/multi?wait=true", data={"labels": ""})
+    assert response.status_code in (400, 422)
+
+
+def _tranches(monkeypatch, noms=("eth0", "eth1"), echec=None):
+    from pcap_parser.capture import InterfaceSlice
+
+    appels = []
+
+    def faux_split(path, output_dir):
+        appels.append((path, output_dir))
+        if echec is not None:
+            raise echec
+        tranches = []
+        for i, nom in enumerate(noms):
+            cible = f"{output_dir}/{nom}.pcapng"
+            with open(cible, "wb") as fh:
+                fh.write(b"x")
+            tranches.append(InterfaceSlice(section=0, interface_id=i, name=nom, packets=1, path=cible))
+        return tranches
+
+    monkeypatch.setattr(api_module, "split_by_interface", faux_split)
+    return appels
+
+
+def test_split_interfaces_un_point_par_interface(monkeypatch):
+    import os
+
+    appels = _tranches(monkeypatch)
+    PAQUETS["SW:eth0"] = [make_pkt(point="SW:eth0", sport=2, ts=1000.0)]
+    PAQUETS["SW:eth1"] = [make_pkt(point="SW:eth1", sport=2, ts=1000.004)]
+    try:
+        files = [("files", ("sw.pcapng", b"\x0a\x0d\x0d\x0a" + b"\x00" * 20, "application/octet-stream"))]
+        data = {"labels": "SW", "split_interfaces": "true", "points_order": "SW:eth0,SW:eth1"}
+        response = client.post("/captures/multi?wait=true", files=files, data=data)
+    finally:
+        del PAQUETS["SW:eth0"], PAQUETS["SW:eth1"]
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["points"] == ["SW:eth0", "SW:eth1"]
+    assert body["order_source"] == "points_order"
+    ((origine, repertoire),) = appels
+    assert not os.path.exists(origine)
+    assert not os.path.exists(repertoire)
+
+
+def test_split_interfaces_ordre_valide_apres_separation(monkeypatch):
+    import os
+
+    appels = _tranches(monkeypatch)
+    files = [("files", ("sw.pcapng", b"\x00" * 24, "application/octet-stream"))]
+    data = {"labels": "SW", "split_interfaces": "true", "points_order": "SW"}
+    response = client.post("/captures/multi?wait=true", files=files, data=data)
     assert response.status_code == 400
-    assert "Au moins 2 fichiers" in response.json()["detail"]
+    assert "inconnue(s)" in response.json()["detail"] or "absente(s)" in response.json()["detail"]
+    ((_origine, repertoire),) = appels
+    assert not os.path.exists(repertoire)
+    assert store.list_ids() == []
+
+
+def test_split_interfaces_echec_de_separation_400(monkeypatch):
+    import os
+
+    from pcap_parser.ek_source import TsharkError
+
+    appels = _tranches(monkeypatch, echec=TsharkError("illisible"))
+    files = [("files", ("sw.pcapng", b"\x00" * 24, "application/octet-stream"))]
+    response = client.post("/captures/multi?wait=true", files=files, data={"labels": "SW", "split_interfaces": "true"})
+    assert response.status_code == 400
+    assert "séparation des interfaces impossible" in response.json()["detail"]
+    ((origine, repertoire),) = appels
+    assert not os.path.exists(origine)
+    assert not os.path.exists(repertoire)
+
+
+def test_split_interfaces_une_seule_capture_garde_l_etiquette(monkeypatch):
+    _tranches(monkeypatch, noms=("eth0",))
+    files = [("files", ("lan.pcapng", b"\x00" * 24, "application/octet-stream"))]
+    response = client.post("/captures/multi?wait=true", files=files, data={"labels": "LAN", "split_interfaces": "true"})
+    assert response.status_code == 201, response.text
+    assert response.json()["points"] == ["LAN"]
 
 
 def test_capture_vide_refusee(monkeypatch):

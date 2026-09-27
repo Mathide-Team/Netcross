@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-160 modules · 243 classes · 550 fonctions publiques de module.
+160 modules · 243 classes · 551 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -38,9 +38,10 @@ flowchart TD
     CLI -->|"6 imports"| pcap_parser
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
-    netcross_gtk4 -->|"2 imports"| pcap_parser
+    netcross_gtk4 -->|"4 imports"| pcap_parser
     netcross_api -->|"3 imports"| netcross_report
     netcross_api -->|"10 imports"| netcross_core
+    netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"32 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
@@ -3762,7 +3763,7 @@ classDiagram
         +health() HealthResponse
         +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, split_interfaces, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
@@ -3910,6 +3911,7 @@ classDiagram
         +bool detect_duplicates
         +bool exclude_duplicates
         +float duplicate_threshold_ms
+        +bool split_interfaces
     }
     class AnalysisResult {
         <<dataclass>>
@@ -3927,6 +3929,7 @@ classDiagram
         <<module>>
         +load_packets(captures, parallel, on_progress) list
         +run_analysis_pipeline(captures, options, on_progress) AnalysisResult
+        +expand_split_interfaces(captures, workdir, log) list~tuple~str, str~~
         +run_security_analysis(report, all_packets, captures, log)
     }
 
