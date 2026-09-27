@@ -167,3 +167,60 @@ def test_export_csv_utilise_la_table_des_noms(window, monkeypatch, tmp_path):
     window._on_csv_path_chosen(_Dialogue(), None)
     assert recu["names"] == "table"
     window.names_table = None
+
+
+# --- Issue #330, écart 4 : triage des écarts en mode comparaison -----------
+
+
+def test_diff_options_triage_defauts_cli():
+    from netcross_gtk4.diff_pipeline import DiffOptions
+
+    options = DiffOptions()
+    assert options.triage is False
+    assert options.triage_topn == 5
+
+
+def test_diff_pipeline_triage_ajoute_le_classement(monkeypatch):
+    import netcross_report
+
+    _espions(monkeypatch, diff_mod)
+    appels = {}
+
+    def faux_print_triage(ranked, top_n):
+        appels["top_n"] = top_n
+        print("TRIAGE-FAUX")
+
+    monkeypatch.setattr(netcross_report, "print_triage", faux_print_triage)
+    opts = DiffOptions(parallel=False, triage=True, triage_topn=3)
+    result = run_diff_pipeline([("A", "/x/a.pcap")], [("A", "/x/a2.pcap")], opts)
+    assert appels["top_n"] == 3
+    assert "TRIAGE-FAUX" in result.text
+    assert "Score de sante" in result.text
+
+
+def test_diff_pipeline_sans_triage_par_defaut(monkeypatch):
+    _espions(monkeypatch, diff_mod)
+    result = run_diff_pipeline([("A", "/x/a.pcap")], [("A", "/x/a2.pcap")], DiffOptions(parallel=False))
+    assert "Score de sante" not in result.text
+
+
+def test_thread_diff_transmet_le_triage(window, monkeypatch):
+    import netcross_gtk4.diff_pipeline as dp
+
+    vu = {}
+
+    def faux_pipeline(_b, _c, options, on_progress=None):
+        vu["options"] = options
+        raise RuntimeError("arret du test")
+
+    monkeypatch.setattr(dp, "run_diff_pipeline", faux_pipeline)
+    window._run_diff_thread(
+        [], [], 1000.0, 8000, False, False, True, 5.0, 2.0, False, False, False, triage=True, triage_topn=7
+    )
+    assert vu["options"].triage is True
+    assert vu["options"].triage_topn == 7
+
+
+def test_widgets_triage_diff(window):
+    assert window.diff_triage_check.get_active() is False
+    assert int(window.diff_triage_topn_spin.get_value()) == 5

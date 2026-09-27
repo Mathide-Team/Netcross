@@ -36,7 +36,7 @@ flowchart TD
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"40 imports"| netcross_core
     CLI -->|"6 imports"| pcap_parser
-    netcross_gtk4 -->|"13 imports"| netcross_report
+    netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
     netcross_api -->|"3 imports"| netcross_report
@@ -4096,6 +4096,8 @@ classDiagram
         +bool redact
         +bool tls
         +bool quic
+        +bool triage
+        +int triage_topn
     }
     class DiffResult {
         <<dataclass>>

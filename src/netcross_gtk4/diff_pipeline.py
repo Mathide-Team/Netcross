@@ -39,6 +39,10 @@ class DiffOptions:
     redact: bool = False
     tls: bool = False
     quic: bool = False
+    # Issue #330 (écart 4) : classement des segments sur les écarts, comme
+    # --triage / --triage-top-n de cross_capture_diff_cli.py.
+    triage: bool = False
+    triage_topn: int = 5
 
 
 @dataclass
@@ -139,6 +143,16 @@ def run_diff_pipeline(
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         print_diff_report(findings)
+
+    # 4 bis. Triage des écarts (issue #330, écart 4) -- même rendu que la CLI
+    if options.triage:
+        _log("Triage des écarts...")
+        from netcross_report import format_health_line, health_score, print_triage, rank_segments
+
+        ranked = rank_segments(findings)
+        with contextlib.redirect_stdout(buf):
+            print_triage(ranked, options.triage_topn)
+            print(format_health_line(health_score(ranked)))
 
     # 5. TLS
     tls_findings_baseline = tls_findings_current = None

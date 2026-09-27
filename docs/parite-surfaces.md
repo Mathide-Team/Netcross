@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (107 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 16 cases à cocher, 14 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 8 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -131,7 +131,7 @@ est conservée telle quelle pour les clients existants.
 | Courant capturé en direct | non (modes exclusifs) | `--live-current`, `--live-duration` | non |
 | Seuils de régression | oui (pertes, latence) | `--loss-threshold-pp`, `--latency-threshold-ms` | non |
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | non |
-| Triage des écarts | non | `--triage`, `--triage-top-n` | non |
+| Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | non |
 | Exports | oui (PDF, CSV, JSON) | `--pdf-report`, `--diff-csv`, `--json-report` | non |
 | Anonymisation partagée | oui | `--redact`, `--redact-map` | non |
 | Historique | non | `--history-db`, `--history-label`, `--history-show` | non |
@@ -197,6 +197,7 @@ son équivalent CLI ou API.
 | Anonymiser les adresses IP/MAC (--redact) | Configuration | `--redact` |
 | Deduire la topologie automatiquement (ignore l'ordre de la liste) | Configuration | absence de `--order` |
 | Triage (classement des segments) | Configuration | `--triage` |
+| Triage des ecarts (classement des segments) | Configuration (mode comparaison) | `--triage` (CLI de comparaison) |
 | Diagnostic TLS | Configuration (2 cases : analyse et comparaison) | `--tls` |
 | Diagnostic QUIC/HTTP3 | Configuration (2 cases : analyse et comparaison) | `--quic` |
 | Rapport de securite | Configuration | `--security-report` |
@@ -239,8 +240,9 @@ Classés par impact pour un utilisateur :
    (réglable avec la corrélation tolérante au NAT), « Coupure silencieuse
    (s) » et « Table des noms... », valables en analyse simple, en
    comparaison et en capture en direct.
-4. **GUI : triage des écarts en mode comparaison**, disponible en CLI
-   (`--triage` de la CLI de comparaison).
+4. ~~**GUI : triage des écarts en mode comparaison**~~ : traité, case
+   « Triage des ecarts » et nombre de segments (« Top ») dans les options
+   de comparaison, même rendu que `--triage` / `--triage-top-n`.
 5. Le reste (manipulation de captures, notifications, plugins, IA, SIEM,
    batch) relève de l'automatisation et reste en CLI **par choix**.
 

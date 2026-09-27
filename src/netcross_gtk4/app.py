@@ -1001,6 +1001,24 @@ class MainWindow(Gtk.ApplicationWindow):
         self.diff_quic_check = Gtk.CheckButton(label="Diagnostic QUIC/HTTP3")
         self.diff_quic_check.set_tooltip_text("Necessite cryptography. Idem TLS, baseline et courant separement.")
         self.diff_options_box.attach(self.diff_quic_check, 2, 1, 2, 1)
+        # Issue #330 (écart 4) : triage des écarts, equivalent --triage /
+        # --triage-top-n de cross_capture_diff_cli.py
+        self.diff_triage_check = Gtk.CheckButton(label="Triage des ecarts (classement des segments)")
+        self.diff_triage_check.set_tooltip_text(
+            "Classe les segments par ou commencer a regarder, sur les ecarts "
+            "baseline/courant (equivalent --triage sur la CLI). Deja inclus en "
+            "tete du PDF de comparaison ; cette case l'affiche aussi dans le rapport texte."
+        )
+        self.diff_options_box.attach(self.diff_triage_check, 0, 2, 2, 1)
+        diff_triage_topn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        diff_triage_topn_box.append(Gtk.Label(label="Top"))
+        self.diff_triage_topn_spin = Gtk.SpinButton.new_with_range(1, 50, 1)
+        self.diff_triage_topn_spin.set_value(5)
+        self.diff_triage_topn_spin.set_tooltip_text(
+            "Nombre de segments affiches par le triage des ecarts (equivalent --triage-top-n, defaut : 5)"
+        )
+        diff_triage_topn_box.append(self.diff_triage_topn_spin)
+        self.diff_options_box.attach(diff_triage_topn_box, 2, 2, 2, 1)
         self.diff_options_box.set_visible(False)
         page.append(self.diff_options_box)
 
@@ -1596,7 +1614,12 @@ class MainWindow(Gtk.ApplicationWindow):
                     diff_tls,
                     diff_quic,
                 ),
-                kwargs={"nat_window_ms": nat_window_ms, "idle_timeout_seconds": idle_timeout_seconds},
+                kwargs={
+                    "nat_window_ms": nat_window_ms,
+                    "idle_timeout_seconds": idle_timeout_seconds,
+                    "triage": self.diff_triage_check.get_active(),
+                    "triage_topn": int(self.diff_triage_topn_spin.get_value()),
+                },
                 daemon=True,
             ).start()
         else:
@@ -2011,6 +2034,8 @@ class MainWindow(Gtk.ApplicationWindow):
         quic,
         nat_window_ms=200.0,
         idle_timeout_seconds=None,
+        triage=False,
+        triage_topn=5,
     ):
         logger.debug(
             "_run_diff_thread: {} capture(s) baseline, {} capture(s) courant",
@@ -2032,6 +2057,8 @@ class MainWindow(Gtk.ApplicationWindow):
             quic=quic,
             nat_window_ms=nat_window_ms,
             idle_timeout_seconds=idle_timeout_seconds,
+            triage=triage,
+            triage_topn=triage_topn,
         )
 
         def _on_progress(msg):
