@@ -39,7 +39,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -48,8 +48,10 @@ _DEFAULT_PATH = Path(__file__).with_name("known_fingerprints.json")
 
 @lru_cache(maxsize=8)
 def _load_cached(path: str) -> dict[str, dict]:
+    logger.debug("_load_cached: chargement path={}", path)
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
+    logger.debug("_load_cached: ja4={} hassh={}", len(data.get("ja4", {})), len(data.get("hassh", {})))
     return {"ja4": data.get("ja4", {}), "hassh": data.get("hassh", {})}
 
 
@@ -59,7 +61,13 @@ def load_known_fingerprints(path: str | Path | None = None) -> dict[str, dict]:
     base de fingerprints manquante ne doit jamais faire echouer l'analyse,
     seulement priver l'analyste de l'identification lisible de l'outil."""
     try:
-        return _load_cached(str(path or _DEFAULT_PATH))
+        result = _load_cached(str(path or _DEFAULT_PATH))
+        logger.debug(
+            "load_known_fingerprints: chargement OK, ja4={} hassh={}",
+            len(result.get("ja4", {})),
+            len(result.get("hassh", {})),
+        )
+        return result
     except (OSError, json.JSONDecodeError):
         logger.exception("échec dans load_known_fingerprints")
         return {"ja4": {}, "hassh": {}}
@@ -76,5 +84,10 @@ def identify_tool(fingerprint_type: str, fingerprint: str, known: dict[str, dict
         # Forme enrichie : on n'affiche que le libelle court. Le reste
         # (version complete, methode de verification) sert a documenter la
         # base, pas a encombrer une ligne de rapport.
-        return valeur.get("libelle") or valeur.get("outil")
+        libelle = valeur.get("libelle") or valeur.get("outil")
+        logger.debug("identify_tool: forme enrichie, type={} libelle={}", fingerprint_type, libelle)
+        return libelle
+    logger.debug(
+        "identify_tool: forme courte ou absent, type={} valeur={}", fingerprint_type, summarize(valeur, "valeur")
+    )
     return valeur

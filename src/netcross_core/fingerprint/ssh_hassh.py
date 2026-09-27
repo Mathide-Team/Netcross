@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import ROLE_CLIENT, ROLE_SERVER
 
 logger = get_logger(__name__)
@@ -42,7 +42,9 @@ def _read_namelist(data: bytes, off: int) -> tuple[list[str], int]:
     length, off = _read_u32(data, off)
     raw = data[off : off + length].decode("ascii")
     off += length
-    return (raw.split(",") if raw else []), off
+    result = (raw.split(",") if raw else []), off
+    logger.debug("_read_namelist: longueur={} elements={}", length, len(result[0]))
+    return result
 
 
 def parse_kexinit(payload: bytes) -> dict | None:
@@ -62,7 +64,9 @@ def parse_kexinit(payload: bytes) -> dict | None:
     algorithms, langues, first_kex_packet_follows) est renvoye pour
     completude mais non consomme."""
     try:
-        return _parse_kexinit(payload)
+        result = _parse_kexinit(payload)
+        logger.debug("parse_kexinit: succes, kex={}", summarize(result, "kexinit") if result else "None")
+        return result
     except (IndexError, UnicodeError):
         logger.exception("échec dans parse_kexinit")
         return None
@@ -73,18 +77,22 @@ def _parse_kexinit(payload: bytes) -> dict | None:
     if data.startswith(b"SSH-"):
         nl = data.find(b"\n")
         if nl == -1:
+            logger.debug("_parse_kexinit: banniere sans newline, abandon")
             return None
         data = data[nl + 1 :]
     if len(data) < 6:
+        logger.debug("_parse_kexinit: payload trop court ({})", len(data))
         return None
 
     packet_length = int.from_bytes(data[0:4], "big")
     padding_length = data[4]
     msg_type = data[5]
     if msg_type != _SSH_MSG_KEXINIT:
+        logger.debug("_parse_kexinit: type de message {} != KEXINIT, abandon", msg_type)
         return None
     payload_len = packet_length - padding_length - 1  # inclut le byte msg_type
     if payload_len < 1:
+        logger.debug("_parse_kexinit: payload_len < 1, abandon")
         return None
     body_end = 5 + payload_len  # borne haute du message SSH (msg_type inclus)
     if body_end > len(data):
@@ -95,6 +103,7 @@ def _parse_kexinit(payload: bytes) -> dict | None:
 
     off = 6 + _COOKIE_LEN  # apres msg_type (deja lu) + cookie 16 octets
     if off > body_end:
+        logger.debug("_parse_kexinit: offset cookie au-dela du corps, abandon")
         return None
 
     kex_algorithms, off = _read_namelist(data, off)
@@ -136,7 +145,9 @@ def compute_hassh(kexinit: dict, role: str = ROLE_CLIENT) -> str:
             kexinit["compression_algorithms_client_to_server"],
         )
     fields = [",".join(kexinit["kex_algorithms"]), ",".join(enc), ",".join(mac), ",".join(comp)]
-    return hashlib.md5(";".join(fields).encode("ascii")).hexdigest()  # noqa: S324 -- identifiant, pas crypto
+    hassh = hashlib.md5(";".join(fields).encode("ascii")).hexdigest()  # noqa: S324 -- identifiant, pas crypto
+    logger.debug("compute_hassh: role={} hassh={}", role, hassh)
+    return hassh
 
 
 def readable_kexinit(kexinit: dict, role: str = ROLE_CLIENT) -> str:
@@ -145,12 +156,14 @@ def readable_kexinit(kexinit: dict, role: str = ROLE_CLIENT) -> str:
     enc_key = "encryption_algorithms_" + ("server_to_client" if role == ROLE_SERVER else "client_to_server")
     mac_key = "mac_algorithms_" + ("server_to_client" if role == ROLE_SERVER else "client_to_server")
     comp_key = "compression_algorithms_" + ("server_to_client" if role == ROLE_SERVER else "client_to_server")
-    return (
+    result = (
         f"kex=[{','.join(kexinit['kex_algorithms'])}] "
         f"enc=[{','.join(kexinit[enc_key])}] "
         f"mac=[{','.join(kexinit[mac_key])}] "
         f"comp=[{','.join(kexinit[comp_key])}]"
     )
+    logger.debug("readable_kexinit: role={} genere", role)
+    return result
 
 
 def identify(payload: bytes, sport: int | None, dport: int | None) -> tuple[str, str, str] | None:
@@ -161,6 +174,10 @@ def identify(payload: bytes, sport: int | None, dport: int | None) -> tuple[str,
     destination -> l'emetteur est le client."""
     kexinit = parse_kexinit(payload)
     if kexinit is None:
+        logger.debug("identify: pas de KEXINIT decode, abandon")
         return None
     role = ROLE_CLIENT if dport == 22 and sport != 22 else ROLE_SERVER
-    return compute_hassh(kexinit, role), role, readable_kexinit(kexinit, role)
+    hassh = compute_hassh(kexinit, role)
+    readable = readable_kexinit(kexinit, role)
+    logger.debug("identify: HASSH calcule, role={} hassh={}", role, hassh)
+    return hassh, role, readable

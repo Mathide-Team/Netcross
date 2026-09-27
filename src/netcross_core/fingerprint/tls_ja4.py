@@ -99,7 +99,13 @@ def parse_client_hello(payload: bytes) -> dict | None:
     `supported_versions` (list[int], ordre d'origine).
     """
     try:
-        return _parse_client_hello(payload)
+        result = _parse_client_hello(payload)
+        logger.debug(
+            "parse_client_hello: succes, ciphers={} extensions={}",
+            len(result.get("cipher_suites", [])) if result else 0,
+            len(result.get("extensions", [])) if result else 0,
+        )
+        return result
     except (IndexError, struct.error, UnicodeError):
         logger.exception("échec dans parse_client_hello")
         return None
@@ -121,8 +127,10 @@ def _parse_client_hello(payload: bytes) -> dict | None:
         if body and body[0] == _CLIENT_HELLO_TYPE:
             hs = _parse_client_hello_body(body, record_version)
             if hs is not None:
+                logger.debug("_parse_client_hello: ClientHello trouve, version_record={:#06x}", record_version)
                 return hs
         off = body_end
+    logger.debug("_parse_client_hello: aucun ClientHello trouve")
     return None
 
 
@@ -170,6 +178,7 @@ def _parse_client_hello_body(body: bytes, record_version: int) -> dict | None:
             elif ext_type == _EXT_SUPPORTED_VERSIONS:
                 supported_versions = _parse_supported_versions(ext_data)
 
+    logger.debug("_parse_client_hello_body: ciphers={} extensions={} sni={}", len(cipher_suites), len(extensions), sni)
     return {
         "record_version": record_version,
         "legacy_version": legacy_version,
@@ -200,6 +209,7 @@ def _parse_alpn(ext_data: bytes) -> list[str]:
         off += 1
         protocols.append(ext_data[off : off + plen].decode("ascii", errors="replace"))
         off += plen
+    logger.debug("_parse_alpn: protocoles={}", len(protocols))
     return protocols
 
 
@@ -207,7 +217,9 @@ def _parse_supported_versions(ext_data: bytes) -> list[int]:
     if not ext_data:
         return []
     n = ext_data[0]  # liste (client) prefixee par sa longueur en 1 octet
-    return _parse_u16_list(ext_data[1 : 1 + n])
+    versions = _parse_u16_list(ext_data[1 : 1 + n])
+    logger.debug("_parse_supported_versions: versions={}", len(versions))
+    return versions
 
 
 def _ja4_version_code(client_hello: dict) -> str:
@@ -219,7 +231,9 @@ def _ja4_version_code(client_hello: dict) -> str:
     pas cette extension)."""
     versions = [v for v in client_hello["supported_versions"] if v in _VERSION_CODES]
     chosen = max(versions) if versions else client_hello["legacy_version"]
-    return _VERSION_CODES.get(chosen, "00")
+    code = _VERSION_CODES.get(chosen, "00")
+    logger.debug("_ja4_version_code: chosen={:#06x} code={}", chosen, code)
+    return code
 
 
 def _ja4_alpn_code(alpn: list[str]) -> str:
@@ -229,7 +243,9 @@ def _ja4_alpn_code(alpn: list[str]) -> str:
     if not alpn or not alpn[0]:
         return "00"
     first = alpn[0]
-    return f"{first[0]}{first[-1]}" if len(first) > 1 else f"{first[0]}{first[0]}"
+    code = f"{first[0]}{first[-1]}" if len(first) > 1 else f"{first[0]}{first[0]}"
+    logger.debug("_ja4_alpn_code: alpn={} code={}", first, code)
+    return code
 
 
 def _truncated_sha256(text: str) -> str:
@@ -294,7 +310,9 @@ def compute_ja4(client_hello: dict, *, transport: str = "t") -> str:
     c_input = f"{ext_part}_{sigalg_part}" if sigalg_part else ext_part
     c = _truncated_sha256(c_input) if c_input else "0" * 12
 
-    return f"{a}_{b}_{c}"
+    ja4 = f"{a}_{b}_{c}"
+    logger.debug("compute_ja4: ja4={}", ja4)
+    return ja4
 
 
 def readable_client_hello(client_hello: dict) -> str:
@@ -304,7 +322,13 @@ def readable_client_hello(client_hello: dict) -> str:
     ciphers = ",".join(f"{c:#06x}" for c in client_hello["cipher_suites"])
     extensions = ",".join(f"{e:#06x}" for e in client_hello["extensions"])
     alpn = ",".join(client_hello["alpn"]) or "-"
-    return f"ciphers=[{ciphers}] extensions=[{extensions}] alpn=[{alpn}] sni={client_hello['sni']}"
+    result = f"ciphers=[{ciphers}] extensions=[{extensions}] alpn=[{alpn}] sni={client_hello['sni']}"
+    logger.debug(
+        "readable_client_hello: genere, ciphers={} extensions={}",
+        len(client_hello["cipher_suites"]),
+        len(client_hello["extensions"]),
+    )
+    return result
 
 
 def identify(payload: bytes) -> tuple[str, str] | None:
@@ -312,5 +336,9 @@ def identify(payload: bytes) -> tuple[str, str] | None:
     si `payload` porte un ClientHello TLS decodable, None sinon."""
     client_hello = parse_client_hello(payload)
     if client_hello is None:
+        logger.debug("identify: pas de ClientHello decode, abandon")
         return None
-    return compute_ja4(client_hello), readable_client_hello(client_hello)
+    ja4 = compute_ja4(client_hello)
+    readable = readable_client_hello(client_hello)
+    logger.debug("identify: JA4 calcule, ja4={}", ja4)
+    return ja4, readable
