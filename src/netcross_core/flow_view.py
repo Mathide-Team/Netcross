@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from netcross_core.expert_model import ExpertEvent, Flow
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -95,6 +95,12 @@ def build_flow_view(
     flux. Si None, `FlowView.events` reste vide -- l'integration avec
     l'index forensic se fera apres merge de la PR correspondante.
     """
+    logger.debug(
+        "build_flow_view: flow={} packets_by_point={} events={}",
+        summarize(flow, "flow"),
+        summarize(packets_by_point, "packets_by_point"),
+        summarize(events, "events"),
+    )
     view = FlowView(flow=flow)
 
     all_pkts: list[Pkt] = []
@@ -172,6 +178,7 @@ def build_flow_view(
 def _detect_transactions(packets: list[Pkt]) -> list[Transaction]:
     """Detecte les transactions HTTP/DNS/SIP/TCP-handshake depuis les
     champs specialises des `Pkt`. Retourne une liste triee par timestamp."""
+    logger.debug("_detect_transactions: packets={}", summarize(packets, "packets"))
     transactions: list[Transaction] = []
 
     # HTTP : paire request/response (meme point, peu importe la direction)

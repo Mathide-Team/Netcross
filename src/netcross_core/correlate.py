@@ -163,6 +163,7 @@ def _topn_category_label(pk, dimension):
         return pk.dst
     if dimension == "dscp":
         return f"DSCP {pk.dscp}" if pk.dscp is not None else "non marque"
+    logger.trace("_topn_category_label: refus, ValueError")
     raise ValueError(f"dimension inconnue pour compute_topn_series: {dimension!r}")
 
 

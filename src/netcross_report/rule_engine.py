@@ -2231,9 +2231,11 @@ def evaluate(rule_id: str, report: Report) -> list[Finding]:
     module), plutot qu'une seule exception ambigue pour les deux cas."""
     rule = get_rule(rule_id)
     if rule is None:
+        logger.trace("evaluate: refus, KeyError")
         raise KeyError(f"regle inconnue du catalogue expert_rules : {rule_id!r}")
     evaluator = _EVALUATORS.get(rule_id)
     if evaluator is None:
+        logger.trace("evaluate: refus, NotImplementedError")
         raise NotImplementedError(
             f"regle {rule_id!r} presente dans le catalogue mais sans evaluateur "
             "enregistre dans ce pilote (voir _EVALUATORS, netcross_report.rule_engine)"

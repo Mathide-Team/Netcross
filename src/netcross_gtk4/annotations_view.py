@@ -151,6 +151,7 @@ class AnnotationStore:
         for known, path in self.captures:
             if known == label:
                 return path
+        logger.trace("AnnotationStore._path: refus, KeyError")
         raise KeyError(f"point inconnu : {label}")
 
     def _save(self, label: str, annotations: list[PacketAnnotation]) -> None:

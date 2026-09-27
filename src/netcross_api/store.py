@@ -25,7 +25,7 @@ from contextlib import closing
 from dataclasses import fields, is_dataclass
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -74,6 +74,7 @@ class AnalysesStore:
     """Analyses indexées par ID : statut, métadonnées, résumé, document."""
 
     def __init__(self, db_path: str | None = None) -> None:
+        logger.debug("AnalysesStore.__init__: db_path={}", summarize(db_path, "db_path"))
         self._store: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._db_path = db_path if db_path is not None else os.environ.get("NETCROSS_DB_PATH")
@@ -89,6 +90,7 @@ class AnalysesStore:
 
     def create_pending(self, metadata: dict | None = None) -> str:
         """Crée une analyse ``pending`` et retourne son ID."""
+        logger.debug("AnalysesStore.create_pending: metadata={}", summarize(metadata, "metadata"))
         analysis_id = uuid.uuid4().hex[:12]
         entry = {"status": PENDING, "metadata": dict(metadata or {}), "document": None, "summary": None, "error": None}
         with self._lock:
@@ -142,6 +144,7 @@ class AnalysesStore:
         return sqlite3.connect(self._db_path)
 
     def _init_db(self) -> None:
+        logger.debug("AnalysesStore._init_db()")
         with closing(self._connect()) as conn, conn:
             conn.execute("CREATE TABLE IF NOT EXISTS analyses (id TEXT PRIMARY KEY)")
             existantes = {row[1] for row in conn.execute("PRAGMA table_info(analyses)")}

@@ -26,7 +26,7 @@ from pathlib import Path
 
 #: Types d'equipement reconnus (non exhaustif -- tout type est accepte en
 #: entree, la table ne valide pas le vocabulaire).
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 KNOWN_TYPES = ("client", "serveur", "routeur", "firewall", "ap", "autre")
@@ -72,6 +72,7 @@ class NameTable:
     """
 
     def __init__(self, entries: list[NameEntry] | None = None) -> None:
+        logger.debug("NameTable.__init__: entries={}", summarize(entries, "entries"))
         self._by_address: dict[str, NameEntry] = {}
         self._by_mac: dict[str, NameEntry] = {}
         self._entries: list[NameEntry] = []
@@ -84,8 +85,10 @@ class NameTable:
         """Ajoute une entree. Ecrase une entree precedente pour la meme
         adresse ou MAC."""
         if not entry.name:
+            logger.trace("NameTable.add: refus, ValueError")
             raise ValueError("NameEntry.name est requis")
         if entry.address is None and entry.mac is None:
+            logger.trace("NameTable.add: refus, ValueError")
             raise ValueError("NameEntry doit avoir au moins une adresse ou une MAC")
         self._entries.append(entry)
         if entry.address is not None:
@@ -103,6 +106,7 @@ class NameTable:
 
     def resolve_mac(self, mac: str | None) -> NameEntry | None:
         """Retourne l'entree correspondant a une MAC, ou None."""
+        logger.debug("NameTable.resolve_mac: mac={}", summarize(mac, "mac"))
         if mac is None:
             return None
         return self._by_mac.get(mac.lower())
@@ -130,6 +134,7 @@ class NameTable:
         entries: list[NameEntry] = []
         for i, item in enumerate(items):
             if "name" not in item or not item["name"]:
+                logger.trace("NameTable.from_list: refus, ValueError")
                 raise ValueError(f"entree #{i}: 'name' est requis")
             entries.append(
                 NameEntry(
@@ -150,6 +155,7 @@ class NameTable:
         extension). YAML necessite ``pyyaml`` (import lazy)."""
         p = Path(path)
         if not p.exists():
+            logger.trace("NameTable.load: refus, FileNotFoundError")
             raise FileNotFoundError(f"table des noms introuvable: {path}")
         suffix = p.suffix.lower()
         text = p.read_text(encoding="utf-8")
@@ -164,6 +170,7 @@ class NameTable:
             # Format { "entries": [...] } tolere pour lisibilite.
             data = data.get("entries", [])
         if not isinstance(data, list):
+            logger.trace("NameTable.load: refus, ValueError")
             raise ValueError(f"la table des noms doit etre une liste, pas {type(data).__name__}")
         return cls.from_list(data)
 

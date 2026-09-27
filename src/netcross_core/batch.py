@@ -320,8 +320,10 @@ class BatchPlan:
 
     def check_invariant(self) -> None:
         """Aucun fichier perdu en route : leve AssertionError sinon."""
+        logger.debug("BatchPlan.check_invariant()")
         counted = self.grouped_count + len(self.isolated) + len(self.failures)
         if counted != self.total:
+            logger.debug("BatchPlan.check_invariant: refus, AssertionError")
             raise AssertionError(
                 f"invariant du lot viole : {self.total} entree(s) mais {self.grouped_count} groupee(s) + "
                 f"{len(self.isolated)} isolee(s) + {len(self.failures)} echec(s) = {counted}"

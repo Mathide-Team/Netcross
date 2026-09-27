@@ -28,7 +28,7 @@ import os
 import sys
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -96,6 +96,7 @@ def active_language() -> str | None:
 def available_languages(localedir: Path | None = None) -> list[str]:
     """Locales ayant un catalogue compile, trouvees sur disque (pas de
     liste codee en dur)."""
+    logger.debug("available_languages: localedir={}", summarize(localedir, "localedir"))
     dirs = [localedir] if localedir else locale_dirs()
     langs: set[str] = set()
     for d in dirs:

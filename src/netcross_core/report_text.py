@@ -9,7 +9,7 @@ import statistics
 from collections import Counter, defaultdict
 
 from netcross_core.forensic import annotations_by_tag
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import (
     SEQ_GAP_CAPTURE_DROP,
     SEQ_GAP_INDETERMINATE,
@@ -954,6 +954,7 @@ def print_annotations(annotations: list[PacketAnnotation]):
     de la passer ici, symetrique de `write_detail_csv` ci-dessous qui
     prend `flows`/`points` directement plutot que de deduire un chemin
     de capture."""
+    logger.debug("print_annotations: annotations={}", summarize(annotations, "annotations"))
     print("\n-- Annotations (etiquettes et signets sur paquets) --")
     if not annotations:
         print("  aucune annotation (pas de sidecar, ou sidecar vide)")
