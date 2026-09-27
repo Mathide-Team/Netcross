@@ -126,6 +126,17 @@ def configure_logging(level: str | None = None, *, log_file: str | None = None, 
     # bibliothèque) ; les points d'entrée Netcross le réactivent ici.
     _logger.enable("pcap_parser")
 
+    # Retirer les anciens handlers AVANT d'appeler level_from_env() et
+    # is_debug_level() : sinon leurs _logger.debug() passent par le handler
+    # par défaut de loguru (stderr, DEBUG) et polluent la sortie des tests
+    # subprocess qui vérifient stderr == "".
+    if _CONFIGURED:
+        for handler_id in _HANDLER_IDS:
+            _logger.remove(handler_id)
+    else:
+        _logger.remove()  # handler par défaut de loguru (id 0)
+    _HANDLER_IDS.clear()
+
     requested = (level or level_from_env()).strip().upper()
     niveau_inconnu = False
     try:
@@ -139,12 +150,6 @@ def configure_logging(level: str | None = None, *, log_file: str | None = None, 
 
     debug = is_debug_level(requested)
     fmt = _DEBUG_FORMAT if debug else _FORMAT
-    if _CONFIGURED:
-        for handler_id in _HANDLER_IDS:
-            _logger.remove(handler_id)
-    else:
-        _logger.remove()  # handler par défaut de loguru (id 0)
-    _HANDLER_IDS.clear()
     _HANDLER_IDS.append(_logger.add(sys.stderr, level=requested, format=fmt, backtrace=debug, diagnose=debug))
     if log_file:
         _HANDLER_IDS.append(
