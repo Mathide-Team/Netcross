@@ -63,6 +63,7 @@ nav:
       - Dépannage: guide/depannage.md
   - Utilisation:
       - API REST: api-rest.md
+      - Parité GUI / CLI / API: parite-surfaces.md
       - Filtres BPF: bpf-filters.md
       - Mode batch: batch-mode.md
       - Capture distante: capture-distante.md
