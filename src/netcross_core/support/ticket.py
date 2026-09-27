@@ -43,7 +43,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.support.scrubber import ScrubReport, TextScrubber
 
 logger = get_logger(__name__)
@@ -79,9 +79,11 @@ class Consent:
     source: str = "cli"  # "cli", "gui", "api" -- d'ou vient l'accord
 
     def allows(self, scope: str) -> bool:
+        logger.debug("Consent.allows: retour self.granted and scope in self.scopes")
         return self.granted and scope in self.scopes
 
     def to_dict(self) -> dict:
+        logger.debug("Consent.to_dict: retour dictionnaire")
         return {
             "accorde": self.granted,
             "portees": list(self.scopes),
@@ -111,6 +113,7 @@ class SupportTicket:
     self_check: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        logger.debug("SupportTicket.to_dict: retour dictionnaire")
         return {
             "schema_version": SCHEMA_VERSION,
             "ticket_id": self.ticket_id,
@@ -127,6 +130,7 @@ class SupportTicket:
         }
 
     def to_json(self, *, indent: int = 2) -> str:
+        logger.debug("SupportTicket.to_json: retour json.dumps(…)")
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False, sort_keys=False)
 
 
@@ -141,6 +145,7 @@ def collect_environment() -> dict[str, str | None]:
     """
     logger.debug("collect_environment()")
     tshark = shutil.which("tshark")
+    logger.debug("collect_environment: retour dictionnaire")
     return {
         "systeme": platform.system(),
         "version_systeme": platform.release(),
@@ -160,6 +165,7 @@ def format_exception(exc: BaseException) -> tuple[str, str, list[str]]:
     """
     lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
     flat = [ln.rstrip("\n") for chunk in lines for ln in chunk.splitlines()]
+    logger.debug("format_exception: retour tuple de 3")
     return type(exc).__name__, str(exc), flat
 
 
@@ -186,6 +192,7 @@ def build_ticket(
     autorise, et non parce que l'outil a echoue a le collecter.
     """
     if kind not in KINDS:
+        logger.debug("build_ticket: si kind not in KINDS -> levée ValueError")
         raise ValueError(f"nature de ticket inconnue : {kind!r} (attendu : {', '.join(KINDS)})")
 
     scrubber = scrubber or TextScrubber()
@@ -194,6 +201,7 @@ def build_ticket(
 
     def _note(nom: str, statut: str, detail: str) -> None:
         checks.append({"controle": nom, "statut": statut, "detail": detail})
+        logger.debug("build_ticket._note: fin")
 
     # -- marqueurs de correlation (trace_id / run_id / capture_id) --------
     markers_out: dict[str, str | None] = {}
@@ -305,6 +313,7 @@ def build_ticket(
         ticket.kind,
         merged.total,
     )
+    logger.debug("build_ticket: retour ticket={}", summarize(ticket, "ticket"))
     return ticket
 
 
@@ -324,6 +333,7 @@ def write_ticket(ticket: SupportTicket, path: str) -> str:
         fh.write(ticket.to_json())
         fh.write("\n")
     logger.info("ticket de support ecrit : {}", path)
+    logger.debug("write_ticket: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -341,12 +351,15 @@ def write_support_map_csv(scrubber: TextScrubber, path: str) -> str:
         for real, pseudo, kind in rows:
             fh.write(f"{_csv(real)},{_csv(pseudo)},{kind}\n")
     logger.info("correspondance de scrubbing ecrite : {} ({} entrees)", path, len(rows))
+    logger.debug("write_support_map_csv: retour path={}", summarize(path, "path"))
     return path
 
 
 def _csv(value: str) -> str:
     if any(c in value for c in ',"\n'):
+        logger.debug("_csv: si any((c in value for c in ',\"\\n')) -> retour '\"' + value.replace('\"', '\"\"') + '\"'")
         return '"' + value.replace('"', '""') + '"'
+    logger.debug("_csv: retour value={}", summarize(value, "value"))
     return value
 
 
@@ -364,6 +377,7 @@ def install_crash_handler(
     """
     if not consent.granted:
         logger.info("gestionnaire de crash non installe : consentement non accorde")
+        logger.debug("install_crash_handler: si not consent.granted -> retour")
         return
 
     previous = sys.excepthook
@@ -382,6 +396,8 @@ def install_crash_handler(
             logger.exception("erreur: inner")
             print(f"\nEchec d'ecriture du ticket de support : {inner}", file=sys.stderr)
         previous(exc_type, exc_value, exc_tb)
+        logger.debug("install_crash_handler._hook: fin")
 
     sys.excepthook = _hook
     logger.info("gestionnaire de crash installe : ticket vers {}", path)
+    logger.debug("install_crash_handler: fin")

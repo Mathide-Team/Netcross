@@ -40,14 +40,17 @@ _VOLATILE = re.compile(r"\b\d+ occurrences?\b|\btrames? \d+\b")
 def severity_rank(severity: str | None) -> int:
     """0 = critique ... 3 = faible ; severite inconnue -> apres faible."""
     try:
+        logger.debug("severity_rank: retour SEVERITIES.index(…)")
         return SEVERITIES.index(str(severity).lower())
     except ValueError:
         logger.exception("échec dans severity_rank")
+        logger.debug("severity_rank: except ValueError -> retour len(…)")
         return len(SEVERITIES)
 
 
 def meets_threshold(severity: str | None, threshold: str) -> bool:
     """Vrai si `severity` est au moins aussi grave que `threshold`."""
+    logger.debug("meets_threshold: retour severity_rank(severity) <= severity_rank(threshol…")
     return severity_rank(severity) <= severity_rank(threshold)
 
 
@@ -57,6 +60,7 @@ def finding_key(finding: Mapping[str, Any]) -> str:
     parts = [
         str(finding.get(k) or "") for k in ("severity", "category", "cve_id", "signature_id", "host", "port", "point")
     ]
+    logger.debug("finding_key: retour '|'.join(…)")
     return "|".join([*parts, detail])
 
 
@@ -67,6 +71,7 @@ def findings_fingerprint(findings: Iterable[Mapping[str, Any]]) -> str:
     meme empreinte."""
     logger.debug("findings_fingerprint: findings={}", summarize(findings, "findings"))
     keys = sorted({finding_key(f) for f in findings})
+    logger.debug("findings_fingerprint: retour hashlib.sha256(json.dumps(keys, ensure_…(…)")
     return hashlib.sha256(json.dumps(keys, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
@@ -85,6 +90,7 @@ class NotificationSummary:
     title: str = field(default="Netcross -- analyse de securite")
 
     def to_dict(self) -> dict[str, Any]:
+        logger.debug("NotificationSummary.to_dict: retour dictionnaire")
         return {
             "title": self.title,
             "score": self.score,
@@ -113,6 +119,7 @@ class NotificationSummary:
             lines.append(f"Rapport : {self.report_path}")
         if self.anonymized:
             lines.append("(adresses et noms internes anonymises)")
+        logger.debug("NotificationSummary.to_text: retour '\\n'.join(…)")
         return "\n".join(lines)
 
 
@@ -128,6 +135,7 @@ def _top_detail(finding: Mapping[str, Any], scrubber: TextScrubber | None) -> st
         text = scrubber.scrub(text)[0] or ""
     if len(text) > MAX_DETAIL_CHARS:
         text = text[: MAX_DETAIL_CHARS - 3] + "..."
+    logger.debug("_top_detail: retour text={}", summarize(text, "text"))
     return text
 
 
@@ -148,9 +156,11 @@ def build_summary(
     constat faible qui change ne doit pas re-notifier une alerte critique."""
     if threshold not in SEVERITIES:
         logger.trace("build_summary: refus, ValueError")
+        logger.debug("build_summary: si threshold not in SEVERITIES -> levée ValueError")
         raise ValueError(f"seuil inconnu : {threshold!r} (attendu : {', '.join(SEVERITIES)})")
     if detail not in DETAIL_LEVELS:
         logger.trace("build_summary: refus, ValueError")
+        logger.debug("build_summary: si detail not in DETAIL_LEVELS -> levée ValueError")
         raise ValueError(f"niveau de detail inconnu : {detail!r} (attendu : {', '.join(DETAIL_LEVELS)})")
     items = list(findings)
     by_severity = dict.fromkeys(SEVERITIES, 0)
@@ -172,6 +182,7 @@ def build_summary(
     path = report_path
     if path and scrubber is not None:
         path = scrubber.scrub(path)[0]
+    logger.debug("build_summary: retour NotificationSummary(…)")
     return NotificationSummary(
         score=score,
         level=level,
