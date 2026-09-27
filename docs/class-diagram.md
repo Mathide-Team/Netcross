@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-160 modules · 241 classes · 545 fonctions publiques de module.
+160 modules · 241 classes · 546 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -1160,6 +1160,7 @@ classDiagram
         +add_debug_argument(parser) None
         +apply_debug_argument(args) None
         +get_logger(name)
+        +summarize(value, name) str
     }
 
     %% ===== netcross_core.lua_doc =====

@@ -54,7 +54,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 
 logger = get_logger(__name__)
@@ -108,6 +108,7 @@ def _sdo_id(stix_type: str, content: Mapping[str, Any]) -> str:
 
 def format_timestamp(when: _dt.datetime) -> str:
     """Horodatage STIX : UTC, precision milliseconde, suffixe ``Z``."""
+    logger.debug("format_timestamp: when={}", summarize(when, "when"))
     if when.tzinfo is None:
         when = when.replace(tzinfo=_dt.UTC)
     when = when.astimezone(_dt.UTC)
@@ -136,6 +137,7 @@ class _Builder:
     """Accumule les objets du bundle, dedoublonnes par identifiant."""
 
     def __init__(self, first: str, last: str) -> None:
+        logger.debug("_Builder.__init__: first={} last={}", summarize(first, "first"), summarize(last, "last"))
         self.first = first
         self.last = last
         self.identity = identity_object()
@@ -210,6 +212,7 @@ class _Builder:
 
 
 def _service_refs(b: _Builder, fp: Mapping[str, Any]) -> list[str]:
+    logger.debug("_service_refs: b={} fp={}", summarize(b, "b"), summarize(fp, "fp"))
     software_ref = b.software(fp["service"], fp.get("version"))
     refs = [software_ref]
     host_ref = b.ip(fp.get("host")) if fp.get("host") else None
@@ -222,6 +225,7 @@ def _service_refs(b: _Builder, fp: Mapping[str, Any]) -> list[str]:
 
 
 def _add_services(b: _Builder, fingerprints: Iterable[Mapping[str, Any]]) -> None:
+    logger.debug("_add_services: b={} fingerprints={}", summarize(b, "b"), summarize(fingerprints, "fingerprints"))
     for fp in fingerprints:
         if not fp.get("service"):
             b.skip("service sans nom")
@@ -331,6 +335,12 @@ def to_stix_bundle(
     l'heure de l'export, sinon deux exports differeraient. Absentes :
     l'epoque Unix (bundle toujours deterministe, mais date non significative).
     """
+    logger.debug(
+        "to_stix_bundle: report={} observed_from={} observed_until={}",
+        summarize(report, "report"),
+        summarize(observed_from, "observed_from"),
+        summarize(observed_until, "observed_until"),
+    )
     first = format_timestamp(observed_from or _EPOCH)
     last = format_timestamp(observed_until or observed_from or _EPOCH)
     b = _Builder(first, last)
@@ -373,6 +383,12 @@ def export_stix(
 ) -> str:
     """Bundle STIX 2.1 serialise (JSON indente, cles triees, determinisme
     octet pour octet)."""
+    logger.debug(
+        "export_stix: report={} observed_from={} observed_until={}",
+        summarize(report, "report"),
+        summarize(observed_from, "observed_from"),
+        summarize(observed_until, "observed_until"),
+    )
     bundle = to_stix_bundle(report, observed_from=observed_from, observed_until=observed_until)
     return json.dumps(bundle, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
@@ -385,6 +401,13 @@ def write_stix(
     observed_until: _dt.datetime | None = None,
 ) -> str:
     """Ecrit le bundle dans un fichier ; retourne son chemin absolu."""
+    logger.debug(
+        "write_stix: report={} output_path={} observed_from={} observed_until={}",
+        summarize(report, "report"),
+        summarize(output_path, "output_path"),
+        summarize(observed_from, "observed_from"),
+        summarize(observed_until, "observed_until"),
+    )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(export_stix(report, observed_from=observed_from, observed_until=observed_until), encoding="utf-8")

@@ -2231,19 +2231,30 @@ def evaluate(rule_id: str, report: Report) -> list[Finding]:
     module), plutot qu'une seule exception ambigue pour les deux cas."""
     rule = get_rule(rule_id)
     if rule is None:
+        logger.debug("evaluate: regle {!r} inconnue du catalogue, refus", rule_id)
         raise KeyError(f"regle inconnue du catalogue expert_rules : {rule_id!r}")
     evaluator = _EVALUATORS.get(rule_id)
     if evaluator is None:
+        logger.debug("evaluate: regle {!r} sans evaluateur enregistre, refus", rule_id)
         raise NotImplementedError(
             f"regle {rule_id!r} presente dans le catalogue mais sans evaluateur "
             "enregistre dans ce pilote (voir _EVALUATORS, netcross_report.rule_engine)"
         )
-    return evaluator(rule, report)
+    findings = evaluator(rule, report)
+    # point unique de trace des ~40 evaluateurs _evaluate_* (appeles une fois
+    # par regle et par rapport) : regle, resultat, severites produites
+    logger.debug(
+        "evaluate: regle {!r} -> {} constat(s){}",
+        rule_id,
+        len(findings),
+        f" ({', '.join(sorted({f.severity for f in findings}))})" if findings else "",
+    )
+    return findings
 
 
 def available_rule_ids() -> list[str]:
     """Ids des regles du catalogue ayant deja un evaluateur enregistre
     ici -- pour un appelant qui veut savoir ce que ce pilote couvre
     aujourd'hui sans provoquer `NotImplementedError`."""
-    logger.debug("available_rule_ids()")
+    logger.debug("available_rule_ids: {} regle(s) avec evaluateur", len(_EVALUATORS))
     return list(_EVALUATORS)

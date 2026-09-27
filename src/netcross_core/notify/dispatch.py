@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from netcross_core.config import NotifyConfig
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.notify.summary import NotificationSummary, meets_threshold
 from netcross_core.notify.transports import EmailNotifier, Notifier, SlackNotifier, WebhookNotifier
 
@@ -102,6 +102,13 @@ def _save_state(path: Path, state: dict[str, float]) -> None:
 def is_silenced(fingerprint: str, state_path: Path, silence_seconds: float, now: float) -> float | None:
     """Age (s) de la derniere notification du meme lot si elle est dans la
     fenetre de silence, sinon None."""
+    logger.debug(
+        "is_silenced: fingerprint={} state_path={} silence_seconds={} now={}",
+        summarize(fingerprint, "fingerprint"),
+        summarize(state_path, "state_path"),
+        summarize(silence_seconds, "silence_seconds"),
+        summarize(now, "now"),
+    )
     if silence_seconds <= 0:
         return None
     last = _load_state(state_path).get(fingerprint)
@@ -227,6 +234,19 @@ def run_notifications(
     resume -- il n'est meme pas construit sans seuil.
 
     Sans seuil : liste vide, AUCUN canal construit, aucun appel reseau."""
+    logger.debug(
+        "run_notifications: summary_factory={} threshold={} cfg={} webhook={} slack={} email_to={} "
+        "state_path={} silence_hours={} env={}",
+        summarize(summary_factory, "summary_factory"),
+        summarize(threshold, "threshold"),
+        summarize(cfg, "cfg"),
+        summarize(webhook, "webhook"),
+        summarize(slack, "slack"),
+        summarize(email_to, "email_to"),
+        summarize(state_path, "state_path"),
+        summarize(silence_hours, "silence_hours"),
+        summarize(env, "env"),
+    )
     if not threshold:
         return []
     notifiers, lines = notifiers_from_config(cfg, webhook=webhook, slack=slack, email_to=email_to, env=env)

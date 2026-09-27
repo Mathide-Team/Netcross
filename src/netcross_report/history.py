@@ -57,7 +57,7 @@ import sqlite3
 from collections import Counter
 from dataclasses import dataclass
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_report.synthesis import build_findings
 from netcross_report.triage import HEALTH_LABELS, health_label, health_score, rank_segments
 
@@ -155,6 +155,17 @@ def _finding_counts(findings) -> dict[str, int]:
 
 
 def _insert(conn, *, run_type, label, points, score, count_by_sev, total, meta) -> int:
+    logger.debug(
+        "_insert: conn={} run_type={} label={} points={} score={} count_by_sev={} total={} meta={}",
+        summarize(conn, "conn"),
+        summarize(run_type, "run_type"),
+        summarize(label, "label"),
+        summarize(points, "points"),
+        summarize(score, "score"),
+        summarize(count_by_sev, "count_by_sev"),
+        summarize(total, "total"),
+        summarize(meta, "meta"),
+    )
     cur = conn.execute(
         "INSERT INTO runs (recorded_at, run_type, label, points, health_score, "
         "health_label, total_findings, finding_counts, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -190,6 +201,16 @@ def record_run(r, db_path, findings=None, tls_findings=None, quic_findings=None,
     label : etiquette libre optionnelle (nom de site/scenario) pour
     distinguer plusieurs historiques qui partagent le meme fichier .db.
     """
+    logger.debug(
+        "record_run: r={} db_path={} findings={} tls_findings={} quic_findings={} meta={} label={}",
+        summarize(r, "r"),
+        summarize(db_path, "db_path"),
+        summarize(findings, "findings"),
+        summarize(tls_findings, "tls_findings"),
+        summarize(quic_findings, "quic_findings"),
+        summarize(meta, "meta"),
+        summarize(label, "label"),
+    )
     if findings is None:
         findings = build_findings(r)
     all_findings = list(findings) + list(tls_findings or []) + list(quic_findings or [])
@@ -225,6 +246,15 @@ def record_diff_run(findings, baseline, current, db_path, meta=None, label=None)
     quic_findings_baseline/current : voir docstring de module pour la
     raison (meme choix assume que generate_json_diff/generate_diff_pdf).
     """
+    logger.debug(
+        "record_diff_run: findings={} baseline={} current={} db_path={} meta={} label={}",
+        summarize(findings, "findings"),
+        summarize(baseline, "baseline"),
+        summarize(current, "current"),
+        summarize(db_path, "db_path"),
+        summarize(meta, "meta"),
+        summarize(label, "label"),
+    )
     ranked = rank_segments(findings)
     score = health_score(ranked)
     conn = _connect(db_path)
@@ -271,6 +301,13 @@ def list_history(db_path, limit=None, label=None, run_type=None) -> list[History
     verification, un simple --history-show sur un chemin qui n'existe pas
     encore creerait une base vide comme effet de bord surprenant.
     """
+    logger.debug(
+        "list_history: db_path={} limit={} label={} run_type={}",
+        summarize(db_path, "db_path"),
+        summarize(limit, "limit"),
+        summarize(label, "label"),
+        summarize(run_type, "run_type"),
+    )
     if not os.path.exists(db_path):
         return []
     conn = sqlite3.connect(db_path)
@@ -319,6 +356,7 @@ def print_history(entries: list[HistoryEntry]) -> None:
     exactement les entrees recues, dans l'ordre recu (deja le plus recent
     d'abord si issues de list_history) ; le nombre affiche se regle en
     amont via l'argument `limit` de list_history, pas ici."""
+    logger.debug("print_history: entries={}", summarize(entries, "entries"))
     print("=" * 70)
     print("HISTORIQUE DES RUNS ENREGISTRES")
     print("=" * 70)

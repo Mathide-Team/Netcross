@@ -99,6 +99,7 @@ class NotificationSummary:
         }
 
     def to_text(self) -> str:
+        logger.debug("NotificationSummary.to_text()")
         counts = ", ".join(f"{sev}={self.by_severity.get(sev, 0)}" for sev in SEVERITIES)
         lines = [
             f"{self.title} : niveau {self.level or 'aucun'}, score {self.score}/100",
@@ -145,8 +146,10 @@ def build_summary(
     L'empreinte ne porte que sur les constats AU-DESSUS du seuil : un
     constat faible qui change ne doit pas re-notifier une alerte critique."""
     if threshold not in SEVERITIES:
+        logger.trace("build_summary: refus, ValueError")
         raise ValueError(f"seuil inconnu : {threshold!r} (attendu : {', '.join(SEVERITIES)})")
     if detail not in DETAIL_LEVELS:
+        logger.trace("build_summary: refus, ValueError")
         raise ValueError(f"niveau de detail inconnu : {detail!r} (attendu : {', '.join(DETAIL_LEVELS)})")
     items = list(findings)
     by_severity = dict.fromkeys(SEVERITIES, 0)

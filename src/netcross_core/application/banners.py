@@ -216,6 +216,7 @@ def _dns_name(msg: bytes, off: int) -> tuple[str, int]:
     hops = 0
     while True:
         if off >= len(msg):
+            logger.trace("_dns_name: refus, ValueError")
             raise ValueError("nom DNS tronque")
         length = msg[off]
         if length == 0:
@@ -223,15 +224,18 @@ def _dns_name(msg: bytes, off: int) -> tuple[str, int]:
             break
         if length & 0xC0 == 0xC0:
             if off + 1 >= len(msg):
+                logger.trace("_dns_name: refus, ValueError")
                 raise ValueError("pointeur DNS tronque")
             if end is None:
                 end = off + 2
             off = ((length & 0x3F) << 8) | msg[off + 1]
             hops += 1
             if hops > 16:
+                logger.trace("_dns_name: refus, ValueError")
                 raise ValueError("boucle de compression DNS")
             continue
         if length & 0xC0:
+            logger.trace("_dns_name: refus, ValueError")
             raise ValueError("etiquette DNS invalide")
         off += 1
         labels.append(msg[off : off + length].decode("ascii", "replace"))
@@ -307,9 +311,11 @@ def _smb_cstring(msg: bytes, pos: int, unicode_: bool) -> tuple[str, int]:
         for i in range(pos, len(msg) - 1, 2):
             if msg[i : i + 2] == b"\x00\x00":
                 return msg[pos:i].decode("utf-16-le", "replace"), i + 2
+        logger.trace("_smb_cstring: refus, ValueError")
         raise ValueError("chaine SMB tronquee")
     end = msg.find(b"\x00", pos)
     if end == -1:
+        logger.trace("_smb_cstring: refus, ValueError")
         raise ValueError("chaine SMB tronquee")
     return msg[pos:end].decode("latin-1"), end + 1
 
@@ -389,9 +395,18 @@ def extract_banners(proto: str, sport: int | None, dport: int | None, payload: b
                 banners = _greeting_banners(payload, sport)
         elif sport == 53:
             banners = _dns_banners(payload, proto)
+        if banners:
+            logger.trace(
+                "extract_banners: {} banniere(s) {} (port source {}){}",
+                len(banners),
+                "/".join(sorted({b.protocol for b in banners})),
+                sport,
+                ", tronque a " + str(MAX_BANNERS_PER_PACKET) if len(banners) > MAX_BANNERS_PER_PACKET else "",
+            )
         return tuple(banners[:MAX_BANNERS_PER_PACKET])
-    except (ValueError, IndexError, struct.error, UnicodeError):
-        logger.exception("échec dans extract_banners")
+    except (ValueError, IndexError, struct.error, UnicodeError) as exc:
+        # charge utile malformee : resultat attendu, a chaque paquet -> TRACE sans traceback
+        logger.trace("extract_banners: charge utile {} malformee ({} octets) : {!r}", proto, len(payload), exc)
         return ()
 
 
@@ -433,6 +448,11 @@ def build_service_fingerprints(packets: Iterable[Pkt]) -> list[dict]:
                 }
             elif len(b.raw) > len(entry["banner"]):
                 entry["banner"] = b.raw
+    logger.debug(
+        "build_service_fingerprints: {} logiciel(s) identifie(s) sur {} hote(s)",
+        len(found),
+        len({(e["point"], e["host"]) for e in found.values()}),
+    )
     return sorted(
         found.values(),
         key=lambda e: (e["point"], e["host"], e["port"] or 0, e["service"].lower(), e["version"] or "", e["role"]),

@@ -126,15 +126,18 @@ def save_bpf_filters(filters: Iterable[BPFFilter], path: str | Path | None = Non
 
 def _filter_from_item(item: object, index: int) -> BPFFilter:
     if not isinstance(item, dict):
+        logger.trace("_filter_from_item: refus, ValueError")
         raise ValueError(f"entree #{index}: objet JSON attendu, pas {type(item).__name__}")
     for key in ("name", "expression"):
         value = item.get(key)
         if not isinstance(value, str) or not value.strip():
+            logger.trace("_filter_from_item: refus, ValueError")
             raise ValueError(f"entree #{index}: '{key}' est requis (chaine non vide)")
     description = item.get("description")
     if description is None:
         description = ""
     if not isinstance(description, str):
+        logger.trace("_filter_from_item: refus, ValueError")
         raise ValueError(f"entree #{index}: 'description' doit etre une chaine")
     return BPFFilter(item["name"].strip(), item["expression"].strip(), description.strip())
 
@@ -196,6 +199,7 @@ def upsert_bpf_filter(new: BPFFilter, path: str | Path | None = None) -> list[BP
     clean = BPFFilter(new.name.strip(), new.expression.strip(), new.description.strip())
     key = _name_key(clean.name)
     if key in _PREDEFINED_KEYS:
+        logger.trace("upsert_bpf_filter: refus, ValueError")
         raise ValueError(f"le nom '{clean.name}' est reserve au catalogue predefini : choisir un autre nom")
     saved = load_bpf_filters(path)
     for index, existing in enumerate(saved):

@@ -18,7 +18,7 @@ import io
 from dataclasses import asdict, dataclass, field
 
 from netcross_core.expert_model import Flow
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt, Report
 
 logger = get_logger(__name__)
@@ -103,6 +103,7 @@ class StatsQuery:
 
 def _flow_packets(f: Flow, all_packets: list[Pkt]) -> list[Pkt]:
     """Retourne les paquets d'un flux, filtres par temps/segment si demande."""
+    logger.debug("_flow_packets: f={} all_packets={}", summarize(f, "f"), summarize(all_packets, "all_packets"))
     pkts = [pk for pk in all_packets if pk.point in f.points]
     # Le filtrage par flux precis (cle exacte) n'est pas faisable sans
     # reappeler flow_key() -- on filtre par appartenance au point et par
@@ -112,6 +113,7 @@ def _flow_packets(f: Flow, all_packets: list[Pkt]) -> list[Pkt]:
 
 def _time_filter(pkts: list[Pkt], f: Flow) -> list[Pkt]:
     """Filtre les paquets par fenetre temporelle du flux."""
+    logger.debug("_time_filter: pkts={} f={}", summarize(pkts, "pkts"), summarize(f, "f"))
     if not pkts:
         return []
     all_ts = list(f.first_ts.values()) + list(f.last_ts.values())
@@ -124,6 +126,7 @@ def _time_filter(pkts: list[Pkt], f: Flow) -> list[Pkt]:
 
 def _flow_duration_ms(f: Flow) -> float:
     """Duree d'un flux en millisecondes (du premier au dernier paquet vu)."""
+    logger.debug("_flow_duration_ms: f={}", summarize(f, "f"))
     all_ts = list(f.first_ts.values()) + list(f.last_ts.values())
     if not all_ts:
         return 0.0
@@ -140,6 +143,7 @@ def _flow_total_bytes(f: Flow) -> int:
 
 def _flow_throughput_bps(f: Flow) -> float:
     """Debit moyen en bits par seconde."""
+    logger.debug("_flow_throughput_bps: f={}", summarize(f, "f"))
     duration_s = _flow_duration_ms(f) / 1000.0
     if duration_s <= 0:
         return 0.0

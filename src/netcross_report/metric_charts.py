@@ -24,7 +24,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -93,11 +93,14 @@ class MetricSeries:
         les longueurs de timestamps/labels ne correspondent pas a
         values."""
         if not self.values:
+            logger.trace("MetricSeries.validate: refus, ValueError")
             raise ValueError("MetricSeries.values ne doit pas etre vide")
         n = len(self.values)
         if self.timestamps is not None and len(self.timestamps) != n:
+            logger.trace("MetricSeries.validate: refus, ValueError")
             raise ValueError(f"timestamps ({len(self.timestamps)}) et values ({n}) doivent avoir la meme longueur")
         if self.labels is not None and len(self.labels) != n:
+            logger.trace("MetricSeries.validate: refus, ValueError")
             raise ValueError(f"labels ({len(self.labels)}) et values ({n}) doivent avoir la meme longueur")
 
 
@@ -156,6 +159,7 @@ def _ylabel(series: MetricSeries) -> str:
 
 
 def _save(fig, path: str) -> str:
+    logger.debug("_save: fig={} path={}", summarize(fig, "fig"), summarize(path, "path"))
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -165,6 +169,7 @@ def _save(fig, path: str) -> str:
 def render_line(series: MetricSeries, path: str) -> str | None:
     """Trace une courbe lineaire. Retourne le chemin PNG ou None si
     la serie est vide."""
+    logger.debug("render_line: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -182,6 +187,7 @@ def render_line(series: MetricSeries, path: str) -> str | None:
 def render_area(series: MetricSeries, path: str) -> str | None:
     """Trace une aire remplie sous la courbe. Retourne le chemin PNG
     ou None si la serie est vide."""
+    logger.debug("render_area: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -200,6 +206,7 @@ def render_area(series: MetricSeries, path: str) -> str | None:
 def render_bars(series: MetricSeries, path: str) -> str | None:
     """Trace un diagramme en barres. Utilise labels si fournis, sinon
     des index. Retourne le chemin PNG ou None si la serie est vide."""
+    logger.debug("render_bars: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -220,6 +227,7 @@ def render_histogram(series: MetricSeries, path: str) -> str | None:
     """Trace un histogramme (distribution) des valeurs. Ignore
     timestamps et labels. Retourne le chemin PNG ou None si la serie
     est vide ou contient moins de 2 valeurs distinctes."""
+    logger.debug("render_histogram: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -238,6 +246,7 @@ def render_histogram(series: MetricSeries, path: str) -> str | None:
 def render_scatter(series: MetricSeries, path: str) -> str | None:
     """Trace un nuage de points. Utilise timestamps si fournis, sinon
     des index. Retourne le chemin PNG ou None si la serie est vide."""
+    logger.debug("render_scatter: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
         return None
     series.validate()
@@ -272,7 +281,14 @@ def render_metric_chart(
 
     Leve ValueError si ``kind`` n'est pas un type de graphique reconnu.
     """
+    logger.debug(
+        "render_metric_chart: series={} path={} kind={}",
+        summarize(series, "series"),
+        summarize(path, "path"),
+        summarize(kind, "kind"),
+    )
     renderer = _RENDERERS.get(kind)
     if renderer is None:
+        logger.debug("render_metric_chart: refus, ValueError")
         raise ValueError(f"Type de graphique inconnu : {kind!r}. Types reconnus : {', '.join(sorted(_RENDERERS))}")
     return renderer(series, path)

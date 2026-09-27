@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -122,6 +122,7 @@ def parse_banner(banner: str) -> ParsedBanner | None:
 
 def parse_all_banners(banner: str) -> list[ParsedBanner]:
     """Comme parse_banner(), mais renvoie tous les tokens reconnus (pas seulement le premier)."""
+    logger.debug("parse_all_banners: banner={}", summarize(banner, "banner"))
     parsed = []
     for token in banner.split():
         result = _parse_token(token)

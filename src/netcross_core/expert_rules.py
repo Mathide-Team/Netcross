@@ -360,7 +360,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -2090,6 +2090,7 @@ def list_rules(domain: str | None = None) -> list[Rule]:
     voir docstring de module : c'est le meme vocabulaire, pas une nouvelle
     taxonomie, donc `list_rules(domain=finding.category)` fonctionne
     directement depuis un Finding deja construit."""
+    logger.debug("list_rules: domain={}", summarize(domain, "domain"))
     if domain is None:
         return list(_RULE_CATALOG)
     return [r for r in _RULE_CATALOG if r.domain == domain]

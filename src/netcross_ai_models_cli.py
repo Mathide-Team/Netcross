@@ -97,6 +97,7 @@ def _cmd_import(args) -> int:
 def _cmd_outbox(args) -> int:
     if args.action == "add":
         if not args.target:
+            logger.trace("_cmd_outbox: refus, ModelPackError")
             raise ModelPackError("outbox add : chemin du paquet ZIP attendu")
         print(f"Mis en file : {queue_pack(args.target, args.outbox)}")
         return 0
@@ -109,6 +110,7 @@ def _cmd_outbox(args) -> int:
         return 0
     if args.action == "done":
         if not args.target:
+            logger.trace("_cmd_outbox: refus, ModelPackError")
             raise ModelPackError("outbox done : nom du paquet attendu")
         print(f"Marque comme envoye : {mark_sent(args.target, args.outbox)}")
         return 0
@@ -133,6 +135,7 @@ def _cmd_outbox(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    logger.debug("build_parser()")
     parser = argparse.ArgumentParser(
         prog="netcross_ai_models_cli", description="Paquets de modeles IA partageables (issue #271)"
     )

@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -341,6 +341,7 @@ def load_json_file(conn: sqlite3.Connection, json_path: str | Path) -> dict[str,
     L'empreinte sha256 du fichier est gardee dans ``meta.json_sha256``
     pour que :func:`ensure_db` sache quand reconstruire la base.
     """
+    logger.debug("load_json_file: conn={} json_path={}", summarize(conn, "conn"), summarize(json_path, "json_path"))
     raw = Path(json_path).read_bytes()
     counts = load_json(conn, json.loads(raw))
     with conn:
