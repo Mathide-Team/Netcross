@@ -94,15 +94,18 @@ _SCO_ID_PROPERTIES: dict[str, tuple[str, ...]] = {
 def _canonical(obj: Any) -> str:
     """Serialisation canonique (approximation de JCS, RFC 8785, suffisante
     pour des chaines/entiers/listes) : cles triees, sans espaces."""
+    logger.debug("_canonical: retour dumps(...)")
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def _sco_id(stix_type: str, props: Mapping[str, Any]) -> str:
     contributing = {k: props[k] for k in _SCO_ID_PROPERTIES[stix_type] if k in props}
+    logger.debug("_sco_id: retour valeur")
     return f"{stix_type}--{uuid.uuid5(STIX_SCO_NAMESPACE, _canonical(contributing))}"
 
 
 def _sdo_id(stix_type: str, content: Mapping[str, Any]) -> str:
+    logger.debug("_sdo_id: retour valeur")
     return f"{stix_type}--{uuid.uuid5(NETCROSS_NAMESPACE, stix_type + _canonical(content))}"
 
 
@@ -112,6 +115,7 @@ def format_timestamp(when: _dt.datetime) -> str:
     if when.tzinfo is None:
         when = when.replace(tzinfo=_dt.UTC)
     when = when.astimezone(_dt.UTC)
+    logger.debug("format_timestamp: retour valeur")
     return when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
 
 
@@ -119,6 +123,7 @@ def identity_object() -> dict[str, Any]:
     """L'identite « Netcross » a laquelle renvoie chaque ``created_by_ref``."""
     logger.debug("identity_object()")
     content = {"name": "Netcross", "identity_class": "system"}
+    logger.debug("identity_object: retour dict")
     return {
         "type": "identity",
         "spec_version": SPEC_VERSION,
@@ -130,6 +135,7 @@ def identity_object() -> dict[str, Any]:
 
 
 def _escape_pattern(value: str) -> str:
+    logger.debug("_escape_pattern: retour replace(...)")
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
@@ -146,6 +152,7 @@ class _Builder:
 
     def add(self, obj: dict[str, Any]) -> str:
         self.objects.setdefault(obj["id"], obj)
+        logger.debug("add: retour valeur")
         return obj["id"]
 
     def skip(self, reason: str) -> None:
@@ -163,6 +170,7 @@ class _Builder:
         }
         if confidence is not None:
             obj["confidence"] = confidence
+        logger.debug("sdo: retour obj")
         return obj
 
     # -- SCO ------------------------------------------------------------
@@ -175,12 +183,14 @@ class _Builder:
             return None
         stix_type = "ipv4-addr" if addr.version == 4 else "ipv6-addr"
         props = {"value": str(addr)}
+        logger.debug("ip: retour add(...)")
         return self.add({"type": stix_type, "spec_version": SPEC_VERSION, "id": _sco_id(stix_type, props), **props})
 
     def software(self, name: str, version: Any) -> str:
         props: dict[str, Any] = {"name": str(name)}
         if version:
             props["version"] = str(version)
+        logger.debug("software: retour add(...)")
         return self.add({"type": "software", "spec_version": SPEC_VERSION, "id": _sco_id("software", props), **props})
 
     def traffic(
@@ -195,6 +205,7 @@ class _Builder:
             # `protocols` est obligatoire : sans protocole applicatif connu, la
             # couche reseau seule (ipv4/ipv6) est la seule affirmation sure.
             props["protocols"] = ["ipv6" if dst_ref.startswith("ipv6-addr") else "ipv4"]
+        logger.debug("traffic: retour add(...)")
         return self.add(
             {"type": "network-traffic", "spec_version": SPEC_VERSION, "id": _sco_id("network-traffic", props), **props}
         )
@@ -208,6 +219,7 @@ class _Builder:
         }
         if point:
             content["x_netcross_point"] = str(point)
+        logger.debug("observed: retour add(...)")
         return self.add(self.sdo("observed-data", content, confidence=CONFIDENCE_OBSERVATION))
 
 
@@ -221,6 +233,7 @@ def _service_refs(b: _Builder, fp: Mapping[str, Any]) -> list[str]:
         traffic_ref = b.traffic(dst_ref=host_ref, dst_port=fp.get("port"), protocol=fp.get("protocol"))
         if traffic_ref:
             refs.append(traffic_ref)
+    logger.debug("_service_refs: retour refs")
     return refs
 
 
@@ -237,6 +250,7 @@ def _add_cve(b: _Builder, f: Mapping[str, Any]) -> None:
     cve_id = f.get("cve_id")
     if not cve_id:
         b.skip("cve sans identifiant")
+        logger.debug("_add_cve: retour (None implicite)")
         return
     content: dict[str, Any] = {
         "name": str(cve_id),
@@ -248,6 +262,7 @@ def _add_cve(b: _Builder, f: Mapping[str, Any]) -> None:
         content["x_netcross_cvss"] = float(f["cvss"])
     vuln_ref = b.add(b.sdo("vulnerability", content, confidence=CONFIDENCE_CVE_BY_VERSION))
     if not f.get("service"):
+        logger.debug("_add_cve: retour (None implicite)")
         return
     # le software est celui du service detecte (meme id deterministe) ; son
     # observation est deja portee par l'observed-data du service
@@ -271,10 +286,12 @@ def exploit_pattern(f: Mapping[str, Any]) -> str | None:
             continue
         parts.append(f"network-traffic:{prop}.value = '{_escape_pattern(str(addr))}'")
     if not parts:
+        logger.debug("exploit_pattern: retour None")
         return None
     port = f.get("port")
     if isinstance(port, int) and 0 <= port <= 65535:
         parts.append(f"network-traffic:dst_port = {port}")
+    logger.debug("exploit_pattern: retour valeur")
     return "[" + " AND ".join(parts) + "]"
 
 
@@ -282,6 +299,7 @@ def _add_exploit(b: _Builder, f: Mapping[str, Any]) -> None:
     pattern = exploit_pattern(f)
     if pattern is None:
         b.skip("exploit sans adresse")
+        logger.debug("_add_exploit: retour (None implicite)")
         return
     detail = str(f.get("detail") or "signature d'exploit")
     content: dict[str, Any] = {
@@ -309,6 +327,7 @@ def _add_anomaly(b: _Builder, f: Mapping[str, Any], orphan_notes: list[dict[str,
     host_ref = b.ip(f["host"]) if f.get("host") else None
     if host_ref is None:
         orphan_notes.append(content)
+        logger.debug("_add_anomaly: retour (None implicite)")
         return
     refs = [host_ref]
     src_ref = b.ip(f["src"]) if f.get("src") else None
@@ -372,6 +391,7 @@ def to_stix_bundle(
 
     objects = sorted(b.objects.values(), key=lambda o: o["id"])
     bundle_id = f"bundle--{uuid.uuid5(NETCROSS_NAMESPACE, _canonical([o['id'] for o in objects]))}"
+    logger.debug("to_stix_bundle: retour dict")
     return {"type": "bundle", "id": bundle_id, "objects": objects}
 
 
@@ -390,6 +410,7 @@ def export_stix(
         summarize(observed_until, "observed_until"),
     )
     bundle = to_stix_bundle(report, observed_from=observed_from, observed_until=observed_until)
+    logger.debug("export_stix: retour valeur")
     return json.dumps(bundle, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
@@ -411,4 +432,5 @@ def write_stix(
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(export_stix(report, observed_from=observed_from, observed_until=observed_until), encoding="utf-8")
+    logger.debug("write_stix: retour str(...)")
     return str(path.resolve())
