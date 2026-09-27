@@ -35,6 +35,7 @@ class Call:
     correlation_method: str = "time_window"
 
     def to_dict(self) -> dict:
+        logger.debug("Call.to_dict: retour dictionnaire")
         return {
             "call_id": self.call_id,
             "participants": list(self.participants),
@@ -50,6 +51,7 @@ class Call:
 
 def _quality(mos_values: list[float]) -> str:
     if not mos_values:
+        logger.debug("_quality: si not mos_values -> retour 'unknown'")
         return "unknown"
     mos = sum(mos_values) / len(mos_values)
     if mos < 3.0:

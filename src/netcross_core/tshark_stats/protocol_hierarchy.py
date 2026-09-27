@@ -47,6 +47,7 @@ def parse_protocol_hierarchy(text: str) -> list[ProtocolHierarchyStat]:
         leading = len(line) - len(line.lstrip())
         data.append((leading, tokens[0], tokens[1:]))
     if not data:
+        logger.debug("parse_protocol_hierarchy: si not data -> retour liste vide")
         return []
     base = min(leading for leading, _, _ in data)
     out: list[ProtocolHierarchyStat] = []
