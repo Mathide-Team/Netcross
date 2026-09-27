@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (106 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 16 cases à cocher, 12 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 8 routes FastAPI | Analyse de base avec sécurité, sans aucune option |
+| API | 8 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -26,7 +26,8 @@ actif, non réglable.
 - **Non, la parité n'est pas complète, et c'est en partie voulu.** La CLI
   est la surface complète. La GUI couvre l'analyse et le diagnostic
   interactifs, et ajoute des vues d'exploration sans équivalent CLI. L'API
-  n'expose que l'analyse de base, sans aucune option.
+  expose l'analyse avec les options qui changent le résultat (NAT, TLS,
+  QUIC, anonymisation), sans les réglages fins ni l'automatisation.
 - Le rapport JSON de l'API est désormais celui de la CLI :
   `GET /analyses/{analysis_id}/report` (constats, triage, score de santé).
   `GET /analyses/{analysis_id}` reste la copie brute des mesures.
@@ -41,7 +42,7 @@ actif, non réglable.
 | Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | non |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
-| Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : CLI seule) | non |
+| Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : CLI et API) | `nat_tolerant`, `nat_window_ms` |
 | Doublons inter-captures | oui (« Détecter... », « Exclure... », seuil) | `--detect-duplicates`, `--exclude-duplicates`, `--duplicate-threshold-ms` | non |
 | Lecture parallèle | oui (« Lecture parallele des captures ») | `--parallel`, `--parallel-workers` (nombre : CLI seule) | non |
 | Fenêtre temporelle du débit | oui | `--bucket-ms` | non |
@@ -50,16 +51,16 @@ actif, non réglable.
 | Limiter ou échantillonner les paquets | non | `--max-packets`, `--sample` | non |
 | Noms logiques des hôtes | non | `--names` | non |
 | Plages TEST-NET traitées comme externes | non | `--test-net-external` | non |
-| Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` (table de correspondance : CLI seule) | non |
+| Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` (table de correspondance : CLI seule) | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) |
 
 ## Diagnostics et triage
 
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Triage et score de santé | oui (case « Triage » + « Top ») | `--triage`, `--triage-top-n` | `GET /analyses/{analysis_id}/report` (clés `triage`, `health_score`) |
-| Diagnostic TLS | oui (« Diagnostic TLS ») | `--tls` | non |
-| Diagnostic QUIC/HTTP3 | oui (« Diagnostic QUIC/HTTP3 ») | `--quic` | non |
-| Rapport de sécurité (détecteurs, signatures d'exploit, CVE) | oui (« Rapport de securite ») | `--security-report` | auto (toujours exécuté), `GET /analyses/{analysis_id}/security` |
+| Diagnostic TLS | oui (« Diagnostic TLS ») | `--tls` | `tls` (clé `tls_findings` de `/report`) |
+| Diagnostic QUIC/HTTP3 | oui (« Diagnostic QUIC/HTTP3 ») | `--quic` | `quic` (clé `quic_findings` de `/report`) |
+| Rapport de sécurité (détecteurs, signatures d'exploit, CVE) | oui (« Rapport de securite ») | `--security-report` | auto (toujours exécuté, sauf avec `redact`), `GET /analyses/{analysis_id}/security` |
 | Base CVE complète (NVD) | non (base embarquée seule) | `--cve-db` | non (base embarquée seule) |
 | Destinations et hôtes connus (sécurité) | non | `--known-destinations`, `--known-hosts` | non |
 | Moteur de règles | non | `--rule-engine` | non |
@@ -207,6 +208,10 @@ son équivalent CLI ou API.
 | `GET /health` | Santé du service (sans authentification) |
 | `POST /captures` | Une capture ; `wait` pour attendre le résultat |
 | `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `wait` |
+
+Options d'analyse des deux routes `POST` (champs de formulaire, sens de
+l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
+`quic`, `redact`.
 | `GET /analyses` | Liste des analyses |
 | `GET /analyses/{analysis_id}` | Mesures brutes (voir plus haut) |
 | `GET /analyses/{analysis_id}/report` | Rapport structuré, identique à `--json-report` |
@@ -225,10 +230,10 @@ Classés par impact pour un utilisateur :
 1. ~~**API : JSON différent de celui de la CLI**~~ : traité,
    `GET /analyses/{analysis_id}/report` sert le document de
    `--json-report` ; le dump brut reste sur `GET /analyses/{analysis_id}`.
-2. **API : aucune option d'analyse.** Au minimum `nat_tolerant`, `tls`,
-   `quic`, `redact` et `triage`, qui changent le résultat. Sans `nat_tolerant`, une
-   analyse à travers un NAT par l'API compte comme perdus des paquets
-   simplement traduits.
+2. ~~**API : aucune option d'analyse.**~~ : traité, `nat_tolerant`,
+   `nat_window_ms`, `tls`, `quic` et `redact` sur les deux routes `POST`,
+   avec les mêmes incompatibilités que la CLI. Le triage n'est pas une
+   option : il est toujours dans `GET /analyses/{analysis_id}/report`.
 3. **GUI : réglages d'analyse absents.** `--idle-timeout-seconds`,
    `--nat-window-ms` et `--names` changent le résultat sans pouvoir être
    réglés dans la GUI.

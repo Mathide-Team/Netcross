@@ -83,7 +83,9 @@ def test_rapport_complet_multipoints_serialisable():
 def test_metadonnees_conservees():
     analysis_id = _post().json()["analysis_id"]
     meta = store.get(analysis_id)["metadata"]
+    options = meta.pop("options")  # issue #330 : options d'analyse retenues
     assert meta == {"files": ["lan.pcap", "dc.pcap"], "labels": ["LAN", "DC"], "points_order": ["LAN", "DC"]}
+    assert options["nat_tolerant"] is False and options["redact"] is False
 
 
 @pytest.mark.parametrize(

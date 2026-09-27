@@ -30,7 +30,11 @@ paths:
 
         ``completed`` (ou ``failed`` avec ``error``). ``?wait=true`` attend la
 
-        fin et retourne directement le résumé (201).'
+        fin et retourne directement le résumé (201). ``nat_tolerant``,
+
+        ``nat_window_ms``, ``tls``, ``quic`` et ``redact`` ont le sens des
+
+        options de même nom de la CLI (issue #330).'
       operationId: upload_capture_captures_post
       security:
       - APIKeyHeader: []
@@ -106,7 +110,9 @@ paths:
 
         amont -> aval, sinon il est déduit du trafic. Le résumé (``?wait=true``
 
-        ou ``/status``) détaille les pertes et le délai de chaque segment.'
+        ou ``/status``) détaille les pertes et le délai de chaque segment.
+
+        Options d''analyse : comme ``POST /captures`` (issue #330).'
       operationId: upload_multi_capture_captures_multi_post
       security:
       - APIKeyHeader: []
@@ -475,6 +481,35 @@ components:
           title: Label
           description: 'Étiquette du point de capture (ex: lan)'
           default: capture
+        nat_tolerant:
+          type: boolean
+          title: Nat Tolerant
+          description: 'true : corrélation tolérante au NAT (équivalent de --nat-tolerant)'
+          default: false
+        nat_window_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Nat Window Ms
+          description: Fenêtre de corrélation NAT en ms, avec nat_tolerant (équivalent
+            de --nat-window-ms)
+          default: 200.0
+        tls:
+          type: boolean
+          title: Tls
+          description: 'true : diagnostic TLS (équivalent de --tls)'
+          default: false
+        quic:
+          type: boolean
+          title: Quic
+          description: 'true : diagnostic QUIC/HTTP3 (équivalent de --quic)'
+          default: false
+        redact:
+          type: boolean
+          title: Redact
+          description: 'true : anonymise les adresses IP/MAC avant analyse (équivalent
+            de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
+            alors pas calculé'
+          default: false
       type: object
       required:
       - file
@@ -498,6 +533,35 @@ components:
           title: Points Order
           description: 'Ordre des points séparé par virgule (ex: lan,wan,dc)'
           default: ''
+        nat_tolerant:
+          type: boolean
+          title: Nat Tolerant
+          description: 'true : corrélation tolérante au NAT (équivalent de --nat-tolerant)'
+          default: false
+        nat_window_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Nat Window Ms
+          description: Fenêtre de corrélation NAT en ms, avec nat_tolerant (équivalent
+            de --nat-window-ms)
+          default: 200.0
+        tls:
+          type: boolean
+          title: Tls
+          description: 'true : diagnostic TLS (équivalent de --tls)'
+          default: false
+        quic:
+          type: boolean
+          title: Quic
+          description: 'true : diagnostic QUIC/HTTP3 (équivalent de --quic)'
+          default: false
+        redact:
+          type: boolean
+          title: Redact
+          description: 'true : anonymise les adresses IP/MAC avant analyse (équivalent
+            de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
+            alors pas calculé'
+          default: false
       type: object
       required:
       - files
