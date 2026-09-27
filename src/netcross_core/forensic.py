@@ -146,6 +146,12 @@ def detect_cross_capture_duplicates(
             pair = (original.point, pk.point) if original.point <= pk.point else (pk.point, original.point)
             counts[pair] += 1
 
+    total = sum(counts.values())
+    logger.debug(
+        "detect_cross_capture_duplicates: {} doublon(s) sur {} hash(s) avec payload",
+        total,
+        len(by_hash),
+    )
     return dict(counts)
 
 
@@ -199,6 +205,13 @@ class ForensicIndex:
             for fk in ev.flow_keys:
                 self._events_by_flow_key[fk].append(ev)
 
+        logger.debug(
+            "ForensicIndex.__init__: {} paquet(s), {} flux, {} événement(s) indexé(s)",
+            len(self._packet_to_key),
+            len(self._flow_by_key),
+            len(events),
+        )
+
     # -- Evenement → flows ------------------------------------------------
 
     def event_to_flows(self, event: ExpertEvent) -> list[Flow]:
@@ -241,6 +254,11 @@ class ForensicIndex:
                     flows.append(flow)
                     seen_keys.add(fk)
 
+        logger.debug(
+            "event_to_flows: {} flux trouvé(s) pour l'événement {}",
+            len(flows),
+            getattr(event, "rule_id", "?"),
+        )
         return flows
 
     # -- Evenement → paquets -----------------------------------------------
@@ -278,6 +296,11 @@ class ForensicIndex:
                             pkts.append(PacketEvidence(point=point, frame_number=pk.frame_number))
                             seen.add(key)
 
+        logger.debug(
+            "event_to_packets: {} paquet(s) justificatif(s) pour l'événement {}",
+            len(pkts),
+            getattr(event, "rule_id", "?"),
+        )
         return pkts
 
     # -- Paquet → flow ------------------------------------------------------
@@ -313,6 +336,11 @@ class ForensicIndex:
                         events.append(ev)
                         seen.add(id(ev))
 
+        logger.debug(
+            "flow_to_events: {} événement(s) pour le flux {}",
+            len(events),
+            getattr(flow, "key", "?"),
+        )
         return events
 
     # -- Flow → paquets -----------------------------------------------------
@@ -558,6 +586,7 @@ def _classify_gap(gap: _OpenGap, ack_ts: list[float], ack_nums: list[int]) -> tu
     last = bisect_left(ack_ts, gap.epoch_end_ts)
     for i in range(first, last):
         if _seq_delta(ack_nums[i], end) >= 0:
+            logger.debug("_classify_gap: cause={} (ACK >= fin du trou)", SEQ_GAP_CAPTURE_DROP)
             return (
                 SEQ_GAP_CAPTURE_DROP,
                 f"ACK {ack_nums[i]} >= fin du trou ({end}) : octets acquittes par le recepteur "
@@ -567,15 +596,18 @@ def _classify_gap(gap: _OpenGap, ack_ts: list[float], ack_nums: list[int]) -> tu
     if after < last:
         stuck = max(ack_nums[after:last], key=lambda a: _seq_delta(a, gap.start))
         if _seq_delta(stuck, gap.start) >= 0:
+            logger.debug("_classify_gap: cause={} (ACK bloque)", SEQ_GAP_NETWORK_LOSS)
             return (
                 SEQ_GAP_NETWORK_LOSS,
                 f"ACK bloque a {stuck} (< fin du trou {end}) : octets non acquittes, "
                 "aucune retransmission dans la capture",
             )
+        logger.debug("_classify_gap: cause={} (ACK en retard)", SEQ_GAP_INDETERMINATE)
         return (
             SEQ_GAP_INDETERMINATE,
             f"ACK du recepteur en retard sur le trou ({stuck} < debut du trou {gap.start}) : impossible de conclure",
         )
+    logger.debug("_classify_gap: cause={} (aucun ACK observe)", SEQ_GAP_INDETERMINATE)
     return (SEQ_GAP_INDETERMINATE, "aucun ACK du recepteur observe a ce point apres le trou : impossible de conclure")
 
 

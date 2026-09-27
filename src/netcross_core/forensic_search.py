@@ -329,6 +329,11 @@ class ForensicSearchIndex:
         if quic_events:
             self._docs.extend(_doc_from_quic_event(e) for e in quic_events)
 
+        logger.debug(
+            "ForensicSearchIndex.__init__: {} document(s) indexé(s)",
+            len(self._docs),
+        )
+
     # -- Recherche --------------------------------------------------------
 
     def search(self, query: ForensicSearchQuery) -> list[ForensicSearchResult]:
@@ -352,6 +357,10 @@ class ForensicSearchIndex:
             results.append(self._to_result(doc, matched_fields))
 
         results.sort(key=lambda r: r.ts if r.ts is not None else float("inf"))
+        logger.debug(
+            "search: {} résultat(s) pour la requête",
+            len(results),
+        )
         return results
 
     @staticmethod
