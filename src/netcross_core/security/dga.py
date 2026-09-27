@@ -327,6 +327,12 @@ def _compute_dga_score(
     )
 
     reason = ", ".join(reasons) if reasons else "score insuffisant"
+    logger.debug(
+        "_compute_dga_score: {} -> score={} ({})",
+        subdomain,
+        round(total, 3),
+        reason,
+    )
     return round(total, 3), reason
 
 
