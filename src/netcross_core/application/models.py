@@ -60,6 +60,7 @@ class ApplicationTransaction:
     def to_dict(self) -> dict:
         """Sérialisation pour Report.application_transactions (liste de
         dicts, comme http_objects)."""
+        logger.debug("ApplicationTransaction.to_dict: retour dictionnaire")
         return {
             "protocol": self.protocol,
             "point": self.point,

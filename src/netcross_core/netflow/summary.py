@@ -17,7 +17,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.netflow.models import FlowRecord
 
 logger = get_logger(__name__)
@@ -28,16 +28,20 @@ _PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP", 47: "GRE", 50: "ESP", 58: "ICMPv
 
 
 def protocol_name(number: int) -> str:
+    logger.debug("protocol_name: retour _PROTO_NAMES.get(…)")
     return _PROTO_NAMES.get(number, str(number))
 
 
 def _iso(ts: float | None) -> str | None:
     if ts is None:
+        logger.debug("_iso: si ts is None -> retour None")
         return None
+    logger.debug("_iso: retour datetime.fromtimestamp(ts, tz=timezone.…(…)")
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
 
 
 def _counter() -> dict[str, int]:
+    logger.debug("_counter: retour dictionnaire")
     return {"flows": 0, "packets": 0, "octets": 0}
 
 
@@ -45,10 +49,12 @@ def _add(bucket: dict[str, int], flow: FlowRecord) -> None:
     bucket["flows"] += 1
     bucket["packets"] += flow.packets
     bucket["octets"] += flow.octets
+    logger.debug("_add: fin")
 
 
 def _top(items: dict, top: int, fields) -> list[dict]:
     ranked = sorted(items.items(), key=lambda kv: (-kv[1]["octets"], -kv[1]["flows"], repr(kv[0])))
+    logger.debug("_top: retour liste")
     return [{**fields(key), **counts} for key, counts in ranked[:top]]
 
 
@@ -110,11 +116,14 @@ def summarize_flow_records(records: Iterable[FlowRecord], *, top: int = 10) -> d
 def _octets(n: int) -> str:
     for unit, size in (("Go", 1 << 30), ("Mo", 1 << 20), ("Ko", 1 << 10)):
         if n >= size:
+            logger.debug("_octets: si n >= size -> retour chaîne formatée")
             return f"{n / size:.1f} {unit}"
+    logger.debug("_octets: retour chaîne formatée")
     return f"{n} o"
 
 
 def _endpoint(addr: str, port: int | None) -> str:
+    logger.debug("_endpoint: retour addr if port is None else f'(addr):(port)'")
     return addr if port is None else f"{addr}:{port}"
 
 
@@ -125,6 +134,7 @@ def format_flow_summary(summary: dict) -> list[str]:
     logger.debug("format_flow_summary: {} flux à formater", t["flows"])
     if not t["flows"]:
         lines.append("Aucun flux dans les fichiers fournis.")
+        logger.debug("format_flow_summary: si not t['flows'] -> retour lines={}", summarize(lines, "lines"))
         return lines
     versions = ", ".join(f"v{v}" for v in summary["netflow_versions"])
     lines.append(f"{t['flows']} flux, {t['packets']} paquets, {_octets(t['octets'])} (NetFlow {versions})")
@@ -149,4 +159,5 @@ def format_flow_summary(summary: dict) -> list[str]:
             f"  {p['protocol']}/{p['port']:<6d} {p['flows']:6d} flux  {_octets(p['octets'])}"
             for p in summary["top_dst_ports"]
         )
+    logger.debug("format_flow_summary: retour lines={}", summarize(lines, "lines"))
     return lines

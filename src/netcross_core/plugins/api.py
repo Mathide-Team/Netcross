@@ -31,7 +31,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -52,13 +52,20 @@ def freeze(value: Any) -> Any:
     """Copie profonde figee : dict -> MappingProxyType, list/set -> tuple,
     dataclass/objet -> vue `ReadOnlyView`. Les scalaires traversent."""
     if isinstance(value, (*_SCALARS, bytes)):
+        logger.debug("freeze: si isinstance(value, (*_SCALARS, bytes)) -> retour value={}", summarize(value, "value"))
         return value
     if isinstance(value, Mapping):
+        logger.debug("freeze: si isinstance(value, Mapping) -> retour MappingProxyType(…)")
         return MappingProxyType({k: freeze(v) for k, v in value.items()})
     if isinstance(value, list | tuple | set | frozenset):
+        logger.debug("freeze: si isinstance(value, list | tuple | set | frozenset) -> retour tuple(…)")
         return tuple(freeze(v) for v in value)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        logger.debug(
+            "freeze: si dataclasses.is_dataclass(value) and (not isinstance(value, … -> retour ReadOnlyView(…)"
+        )
         return ReadOnlyView(value)
+    logger.debug("freeze: retour copy.deepcopy(…)")
     return copy.deepcopy(value)
 
 
@@ -73,19 +80,25 @@ class ReadOnlyView:
 
     def __init__(self, target: Any) -> None:
         object.__setattr__(self, "_target", target)
+        logger.debug("ReadOnlyView.__init__: fin")
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):
+            logger.debug("ReadOnlyView.__getattr__: si name.startswith('__') -> levée AttributeError")
             raise AttributeError(name)
+        logger.debug("ReadOnlyView.__getattr__: retour freeze(…)")
         return freeze(getattr(object.__getattribute__(self, "_target"), name))
 
     def __setattr__(self, name: str, value: Any) -> None:
+        logger.debug("ReadOnlyView.__setattr__: levée PluginAccessError")
         raise PluginAccessError(f"lecture seule : impossible de modifier {name!r}")
 
     def __delattr__(self, name: str) -> None:
+        logger.debug("ReadOnlyView.__delattr__: levée PluginAccessError")
         raise PluginAccessError(f"lecture seule : impossible de supprimer {name!r}")
 
     def __repr__(self) -> str:
+        logger.debug("ReadOnlyView.__repr__: retour chaîne formatée")
         return f"ReadOnlyView({type(object.__getattribute__(self, '_target')).__name__})"
 
 
@@ -97,14 +110,18 @@ class _Packets:
 
     def __init__(self, items: list[Any]) -> None:
         self._items = items
+        logger.debug("_Packets.__init__: fin")
 
     def __len__(self) -> int:
+        logger.debug("_Packets.__len__: retour len(…)")
         return len(self._items)
 
     def __getitem__(self, index: int) -> ReadOnlyView:
+        logger.debug("_Packets.__getitem__: retour ReadOnlyView(…)")
         return ReadOnlyView(self._items[index])
 
     def __iter__(self) -> Iterator[ReadOnlyView]:
+        logger.debug("_Packets.__iter__: retour générateur")
         return (ReadOnlyView(p) for p in self._items)
 
 
@@ -123,6 +140,7 @@ class DetectorContext:
 
     @classmethod
     def build(cls, packets: list[Any], report: Any) -> DetectorContext:
+        logger.debug("DetectorContext.build: retour cls(…)")
         return cls(
             packets=_Packets(packets),
             report=ReadOnlyView(report),
@@ -151,25 +169,34 @@ def validate_finding(raw: Any) -> dict[str, Any]:
     vides ; `severity` dans SEVERITIES ; toutes les valeurs scalaires JSON
     (pas d'objet arbitraire qui casserait le JSON ou le HTML), sauf `cves`
     (liste de chaines). Les flottants non finis sont refuses."""
+    logger.debug("validate_finding: raw={}", summarize(raw, "raw"))
     if not isinstance(raw, Mapping):
+        logger.debug("validate_finding: refus, InvalidFindingError")
         raise InvalidFindingError(f"constat de type {type(raw).__name__}, dict attendu")
     finding = dict(raw)
     for key in REQUIRED_KEYS:
         if not isinstance(finding.get(key), str) or not finding[key].strip():
+            logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"cle {key!r} absente ou vide")
     severity = finding["severity"].lower()
     if severity not in SEVERITIES:
+        logger.debug("validate_finding: refus, InvalidFindingError")
         raise InvalidFindingError(f"severite {finding['severity']!r} inconnue (attendu : {', '.join(SEVERITIES)})")
     finding["severity"] = severity
     for key, value in finding.items():
         if not isinstance(key, str):
+            logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"cle non textuelle : {key!r}")
         if key == "cves":
             if not isinstance(value, list | tuple) or not all(isinstance(c, str) for c in value):
+                logger.debug("validate_finding: refus, InvalidFindingError")
                 raise InvalidFindingError("'cves' doit etre une liste de chaines")
             finding[key] = list(value)
         elif not isinstance(value, _SCALARS):
+            logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"valeur non scalaire pour {key!r} ({type(value).__name__})")
         elif isinstance(value, float) and not math.isfinite(value):
+            logger.debug("validate_finding: refus, InvalidFindingError")
             raise InvalidFindingError(f"valeur non finie pour {key!r}")
+    logger.debug("validate_finding: retour finding={}", summarize(finding, "finding"))
     return finding

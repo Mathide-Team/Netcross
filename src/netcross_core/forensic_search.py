@@ -147,6 +147,7 @@ def _doc_from_packet(pk: Pkt) -> _SearchDoc:
         logger.trace("_doc_from_packet: trame {} ({}), champs {}", pk.frame_number, pk.point, sorted(fields))
 
     text = " ".join(fields.values())
+    logger.debug("_doc_from_packet: retour _SearchDoc(…)")
     return _SearchDoc(
         kind="packet",
         point=pk.point,
@@ -172,6 +173,7 @@ def _doc_from_flow(flow: Flow) -> _SearchDoc:
     if not endpoints:
         logger.trace("_doc_from_flow: flux sans extremites connues, points {}", flow.points)
     text = " ".join(fields.values())
+    logger.debug("_doc_from_flow: retour _SearchDoc(…)")
     return _SearchDoc(
         kind="flow",
         point=flow.points[0] if flow.points else None,
@@ -200,6 +202,7 @@ def _doc_from_event(ev: ExpertEvent) -> _SearchDoc:
     if not ev.message:
         logger.trace("_doc_from_event: evenement {!r} sans message, recherche limitee aux autres champs", ev.category)
     text = " ".join(fields.values())
+    logger.debug("_doc_from_event: retour _SearchDoc(…)")
     return _SearchDoc(
         kind="event",
         point=ev.segment or None,
@@ -228,6 +231,7 @@ def _doc_from_http_object(obj: HttpObject) -> _SearchDoc:
     if not (obj.response_frame or obj.request_frame):
         logger.trace("_doc_from_http_object: objet HTTP {!r} sans numero de trame", obj.uri)
     text = " ".join(fields.values())
+    logger.debug("_doc_from_http_object: retour _SearchDoc(…)")
     return _SearchDoc(
         kind="http_object",
         point=obj.point,
@@ -257,6 +261,7 @@ def _doc_from_tls_event(ev: TlsEvent) -> _SearchDoc:
         fields["alert"] = ev.alert_description
         logger.trace("_doc_from_tls_event: alerte TLS {!r} indexee", ev.alert_description)
     text = " ".join(fields.values())
+    logger.debug("_doc_from_tls_event: retour _SearchDoc(…)")
     return _SearchDoc(
         kind="tls",
         point=ev.point,
@@ -281,6 +286,7 @@ def _doc_from_quic_event(ev: QuicEvent) -> _SearchDoc:
     if not ev.sni:
         logger.trace("_doc_from_quic_event: evenement QUIC sans SNI ({})", ev.point)
     text = " ".join(fields.values())
+    logger.debug("_doc_from_quic_event: retour _SearchDoc(…)")
     return _SearchDoc(
         kind="quic",
         point=ev.point,
@@ -384,15 +390,29 @@ class ForensicSearchIndex:
     @staticmethod
     def _match_filters(doc: _SearchDoc, q: ForensicSearchQuery) -> bool:
         if q.point and doc.point != q.point:
+            logger.debug("ForensicSearchIndex._match_filters: si q.point and doc.point != q.point -> retour False")
             return False
         if q.protocol and (not doc.protocol or doc.protocol.upper() != q.protocol.upper()):
+            logger.debug(
+                "ForensicSearchIndex._match_filters: si q.protocol and (not doc.protocol or doc.protocol.upper() !=……"
+            )
             return False
         if q.address and doc.src != q.address and doc.dst != q.address:
+            logger.debug(
+                "ForensicSearchIndex._match_filters: si q.address and doc.src != q.address and (doc.dst != q.addres……"
+            )
             return False
         if q.port is not None and doc.sport != q.port and doc.dport != q.port:
+            logger.debug(
+                "ForensicSearchIndex._match_filters: si q.port is not None and doc.sport != q.port and (doc.dport !……"
+            )
             return False
         if q.time_start is not None and (doc.ts is None or doc.ts < q.time_start):
+            logger.debug(
+                "ForensicSearchIndex._match_filters: si q.time_start is not None and (doc.ts is None or doc.ts < q.……"
+            )
             return False
+        logger.debug("ForensicSearchIndex._match_filters: retour not (q.time_end is not None and (doc.ts is None o…")
         return not (q.time_end is not None and (doc.ts is None or doc.ts > q.time_end))
 
     @staticmethod
@@ -410,12 +430,16 @@ class ForensicSearchIndex:
             if value is None:
                 # chemin chaud (appele par document) : TRACE
                 logger.trace("_match_text: champ {!r} absent du document {}", q.field, doc.kind)
+                logger.debug("ForensicSearchIndex._match_text: si value is None -> retour tuple de 0")
                 return ()
             if not field_val:
                 # Presence seule du champ.
+                logger.debug("ForensicSearchIndex._match_text: si not field_val -> retour tuple de 1")
                 return (q.field,)
             if field_val in value.lower():
+                logger.debug("ForensicSearchIndex._match_text: si field_val in value.lower() -> retour tuple de 1")
                 return (q.field,)
+            logger.debug("ForensicSearchIndex._match_text: si q.field -> retour tuple de 0")
             return ()
 
         # Recherche en texte libre (text) ET/OU valeur de champ diffuse.
@@ -426,11 +450,13 @@ class ForensicSearchIndex:
             terms.append(field_val)
         if not terms:
             logger.trace("_match_text: aucun terme de recherche")
+            logger.debug("ForensicSearchIndex._match_text: si not terms -> retour tuple de 0")
             return ()
         blob = doc.text.lower()
         for term in terms:
             if term in blob:
                 matched.extend(name for name, val in doc.fields.items() if term in val.lower() and name not in matched)
+        logger.debug("ForensicSearchIndex._match_text: retour tuple(matched) if matched else ()")
         return tuple(matched) if matched else ()
 
     @staticmethod
@@ -441,6 +467,7 @@ class ForensicSearchIndex:
             # requete purement filtree : pas de champ correspondant a mettre en avant
             logger.trace("_to_result: document {} retenu sans champ correspondant", doc.kind)
             snippet = doc.text or doc.kind
+        logger.debug("ForensicSearchIndex._to_result: retour ForensicSearchResult(…)")
         return ForensicSearchResult(
             kind=doc.kind,
             point=doc.point,
@@ -453,4 +480,5 @@ class ForensicSearchIndex:
     # -- Acces utilitaire ------------------------------------------------
 
     def __len__(self) -> int:
+        logger.debug("ForensicSearchIndex.__len__: retour len(…)")
         return len(self._docs)

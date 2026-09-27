@@ -1,5 +1,9 @@
-"""#441, lot 2 : la dissection par paquet ne trace que les cas particuliers,
-au niveau TRACE, et les calculs par flux au niveau DEBUG."""
+"""#441, lot 2 : la dissection par paquet ne trace les cas particuliers
+qu'au niveau TRACE, et les calculs par flux au niveau DEBUG.
+
+Suite de #441 (un logger.debug() à chaque sortie) : le chemin commun
+n'émet que les traces DEBUG de sortie de fonction, aucun cas particulier
+(TRACE) ni rien au-dessus de DEBUG."""
 
 from __future__ import annotations
 
@@ -44,7 +48,9 @@ def test_chemin_commun_sans_trace(journal):
     assert expert_flag_names({}) == ()
     assert as_bool(True) is True
     assert checksum_is_bad("1") is False
-    assert journal == []
+    assert journal, "chaque sortie de fonction doit être tracée en DEBUG"
+    assert all(n == "DEBUG" for n, _m in journal)
+    assert {m.split(":", 1)[0] for _n, m in journal} >= {"expert_flag_names", "as_bool", "checksum_is_bad"}
 
 
 def test_tls_handshake_en_clair_trace(journal):

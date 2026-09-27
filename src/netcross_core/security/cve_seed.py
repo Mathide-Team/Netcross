@@ -44,6 +44,7 @@ def load_seed(path: Path | str = DEFAULT_SEED_PATH) -> CveSeed:
     with open(path, encoding="utf-8") as f:
         raw = json.load(f)
     if not isinstance(raw, dict) or raw.get("version") != SEED_FORMAT_VERSION:
+        logger.debug("load_seed: si not isinstance(raw, dict) or raw.get('version') != SEED_FOR… -> levée ValueError")
         raise ValueError(f"{path} : format de base CVE embarquee inattendu (version {SEED_FORMAT_VERSION} attendue)")
     entries = []
     for item in raw.get("cves", []):

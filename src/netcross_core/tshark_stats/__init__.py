@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.tshark_stats.conversations import parse_conversations
 from netcross_core.tshark_stats.dns import parse_dns_stat
 from netcross_core.tshark_stats.endpoints import parse_endpoints
@@ -78,6 +78,7 @@ def collect_endpoints(capture_path: str | Path, protocol: str = "tcp") -> list[E
 def collect_protocol_hierarchy(
     capture_path: str | Path,
 ) -> list[ProtocolHierarchyStat]:
+    logger.debug("collect_protocol_hierarchy: capture_path={}", summarize(capture_path, "capture_path"))
     text = run_tshark_stat(capture_path, "io,phs")
     return parse_protocol_hierarchy(text)
 

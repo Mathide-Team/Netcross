@@ -24,7 +24,7 @@ from netcross_core.content import extract_http_objects
 from netcross_core.correlate import TOPN_DIMENSIONS, compute_throughput, compute_topn_series
 from netcross_core.extract.carver import detect_extracted_files
 from netcross_core.forensic import detect_sequence_gaps
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt, Report
 from netcross_core.parsing import compute_mos
 from netcross_core.security.exfiltration import detect_exfiltration
@@ -39,15 +39,20 @@ def _taille(valeur: Any) -> Any:
     if isinstance(valeur, dict):
         valeurs = list(valeur.values())
         if valeurs and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in valeurs):
+            logger.debug("_taille: si valeurs and all((isinstance(v, (int, float)) and (not isins… -> retour sum(…)")
             return sum(valeurs)
+        logger.debug("_taille: si isinstance(valeur, dict) -> retour len(…)")
         return len(valeur)
     if isinstance(valeur, (list, tuple, set, frozenset)):
+        logger.debug("_taille: si isinstance(valeur, (list, tuple, set, frozenset)) -> retour len(…)")
         return len(valeur)
+    logger.debug("_taille: retour valeur={}", summarize(valeur, "valeur"))
     return valeur
 
 
 def _resume(r: Report, *champs: str) -> str:
     """``champ=taille`` pour chaque champ de ``r`` rempli par une phase."""
+    logger.debug("_resume: retour ' '.join(…)")
     return " ".join(f"{champ}={_taille(getattr(r, champ, None))}" for champ in champs)
 
 
@@ -452,8 +457,10 @@ def _conversation_key(key) -> tuple | None:
     chemin."""
     if len(key) != 6 or key[0] == "NAT":
         logger.trace("_conversation_key: clé NAT ou non standard, pas de conversation")
+        logger.debug("_conversation_key: si len(key) != 6 or key[0] == 'NAT' -> retour None")
         return None
     _proto, src, _sport, dst, _dport, _key_id = key
+    logger.debug("_conversation_key: retour tuple(…)")
     return tuple(sorted((src, dst), key=repr))
 
 
@@ -464,6 +471,7 @@ def _conversation_points(flows) -> dict[tuple, set[str]]:
         conversation = _conversation_key(key)
         if conversation is not None:
             seen[conversation].update(per_point)
+    logger.debug("_conversation_points: retour seen={}", summarize(seen, "seen"))
     return seen
 
 
@@ -899,8 +907,10 @@ def _parse_tls_cert_date(s: str | None) -> datetime | None:
     pas de reconstruction approximative en cas de doute, meme discipline
     que parse_client_hello/parse_server_hello dans tls_diagnostics.py."""
     if s is None:
+        logger.debug("_parse_tls_cert_date: si s is None -> retour None")
         return None
     try:
+        logger.debug("_parse_tls_cert_date: retour datetime.strptime(s.removesuffix(' (UTC…(…)")
         return datetime.strptime(s.removesuffix(" (UTC)"), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     except ValueError:
         logger.debug("_parse_tls_cert_date: format de date inattendu {!r}", s)
@@ -1967,6 +1977,7 @@ def _descend(edge_lookup, start):
         if cur not in seen:
             seen.add(cur)
             stack.extend(edge_lookup.get(cur, []))
+    logger.debug("_descend: retour seen={}", summarize(seen, "seen"))
     return seen
 
 
