@@ -38,6 +38,7 @@ def export_training_set(flows: list[dict], path: str | Path) -> int:
     samples = [{"flow": f, "label": f.get("classification") or "normal"} for f in flows]
     data = {"schema": TRAINING_SCHEMA, "labels_suggeres": list(SUGGESTED_LABELS), "samples": samples}
     Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    logger.debug("export_training_set: retour len(…)")
     return len(samples)
 
 
@@ -48,6 +49,9 @@ def load_training_set(path: str | Path) -> list[tuple[dict | list[float], str]]:
         logger.exception(f"échec dans load_training_set: {exc}")
         raise TrainingSetError(f"jeu d'entrainement illisible ({path}) : {exc}") from exc
     if not isinstance(data, dict) or data.get("schema") != TRAINING_SCHEMA:
+        logger.debug(
+            "load_training_set: si not isinstance(data, dict) or data.get('schema') != TRAININ… -> levée TrainingSetE…"
+        )
         raise TrainingSetError(f"{path} n'est pas un jeu {TRAINING_SCHEMA}.")
     samples: list[tuple[dict | list[float], str]] = []
     for i, item in enumerate(data.get("samples") or []):
@@ -56,15 +60,20 @@ def load_training_set(path: str | Path) -> list[tuple[dict | list[float], str]]:
         elif isinstance(item, dict) and item.get("label") and is_feature_vector(item.get("features")):
             samples.append(([float(x) for x in item["features"]], str(item["label"])))
         else:
+            logger.debug(
+                "load_training_set: sinon (isinstance(item, dict) and item.get('la…) -> levée TrainingSetError"
+            )
             raise TrainingSetError(
                 f"{path} : exemple {i} invalide (attendu {{'flow': {{...}}, 'label': '...'}} "
                 f"ou {{'features': [{len(FEATURE_NAMES)} nombres], 'label': '...'}})."
             )
+    logger.debug("load_training_set: retour samples={}", summarize(samples, "samples"))
     return samples
 
 
 def is_feature_vector(value: object) -> bool:
     """Vrai pour une liste de len(FEATURE_NAMES) nombres finis (bool exclus)."""
+    logger.debug("is_feature_vector: retour isinstance(value, list) and len(value) == len(FEA…")
     return (
         isinstance(value, list)
         and len(value) == len(FEATURE_NAMES)
@@ -76,6 +85,7 @@ def is_feature_vector(value: object) -> bool:
 
 def sample_vector(sample: dict | list[float]) -> list[float]:
     """Vecteur de caracteristiques d'un exemple (flux FLOW-4 ou vecteur deja calcule)."""
+    logger.debug("sample_vector: retour list(sample) if isinstance(sample, list) else flo…")
     return list(sample) if isinstance(sample, list) else flow_features(sample)
 
 
@@ -87,6 +97,7 @@ class FlowPrediction:
     rule_classification: str
 
     def to_dict(self) -> dict:
+        logger.debug("FlowPrediction.to_dict: retour dictionnaire")
         return {
             "flow": self.flow,
             "label": self.label,
@@ -111,9 +122,11 @@ class FlowClassifier:
         self.labels = dict(labels)
         self._model = RandomForestClassifier(n_estimators=200, random_state=0, class_weight="balanced")
         self._model.fit([sample_vector(f) for f, _l in samples], [label for _f, label in samples])
+        logger.debug("FlowClassifier.__init__: fin")
 
     def predict(self, flows: list[dict]) -> list[FlowPrediction]:
         if not flows:
+            logger.debug("FlowClassifier.predict: si not flows -> retour liste vide")
             return []
         probas = self._model.predict_proba([flow_features(f) for f in flows])
         classes = list(self._model.classes_)
@@ -128,4 +141,5 @@ class FlowClassifier:
                     rule_classification=str(flow.get("classification", "")),
                 )
             )
+        logger.debug("FlowClassifier.predict: retour out={}", summarize(out, "out"))
         return out
