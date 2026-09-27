@@ -107,10 +107,13 @@ besoin explicite et maitrise d'un rejeu sur un segment reel) :
 """
 
 import argparse
+import atexit
 import os
 import re
+import shutil
 import signal
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -158,6 +161,7 @@ from netcross_core.support import (
     write_ticket,
 )
 from netcross_report.security_report import build_security_report, print_security_report
+from pcap_parser.capture import split_by_interface
 from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
 from pcap_parser.remote import CaptureSourceError, parse_source, split_live_target
 
@@ -455,6 +459,43 @@ def _parse_capture_spec(spec, flag_name):
         sys.exit(1)
     logger.debug("_parse_capture_spec: retour tuple de 2")
     return label, paths
+
+
+def _expand_split_interfaces(captures):
+    """--split-interfaces (issue #474) : remplace chaque (NOM, fichier) dont le
+    fichier contient plusieurs captures (interfaces/sections pcapng) par un
+    point (NOM:INTERFACE, fichier extrait) par capture.
+
+    Les fichiers extraits vont dans un repertoire temporaire supprime a la
+    sortie : ils ne servent qu'a cette analyse, et le reste du pipeline
+    (metadonnees, --tls/--quic, rapport de securite) relit les chemins de
+    `captures` -- il voit donc chaque capture comme un fichier ordinaire.
+    Une capture segmentee (NOM=a,b) reste un seul point par interface : les
+    segments d'une meme interface portent le meme label et sont concatenes
+    comme d'habitude. Un fichier illisible est laisse tel quel : la lecture
+    normale le signalera en ECHEC, comme sans l'option."""
+    workdir = tempfile.mkdtemp(prefix="netcross-split-interfaces-")
+    atexit.register(shutil.rmtree, workdir, True)
+    expanded = []
+    for index, (label, path) in enumerate(captures):
+        try:
+            slices = split_by_interface(path, os.path.join(workdir, str(index)))
+        except (OSError, TsharkNotFoundError, TsharkError) as exc:
+            logger.warning("--split-interfaces : {} non separe ({})", path, exc)
+            print(f"[{label}] --split-interfaces : {path} non separe ({exc})", file=sys.stderr)
+            expanded.append((label, path))
+            continue
+        if len(slices) <= 1:
+            print(f"[{label}] --split-interfaces : une seule capture dans {path}, lu tel quel")
+            expanded.append((label, path))
+            continue
+        print(f"[{label}] --split-interfaces : {len(slices)} captures dans {path}")
+        for s in slices:
+            point = f"{label}:{s.name}"
+            print(f"  {point:<20} section {s.section}, interface {s.interface_id} : {s.packets} paquet(s)")
+            expanded.append((point, s.path))
+    logger.debug("_expand_split_interfaces: retour expanded={}", summarize(expanded, "expanded"))
+    return expanded
 
 
 def _run_merge(capture_specs, output_path, dedup):
@@ -1377,6 +1418,18 @@ def main():
         "tcpdump/tshark, ex: -C 100) comme un seul point continu -- a lister "
         "dans l'ordre chronologique, aucun tri automatique n'est effectue. "
         "Mutuellement exclusif avec --live.",
+    )
+    ap.add_argument(
+        "--split-interfaces",
+        action="store_true",
+        help="Un fichier pcapng peut contenir plusieurs captures : une par "
+        "interface (IDB) et par section (fichiers concatenes, mergecap -I none). "
+        "Avec cette option, chaque capture d'un fichier --capture NOM=... devient "
+        "un point distinct nomme NOM:INTERFACE (nom d'interface du fichier, sinon "
+        "ifN ou sS-ifN) -- l'analyse croisee se fait alors entre elles. Un fichier "
+        "a une seule capture est lu tel quel. Limite : mergecap fusionne par defaut "
+        "les interfaces decrites a l'identique, qui ne sont alors plus separables "
+        "(utiliser mergecap -I none). Incompatible avec --live.",
     )
     ap.add_argument(
         "--live",
@@ -2600,6 +2653,13 @@ def main():
         names = NameTable.load(args.names)
         print(f"Table des noms chargee : {len(names)} entree(s) depuis {args.names}")
     if args.live:
+        if args.split_interfaces:
+            print(
+                "--split-interfaces separe les captures d'un FICHIER pcapng : sans objet avec --live "
+                "(une interface par --live, deja un point chacune).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         if args.parallel:
             print(
                 "--parallel n'a pas de sens avec --live (deja un thread par point, en parallele).",
@@ -2678,6 +2738,8 @@ def main():
     for c in args.capture or []:
         label, paths = _parse_capture_spec(c, "--capture")
         captures.extend((label, path) for path in paths)
+    if args.split_interfaces and captures:
+        captures = _expand_split_interfaces(captures)
 
     # Avertissement memoire (issue #283, Etape 2) : AVANT toute lecture de
     # paquets -- une fois parse_capture() lance sur une capture trop

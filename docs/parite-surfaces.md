@@ -14,7 +14,7 @@ ici fait donc échouer la CI.
 
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
-| CLI | `cross_capture_analyzer_cli.py` (106 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
+| CLI | `cross_capture_analyzer_cli.py` (107 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 16 cases à cocher, 12 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 8 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation |
 
@@ -40,6 +40,7 @@ actif, non réglable.
 |---|---|---|---|
 | Captures en fichiers, un nom par point | oui (liste + « Ajouter une capture ») | `--capture` | `POST /captures` (`file`, `label`), `POST /captures/multi` (`files`, `labels`) |
 | Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | non |
+| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | non |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
 | Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : CLI et API) | `nat_tolerant`, `nat_window_ms` |

@@ -8,6 +8,12 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Ajouté
+- Plusieurs captures dans un seul fichier pcapng (#474, lot 1) :
+  `--split-interfaces` fait de chaque interface (et de chaque section, pour
+  des fichiers concaténés) un point distinct `NOM:INTERFACE`, analysé comme
+  un fichier séparé. Nouvelles fonctions `pcap_parser.list_interfaces` et
+  `pcap_parser.split_by_interface` ; la clé est le couple (section,
+  interface), car l'identifiant d'interface repart de 0 à chaque section.
 - Guide utilisateur (#465), `docs/guide/` : installation, préparation des
   captures, première analyse pas à pas, interface graphique (captures
   d'écran réelles), lecture du rapport et du score de santé, comparaison
