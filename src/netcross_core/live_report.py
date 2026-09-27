@@ -53,6 +53,7 @@ JOURNAL_TAIL = 200  # lignes de journal recopiees dans la page (lecture hors ser
 
 
 def _iso(ts: float) -> str:
+    logger.debug("_iso: retour datetime.fromtimestamp(ts, tz=timezone.…(…)")
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
 
 
@@ -90,6 +91,7 @@ class LiveAggregator:
     def register(self, label: str) -> None:
         with self._lock:
             self.points.setdefault(label, _Point())
+        logger.debug("LiveAggregator.register: fin")
 
     def add(self, pkt) -> None:
         with self._lock:
@@ -108,12 +110,14 @@ class LiveAggregator:
                         self._events.append({"type": "nouvel_hote", "point": pkt.point, "host": host})
                     else:
                         self._host_overflow += 1
+        logger.debug("LiveAggregator.add: fin")
 
     def set_status(self, label: str, status: str, error: str | None = None) -> None:
         with self._lock:
             pt = self.points.setdefault(label, _Point())
             pt.status, pt.error = status, error
             self._events.append({"type": "point_" + status, "point": label, **({"detail": error} if error else {})})
+        logger.debug("LiveAggregator.set_status: fin")
 
     def tick(self, now: float | None = None, *, final: bool = False) -> tuple[dict, dict]:
         """(instantane complet, ligne de journal) -- consomme les evenements."""
@@ -196,6 +200,7 @@ class LiveAggregator:
                 ],
                 "last_events": events,
             }
+        logger.debug("LiveAggregator.tick: retour tuple de 2")
         return snapshot, journal
 
 
@@ -210,7 +215,9 @@ def _atomic_write(path: Path, text: str) -> None:
         logger.exception("erreur: BaseException")
         with contextlib.suppress(OSError):
             os.unlink(tmp)
+        logger.debug("_atomic_write: except BaseException -> relance de l'exception en cours")
         raise
+    logger.debug("_atomic_write: fin")
 
 
 class LiveReportWriter:
@@ -237,6 +244,7 @@ class LiveReportWriter:
         self.html_path = self.out_dir / "index.html"
         self.journal_path.write_text("", encoding="utf-8")  # une session = un journal
         self._tail: list[dict] = []
+        logger.debug("LiveReportWriter.__init__: fin")
 
     def publish(self, snapshot: dict, journal: dict) -> None:
         logger.debug("publish(snapshot={}, journal={})", snapshot, journal)
@@ -247,6 +255,7 @@ class LiveReportWriter:
         _atomic_write(self.snapshot_path, json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n")
         if self.render_html is not None:
             _atomic_write(self.html_path, self.render_html(snapshot, self._tail, self.interval))
+        logger.debug("LiveReportWriter.publish: fin")
 
 
 class LiveReporter:
@@ -266,9 +275,11 @@ class LiveReporter:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.failures = 0
+        logger.debug("LiveReporter.__init__: fin")
 
     def add(self, pkt) -> None:
         self.aggregator.add(pkt)
+        logger.debug("LiveReporter.add: fin")
 
     def _publish(self, final: bool = False) -> None:
         snapshot, journal = self.aggregator.tick(final=final)
@@ -277,18 +288,22 @@ class LiveReporter:
         except OSError as exc:
             self.failures += 1
             logger.warning("rapport temps reel : ecriture impossible ({}), capture poursuivie", exc)
+        logger.debug("LiveReporter._publish: fin")
 
     def _loop(self) -> None:
         while not self._stop.wait(self.writer.interval):
             self._publish()
+        logger.debug("LiveReporter._loop: fin")
 
     def start(self) -> None:
         self._publish()
         self._thread = threading.Thread(target=self._loop, name="netcross-live-report", daemon=True)
         self._thread.start()
+        logger.debug("LiveReporter.start: fin")
 
     def stop(self) -> None:
         self._stop.set()
         if self._thread is not None:
             self._thread.join()
         self._publish(final=True)
+        logger.debug("LiveReporter.stop: fin")

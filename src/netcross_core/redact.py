@@ -96,8 +96,10 @@ def _ipv4_pseudonym(index: int) -> str:
     if index < _IPV4_DOC_CAPACITY:
         block = _IPV4_DOC_BLOCKS[index // _IPV4_BLOCK_SIZE]
         octet = 1 + (index % _IPV4_BLOCK_SIZE)
+        logger.debug("_ipv4_pseudonym: si index < _IPV4_DOC_CAPACITY -> retour chaîne formatée")
         return f"{block[0]}.{block[1]}.{block[2]}.{octet}"
     overflow = index - _IPV4_DOC_CAPACITY
+    logger.debug("_ipv4_pseudonym: retour chaîne formatée")
     return f"240.{(overflow >> 16) & 0xFF}.{(overflow >> 8) & 0xFF}.{overflow & 0xFF}"
 
 
@@ -106,6 +108,7 @@ def _ipv6_pseudonym(index: int) -> str:
     overflow realiste pour une capture reseau. index+1 (pas index) pour
     ne jamais produire l'adresse "2001:db8::" toute seule (suffixe nul),
     lisible mais inutilement ambigue avec le prefixe lui-meme."""
+    logger.debug("_ipv6_pseudonym: retour chaîne formatée")
     return f"2001:db8::{index + 1:x}"
 
 
@@ -114,6 +117,7 @@ def _mac_pseudonym(index: int) -> str:
     "locally administered" actif / bit multicast inactif (IEEE 802) :
     convention standard pour une MAC synthetique, jamais une vraie
     adresse issue d'un OUI constructeur."""
+    logger.debug("_mac_pseudonym: retour chaîne formatée")
     return f"02:00:00:{(index >> 16) & 0xFF:02x}:{(index >> 8) & 0xFF:02x}:{index & 0xFF:02x}"
 
 
@@ -126,13 +130,16 @@ def _ip_kind(value: str) -> str | None:
     l'appelant plutot que de lever une exception sur une capture reelle
     imparfaite, meme discipline defensive que le reste du projet)."""
     try:
+        logger.debug("_ip_kind: retour 'ipv6' if ipaddress.ip_address(value).version == …")
         return "ipv6" if ipaddress.ip_address(value).version == 6 else "ipv4"
     except ValueError:
         logger.exception("échec dans _ip_kind")
+        logger.debug("_ip_kind: except ValueError -> retour None")
         return None
 
 
 def _is_mac(value: str) -> bool:
+    logger.debug("_is_mac: retour bool(…)")
     return bool(_MAC_RE.match(value))
 
 
@@ -146,15 +153,18 @@ class AddressRedactor:
     def __init__(self) -> None:
         self._map: dict[str, tuple[str, str]] = {}  # adresse reelle -> (pseudonyme, type)
         self._counters = {"ipv4": 0, "ipv6": 0, "mac": 0}
+        logger.debug("AddressRedactor.__init__: fin")
 
     def _pseudonym(self, addr: str, kind: str) -> str:
         entry = self._map.get(addr)
         if entry is not None:
+            logger.debug("AddressRedactor._pseudonym: si entry is not None -> retour entry[0]")
             return entry[0]
         idx = self._counters[kind]
         self._counters[kind] += 1
         pseudo = _GENERATORS[kind](idx)
         self._map[addr] = (pseudo, kind)
+        logger.debug("AddressRedactor._pseudonym: retour pseudo={}", summarize(pseudo, "pseudo"))
         return pseudo
 
     def redact(self, packets) -> None:
@@ -162,6 +172,7 @@ class AddressRedactor:
         RawPacket, voir docstring de module)."""
         for pk in packets:
             self._redact_one(pk)
+        logger.debug("AddressRedactor.redact: fin")
 
     def _redact_one(self, pk) -> None:
         if pk.proto == "STP":
@@ -193,6 +204,7 @@ class AddressRedactor:
             prio, _sep, mac = pk.stp_root_id.partition("/")
             if _is_mac(mac):
                 pk.stp_root_id = f"{prio}/{self._pseudonym(mac, 'mac')}"
+        logger.debug("AddressRedactor._redact_one: fin")
 
     def entries(self):
         """Tuples (adresse_reelle, pseudonyme, type), tries par type puis
@@ -205,12 +217,14 @@ class AddressRedactor:
         )
 
     def __len__(self) -> int:
+        logger.debug("AddressRedactor.__len__: retour len(…)")
         return len(self._map)
 
     @property
     def mapping(self) -> dict[str, str]:
         """Vue simplifiee adresse_reelle -> pseudonyme (sans le type),
         pour un usage programmatique simple (tests notamment)."""
+        logger.debug("AddressRedactor.mapping: retour dictionnaire")
         return {addr: pseudo for addr, (pseudo, _kind) in self._map.items()}
 
 
@@ -222,6 +236,7 @@ def redact_packets(packets) -> AddressRedactor:
     logger.debug("redact_packets: packets={}", summarize(packets, "packets"))
     redactor = AddressRedactor()
     redactor.redact(packets)
+    logger.debug("redact_packets: retour redactor={}", summarize(redactor, "redactor"))
     return redactor
 
 
@@ -242,3 +257,4 @@ def write_redaction_map_csv(redactor: AddressRedactor, path: str) -> None:
         writer.writerow(["adresse_reelle", "pseudonyme", "type"])
         for addr, pseudo, kind in redactor.entries():
             writer.writerow([addr, pseudo, kind])
+    logger.debug("write_redaction_map_csv: fin")
