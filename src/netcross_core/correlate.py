@@ -27,12 +27,10 @@ def flow_key(pk: Pkt, nat_tolerant=False, nat_window_ms=200):
     """
     if nat_tolerant and pk.payload_hash:
         bucket = int(pk.ts / (nat_window_ms / 1000.0))
-        key = ("NAT", pk.proto, pk.payload_hash, bucket)
         logger.debug("flow_key: mode NAT, proto={} bucket={}", pk.proto, bucket)
-        return key
-    key = (pk.proto, pk.src, pk.sport, pk.dst, pk.dport, pk.key_id)
+        return ("NAT", pk.proto, pk.payload_hash, bucket)
     logger.debug("flow_key: mode strict, proto={} src={} dst={}", pk.proto, pk.src, pk.dst)
-    return key
+    return (pk.proto, pk.src, pk.sport, pk.dst, pk.dport, pk.key_id)
 
 
 def correlate(all_packets, nat_tolerant=False, nat_window_ms=200, exclude_duplicates=False):
