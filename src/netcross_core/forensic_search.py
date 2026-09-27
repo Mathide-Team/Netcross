@@ -142,6 +142,9 @@ def _doc_from_packet(pk: Pkt) -> _SearchDoc:
         fields["sip_user_agent"] = pk.sip_user_agent
     if pk.dhcp_msg_type:
         fields["dhcp_msg_type"] = pk.dhcp_msg_type
+    if fields:
+        # seuls les paquets applicatifs (HTTP/SIP/DNS/DHCP) portent des champs
+        logger.trace("_doc_from_packet: trame {} ({}), champs {}", pk.frame_number, pk.point, sorted(fields))
 
     text = " ".join(fields.values())
     return _SearchDoc(
@@ -166,6 +169,8 @@ def _doc_from_flow(flow: Flow) -> _SearchDoc:
         fields["endpoints"] = " ".join(endpoints)
     if flow.points:
         fields["points"] = " ".join(flow.points)
+    if not endpoints:
+        logger.trace("_doc_from_flow: flux sans extremites connues, points {}", flow.points)
     text = " ".join(fields.values())
     return _SearchDoc(
         kind="flow",
@@ -192,6 +197,8 @@ def _doc_from_event(ev: ExpertEvent) -> _SearchDoc:
         fields["category"] = ev.category
     if ev.cause:
         fields["cause"] = ev.cause
+    if not ev.message:
+        logger.trace("_doc_from_event: evenement {!r} sans message, recherche limitee aux autres champs", ev.category)
     text = " ".join(fields.values())
     return _SearchDoc(
         kind="event",
@@ -218,6 +225,8 @@ def _doc_from_http_object(obj: HttpObject) -> _SearchDoc:
         fields["method"] = obj.method
     if obj.content_type:
         fields["content_type"] = obj.content_type
+    if not (obj.response_frame or obj.request_frame):
+        logger.trace("_doc_from_http_object: objet HTTP {!r} sans numero de trame", obj.uri)
     text = " ".join(fields.values())
     return _SearchDoc(
         kind="http_object",
@@ -246,6 +255,7 @@ def _doc_from_tls_event(ev: TlsEvent) -> _SearchDoc:
         fields["handshake_type"] = ev.handshake_type
     if ev.alert_description:
         fields["alert"] = ev.alert_description
+        logger.trace("_doc_from_tls_event: alerte TLS {!r} indexee", ev.alert_description)
     text = " ".join(fields.values())
     return _SearchDoc(
         kind="tls",
@@ -268,6 +278,8 @@ def _doc_from_quic_event(ev: QuicEvent) -> _SearchDoc:
         fields["sni"] = ev.sni
     if ev.tls_version:
         fields["tls_version"] = ev.tls_version
+    if not ev.sni:
+        logger.trace("_doc_from_quic_event: evenement QUIC sans SNI ({})", ev.point)
     text = " ".join(fields.values())
     return _SearchDoc(
         kind="quic",
@@ -328,6 +340,10 @@ class ForensicSearchIndex:
             self._docs.extend(_doc_from_tls_event(e) for e in tls_events)
         if quic_events:
             self._docs.extend(_doc_from_quic_event(e) for e in quic_events)
+        kinds: dict[str, int] = {}
+        for doc in self._docs:
+            kinds[doc.kind] = kinds.get(doc.kind, 0) + 1
+        logger.debug("ForensicSearchIndex: {} document(s) indexe(s), par type {}", len(self._docs), kinds)
 
     # -- Recherche --------------------------------------------------------
 
@@ -352,6 +368,17 @@ class ForensicSearchIndex:
             results.append(self._to_result(doc, matched_fields))
 
         results.sort(key=lambda r: r.ts if r.ts is not None else float("inf"))
+        logger.debug(
+            "search: texte={} champ={} point={} protocole={} adresse={} port={} -> {} resultat(s) sur {} document(s)",
+            bool(query.text),
+            query.field,
+            query.point,
+            query.protocol,
+            query.address is not None,
+            query.port,
+            len(results),
+            len(self._docs),
+        )
         return results
 
     @staticmethod
@@ -381,6 +408,8 @@ class ForensicSearchIndex:
             # Recherche sur un champ logique nomme.
             value = doc.fields.get(q.field)
             if value is None:
+                # chemin chaud (appele par document) : TRACE
+                logger.trace("_match_text: champ {!r} absent du document {}", q.field, doc.kind)
                 return ()
             if not field_val:
                 # Presence seule du champ.
@@ -396,6 +425,7 @@ class ForensicSearchIndex:
         if field_val and not q.field:
             terms.append(field_val)
         if not terms:
+            logger.trace("_match_text: aucun terme de recherche")
             return ()
         blob = doc.text.lower()
         for term in terms:
@@ -408,6 +438,8 @@ class ForensicSearchIndex:
         if matched_fields:
             snippet = " | ".join(f"{name}={doc.fields[name]}" for name in matched_fields)
         else:
+            # requete purement filtree : pas de champ correspondant a mettre en avant
+            logger.trace("_to_result: document {} retenu sans champ correspondant", doc.kind)
             snippet = doc.text or doc.kind
         return ForensicSearchResult(
             kind=doc.kind,
