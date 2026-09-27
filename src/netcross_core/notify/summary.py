@@ -48,7 +48,9 @@ def severity_rank(severity: str | None) -> int:
 
 def meets_threshold(severity: str | None, threshold: str) -> bool:
     """Vrai si `severity` est au moins aussi grave que `threshold`."""
-    return severity_rank(severity) <= severity_rank(threshold)
+    result = severity_rank(severity) <= severity_rank(threshold)
+    logger.debug("meets_threshold: severity={} threshold={} -> {}", severity, threshold, result)
+    return result
 
 
 def finding_key(finding: Mapping[str, Any]) -> str:
@@ -57,7 +59,9 @@ def finding_key(finding: Mapping[str, Any]) -> str:
     parts = [
         str(finding.get(k) or "") for k in ("severity", "category", "cve_id", "signature_id", "host", "port", "point")
     ]
-    return "|".join([*parts, detail])
+    key = "|".join([*parts, detail])
+    logger.debug("finding_key: {}", key)
+    return key
 
 
 def findings_fingerprint(findings: Iterable[Mapping[str, Any]]) -> str:
@@ -85,7 +89,7 @@ class NotificationSummary:
     title: str = field(default="Netcross -- analyse de securite")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "title": self.title,
             "score": self.score,
             "level": self.level,
@@ -98,6 +102,8 @@ class NotificationSummary:
             "detail": self.detail,
             "anonymized": self.anonymized,
         }
+        logger.debug("to_dict: total={} fingerprint={}", self.total, self.fingerprint)
+        return result
 
     def to_text(self) -> str:
         logger.debug("NotificationSummary.to_text()")
@@ -113,7 +119,9 @@ class NotificationSummary:
             lines.append(f"Rapport : {self.report_path}")
         if self.anonymized:
             lines.append("(adresses et noms internes anonymises)")
-        return "\n".join(lines)
+        result = "\n".join(lines)
+        logger.debug("to_text: {} ligne(s)", len(lines))
+        return result
 
 
 def _top_detail(finding: Mapping[str, Any], scrubber: TextScrubber | None) -> str:
@@ -128,6 +136,7 @@ def _top_detail(finding: Mapping[str, Any], scrubber: TextScrubber | None) -> st
         text = scrubber.scrub(text)[0] or ""
     if len(text) > MAX_DETAIL_CHARS:
         text = text[: MAX_DETAIL_CHARS - 3] + "..."
+    logger.debug("_top_detail: longueur={}", len(text))
     return text
 
 
@@ -172,7 +181,7 @@ def build_summary(
     path = report_path
     if path and scrubber is not None:
         path = scrubber.scrub(path)[0]
-    return NotificationSummary(
+    summary = NotificationSummary(
         score=score,
         level=level,
         threshold=threshold,
@@ -184,3 +193,5 @@ def build_summary(
         detail=detail,
         anonymized=scrubber is not None,
     )
+    logger.debug("build_summary: total={} top={} fingerprint={}", len(items), len(top), summary.fingerprint)
+    return summary

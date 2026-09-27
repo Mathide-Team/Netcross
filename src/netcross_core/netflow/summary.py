@@ -33,8 +33,11 @@ def protocol_name(number: int) -> str:
 
 def _iso(ts: float | None) -> str | None:
     if ts is None:
+        logger.debug("_iso: timestamp None")
         return None
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
+    result = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
+    logger.debug("_iso: {} -> {}", ts, result)
+    return result
 
 
 def _counter() -> dict[str, int]:
@@ -49,7 +52,9 @@ def _add(bucket: dict[str, int], flow: FlowRecord) -> None:
 
 def _top(items: dict, top: int, fields) -> list[dict]:
     ranked = sorted(items.items(), key=lambda kv: (-kv[1]["octets"], -kv[1]["flows"], repr(kv[0])))
-    return [{**fields(key), **counts} for key, counts in ranked[:top]]
+    result = [{**fields(key), **counts} for key, counts in ranked[:top]]
+    logger.debug("_top: {} entree(s), top={}", len(ranked), len(result))
+    return result
 
 
 def summarize_flow_records(records: Iterable[FlowRecord], *, top: int = 10) -> dict:
@@ -110,8 +115,12 @@ def summarize_flow_records(records: Iterable[FlowRecord], *, top: int = 10) -> d
 def _octets(n: int) -> str:
     for unit, size in (("Go", 1 << 30), ("Mo", 1 << 20), ("Ko", 1 << 10)):
         if n >= size:
-            return f"{n / size:.1f} {unit}"
-    return f"{n} o"
+            result = f"{n / size:.1f} {unit}"
+            logger.debug("_octets: {} -> {}", n, result)
+            return result
+    result = f"{n} o"
+    logger.debug("_octets: {} -> {}", n, result)
+    return result
 
 
 def _endpoint(addr: str, port: int | None) -> str:
@@ -125,6 +134,7 @@ def format_flow_summary(summary: dict) -> list[str]:
     logger.debug("format_flow_summary: {} flux à formater", t["flows"])
     if not t["flows"]:
         lines.append("Aucun flux dans les fichiers fournis.")
+        logger.debug("format_flow_summary: aucun flux, retour")
         return lines
     versions = ", ".join(f"v{v}" for v in summary["netflow_versions"])
     lines.append(f"{t['flows']} flux, {t['packets']} paquets, {_octets(t['octets'])} (NetFlow {versions})")
@@ -149,4 +159,5 @@ def format_flow_summary(summary: dict) -> list[str]:
             f"  {p['protocol']}/{p['port']:<6d} {p['flows']:6d} flux  {_octets(p['octets'])}"
             for p in summary["top_dst_ports"]
         )
+    logger.debug("format_flow_summary: {} ligne(s) generee(s)", len(lines))
     return lines

@@ -83,8 +83,11 @@ def _load_state(path: Path) -> dict[str, float]:
         logger.warning("notification : etat anti-repetition illisible ({}), ignore : {}", path, exc)
         return {}
     if not isinstance(data, dict):
+        logger.debug("_load_state: format inattendu, ignore")
         return {}
-    return {str(k): float(v) for k, v in data.items() if isinstance(v, int | float)}
+    result = {str(k): float(v) for k, v in data.items() if isinstance(v, int | float)}
+    logger.debug("_load_state: {} entree(s)", len(result))
+    return result
 
 
 def _save_state(path: Path, state: dict[str, float]) -> None:
@@ -110,17 +113,25 @@ def is_silenced(fingerprint: str, state_path: Path, silence_seconds: float, now:
         summarize(now, "now"),
     )
     if silence_seconds <= 0:
+        logger.debug("is_silenced: silence desactive")
         return None
     last = _load_state(state_path).get(fingerprint)
     if last is None or now - last >= silence_seconds:
+        logger.debug("is_silenced: non silencieux (last={})", last)
         return None
-    return max(0.0, now - last)
+    age = max(0.0, now - last)
+    logger.debug("is_silenced: silencieux, age={:.1f}s", age)
+    return age
 
 
 def _fmt_age(seconds: float) -> str:
     if seconds < 3600:
-        return f"{int(seconds // 60)} min"
-    return f"{seconds / 3600:.1f} h"
+        result = f"{int(seconds // 60)} min"
+        logger.debug("_fmt_age: {}s -> {}", seconds, result)
+        return result
+    result = f"{seconds / 3600:.1f} h"
+    logger.debug("_fmt_age: {}s -> {}", seconds, result)
+    return result
 
 
 # -- envoi ---------------------------------------------------------------------
@@ -134,7 +145,9 @@ def _deliver(notifier: Notifier, summary: NotificationSummary) -> DeliveryResult
         logger.warning("notification {} : echec, {}", notifier.name, reason)
         return DeliveryResult(notifier.name, STATUS_FAILED, reason)
     degraded = getattr(notifier, "degraded", False)
-    return DeliveryResult(notifier.name, STATUS_SENT, "texte seul (blocs refuses)" if degraded else None)
+    result = DeliveryResult(notifier.name, STATUS_SENT, "texte seul (blocs refuses)" if degraded else None)
+    logger.debug("_deliver: canal={} status={}", notifier.name, result.status)
+    return result
 
 
 def send_notifications(
@@ -149,6 +162,7 @@ def send_notifications(
     now = time.time() if now is None else now
     if not meets_threshold(summary.level, summary.threshold):
         reason = f"niveau {summary.level or 'aucun'} < seuil {summary.threshold}"
+        logger.debug("send_notifications: sous le seuil, {} canal/aux ignore(s)", len(notifiers))
         return [DeliveryResult(n.name, STATUS_BELOW_THRESHOLD, reason) for n in notifiers]
     age = is_silenced(summary.fingerprint, state_path, silence_seconds, now)
     if age is not None:
@@ -160,6 +174,7 @@ def send_notifications(
         state = _load_state(state_path)
         state[summary.fingerprint] = now
         _save_state(state_path, state)
+    logger.debug("send_notifications: {} resultat(s)", len(results))
     return results
 
 
@@ -215,6 +230,7 @@ def notifiers_from_config(
         )
     else:
         lines.append(DeliveryResult("courriel", STATUS_NOT_CONFIGURED))
+    logger.debug("notifiers_from_config: {} canal/aux configure(s), {} ligne(s)", len(notifiers), len(lines))
     return notifiers, lines
 
 
@@ -248,13 +264,17 @@ def run_notifications(
         summarize(env, "env"),
     )
     if not threshold:
+        logger.debug("run_notifications: aucun seuil, retour vide")
         return []
     notifiers, lines = notifiers_from_config(cfg, webhook=webhook, slack=slack, email_to=email_to, env=env)
     if not notifiers:
+        logger.debug("run_notifications: aucun canal configure")
         return lines
     summary = summary_factory(threshold)
     hours = cfg.silence_hours if silence_hours is None else silence_hours
     path = state_path or (Path(cfg.state_path).expanduser() if cfg.state_path else DEFAULT_STATE_PATH)
     results = send_notifications(summary, notifiers, state_path=path, silence_seconds=hours * 3600)
     order = {c: i for i, c in enumerate(CHANNELS)}
-    return sorted(results + lines, key=lambda r: order.get(r.channel, len(order)))
+    merged = sorted(results + lines, key=lambda r: order.get(r.channel, len(order)))
+    logger.debug("run_notifications: {} resultat(s) final(aux)", len(merged))
+    return merged
