@@ -111,3 +111,22 @@ def test_main_dry_run(tmp_path, capsys):
     assert mod.main(["--dry-run", str(f)]) == 0
     assert f.read_text(encoding="utf-8") == SOURCE
     assert "instrumentée(s)" in capsys.readouterr().out
+
+
+def test_force_instrumente_un_faux_chemin_chaud():
+    mod = _module()
+    out, done, _skipped = mod.instrument_source(
+        SOURCE, {"chaude", "appelee_par_chaude"}, frozenset({"appelee_par_chaude"})
+    )
+    assert 'logger.debug("appelee_par_chaude()")' in out
+    assert "appelee_par_chaude" in done
+
+
+def test_message_long_coupe_sous_120_colonnes():
+    mod = _module()
+    params = ", ".join(f"parametre_numero_{i}" for i in range(8))
+    src = f"from loguru import logger\n\n\ndef longue({params}):\n    a = 1\n    b = a\n    return b\n"
+    out, _done, _skipped = mod.instrument_source(src, set())
+    assert all(len(line) <= 120 for line in out.splitlines() if not line.startswith("def "))
+    compile(out, "<instrumente>", "exec")
+    assert len(mod._split_message("mot " * 60)) > 1

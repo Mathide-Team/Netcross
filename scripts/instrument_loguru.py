@@ -223,11 +223,28 @@ def _exc_name(node: ast.Raise) -> str:
     return _called_name(exc) if isinstance(exc, (ast.Name, ast.Attribute)) else "exception"
 
 
+def _split_message(msg: str, width: int = 90) -> list[str]:
+    """Coupe un message long en litteraux concatenes (un espace en fin de
+    morceau), pour tenir dans la limite de 120 colonnes."""
+    chunks: list[str] = []
+    current = ""
+    for word in msg.split(" "):
+        if current and len(current) + len(word) + 1 > width:
+            chunks.append(current + " ")
+            current = word
+        else:
+            current = f"{current} {word}" if current else word
+    chunks.append(current)
+    return chunks
+
+
 def _qualname(stack: list[str], name: str) -> str:
     return ".".join([*stack, name])
 
 
-def instrument_source(text: str, hot: set[str]) -> tuple[str, list[str], list[str]]:
+def instrument_source(
+    text: str, hot: set[str], force: frozenset[str] = frozenset()
+) -> tuple[str, list[str], list[str]]:
     tree = ast.parse(text)
     lines = text.splitlines(keepends=True)
     if not any(
@@ -255,7 +272,8 @@ def instrument_source(text: str, hot: set[str]) -> tuple[str, list[str], list[st
         if (fn.end_lineno or fn.lineno) - fn.lineno <= TRIVIAL_LINES or _calls_logger(fn):
             return
         qual = _qualname(stack, fn.name)
-        reason = "fonction imbriquée" if nested else _is_excluded(fn, hot)
+        forced = bool(force & {fn.name, qual})
+        reason = "fonction imbriquée" if nested else _is_excluded(fn, hot - {fn.name, qual} if forced else hot)
         if reason == "chemin chaud":
             # pas de trace d'entree, mais un refus (raise) reste un evenement
             # rare meme sur un chemin chaud : TRACE juste avant, cout nul sinon
@@ -282,7 +300,8 @@ def instrument_source(text: str, hot: set[str]) -> tuple[str, list[str], list[st
             line = f'{indent}logger.debug("{qual}: {fmt}", {args})\n'
             if len(line.rstrip("\n")) > 120:
                 args_lines = "".join(f'{indent}    summarize({p}, "{p}"),\n' for p in params)
-                line = f'{indent}logger.debug(\n{indent}    "{qual}: {fmt}",\n{args_lines}{indent})\n'
+                msg_lines = "".join(f'{indent}    "{chunk}"\n' for chunk in _split_message(f"{qual}: {fmt}"))
+                line = f"{indent}logger.debug(\n{msg_lines.rstrip()},\n{args_lines}{indent})\n"
         else:
             line = f'{indent}logger.debug("{qual}()")\n'
         inserts.append((start.lineno - 1, line))
@@ -329,11 +348,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("files", nargs="+", type=Path)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--force",
+        default="",
+        help="noms (ou Classe.methode) separes par des virgules, classes a tort en chemin chaud "
+        "(fonction appelee une fois par rapport, par exemple) : instrumentes quand meme",
+    )
     args = parser.parse_args(argv)
     hot = hot_names()
+    force = frozenset(n for n in args.force.split(",") if n)
     for path in args.files:
         text = path.read_text(encoding="utf-8")
-        new, done, skipped = instrument_source(text, hot)
+        new, done, skipped = instrument_source(text, hot, force)
         print(f"{path}: {len(done)} instrumentée(s), {len(skipped)} écartée(s)")
         for s in skipped:
             print(f"    écartée : {s}")

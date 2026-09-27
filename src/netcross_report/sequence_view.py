@@ -120,6 +120,12 @@ def build_sequence_view(packets_by_point, title="", max_steps=DEFAULT_MAX_STEPS)
     qui porte le diagnostic (handshake, negociation, premiere requete), la
     suite est de la repetition.
     """
+    logger.debug(
+        "build_sequence_view: packets_by_point={} title={} max_steps={}",
+        summarize(packets_by_point, "packets_by_point"),
+        summarize(title, "title"),
+        summarize(max_steps, "max_steps"),
+    )
     packets = [pk for pkts in (packets_by_point or {}).values() for pk in (pkts or [])]
     view = SequenceView(title=title)
     if not packets:
