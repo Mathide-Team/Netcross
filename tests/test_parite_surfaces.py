@@ -94,6 +94,9 @@ def test_decompte_des_options_a_jour(module, annonce, monkeypatch):
 
 
 def _routes_api() -> list:
+    # L'extra [api] n'est pas installe dans tous les jobs (job Couverture) :
+    # sans FastAPI, la surface API n'est pas mesurable, on saute.
+    pytest.importorskip("fastapi", reason="extra [api] non installe")
     from fastapi.routing import APIRoute
 
     from netcross_api.app import app
