@@ -142,6 +142,7 @@ def parse_client_hello(body: bytes) -> dict:
     approximative en cas de doute.
     """
     if len(body) < 34:
+        logger.trace("parse_client_hello: corps trop court ({} octets), ignore", len(body))
         return {}
     version = _tls_version_str(body[0], body[1])
     i = 34  # client_version(2) + random(32)
@@ -159,6 +160,7 @@ def parse_client_hello(body: bytes) -> dict:
     i += 1 + comp_len
     ext_total_len = _read_u16(body, i)
     if ext_total_len is None:
+        logger.trace("parse_client_hello: ClientHello sans extensions, SNI inconnu")
         return {"tls_version": version}
     i += 2
     ext_end = min(i + ext_total_len, len(body))
@@ -180,6 +182,7 @@ def parse_client_hello(body: bytes) -> dict:
 def parse_server_hello(body: bytes) -> dict:
     """Extrait la version TLS negociee et le cipher suite choisi."""
     if len(body) < 35:
+        logger.trace("parse_server_hello: corps trop court ({} octets), ignore", len(body))
         return {}
     version = _tls_version_str(body[0], body[1])
     i = 34
@@ -193,6 +196,7 @@ def parse_server_hello(body: bytes) -> dict:
 
 def parse_alert(body: bytes) -> dict:
     if len(body) < 2:
+        logger.trace("parse_alert: alerte tronquee ({} octet(s))", len(body))
         return {}
     level = ALERT_LEVELS.get(body[0], f"unknown({body[0]})")
     desc = ALERT_DESCRIPTIONS.get(body[1], f"unknown({body[1]})")
@@ -210,6 +214,7 @@ def _iter_tls_records(
         content_type, major, minor = payload[i], payload[i + 1], payload[i + 2]
         length = int.from_bytes(payload[i + 3 : i + 5], "big")
         if content_type not in TLS_CONTENT_TYPES or major != 3:
+            logger.trace("_iter_tls_records: plus de TLS bien forme a l'offset {} (type {})", i, content_type)
             break
         body_start = i + 5
         body_end = body_start + length
@@ -217,6 +222,7 @@ def _iter_tls_records(
         body = payload[body_start : min(body_end, n)]
         yield content_type, major, minor, length, body, truncated
         if truncated:
+            logger.trace("_iter_tls_records: record de {} octets tronque a {}", length, len(body))
             break  # le reste est dans un segment suivant, pas de reassemblage ici
         i = body_end
 
@@ -233,6 +239,7 @@ def _iter_handshake_messages(body: bytes) -> Iterator[tuple[int, bytes, bool]]:
         msg_start = i + 4
         msg_end = msg_start + hlen
         if msg_end > n:
+            logger.trace("_iter_handshake_messages: message {} tronque ({}/{} octets)", htype, n - msg_start, hlen)
             yield htype, body[msg_start:n], True
             break
         yield htype, body[msg_start:msg_end], False
@@ -251,6 +258,8 @@ def parse_tls_capture(label: str, path: str) -> list[TlsEvent]:
     planter tout le run -- coherent avec le reste de netcross_core."""
     events: list[TlsEvent] = []
     raw_packets = pcap_parser.parse_capture(path, raise_on_error=False)
+    logger.debug("parse_tls_capture: point {}, {} paquet(s) lus depuis {}", label, len(raw_packets), path)
+    tls_segments = 0
 
     for raw in raw_packets:
         if raw.proto != "TCP" or not raw.payload:
@@ -259,6 +268,7 @@ def parse_tls_capture(label: str, path: str) -> list[TlsEvent]:
         payload = raw.payload
         if not _looks_like_tls(payload):
             continue
+        tls_segments += 1
 
         ts = raw.ts
         src, dst = raw.src, raw.dst
@@ -326,6 +336,13 @@ def parse_tls_capture(label: str, path: str) -> list[TlsEvent]:
                     )
                 )
 
+    logger.debug(
+        "parse_tls_capture: point {}, {} segment(s) TLS, {} evenement(s) dont {} tronque(s)",
+        label,
+        tls_segments,
+        len(events),
+        sum(1 for ev in events if ev.truncated),
+    )
     return events
 
 
@@ -388,6 +405,12 @@ def build_handshake_status(
         elif ev.record_type == "application_data":
             st.application_data_seen = True
 
+    logger.debug(
+        "build_handshake_status: {} evenement(s) -> {} flux sur {} point(s)",
+        len(events),
+        sum(len(per_point) for per_point in status.values()),
+        len(status),
+    )
     return status
 
 
@@ -413,6 +436,9 @@ def diagnose_tls(
     """
     findings: list[TlsFinding] = []
     points = points_order or sorted(status_by_point)
+    logger.debug(
+        "diagnose_tls: {} point(s), ordre {}", len(points), "fourni" if points_order else "alphabetique (par defaut)"
+    )
 
     # -- alertes fatales, un constat par point --
     for point in points:
@@ -439,6 +465,7 @@ def diagnose_tls(
             if st_b is None:
                 # flux pas vu au point suivant -- hors perimetre de ce module
                 # (voir netcross_core.analyse pour les pertes)
+                logger.trace("diagnose_tls: flux {} absent en {}, ignore", fid, b)
                 continue
             if st_a.verdict == "complete" and st_b.verdict != "complete":
                 broken_here.append((st_a, st_b))
@@ -478,10 +505,16 @@ def diagnose_tls(
             f.segment,
         )
     )
+    logger.debug(
+        "diagnose_tls: {} constat(s) dont {} anomalie(s)",
+        len(findings),
+        sum(1 for f in findings if f.severity == "anomalie"),
+    )
     return findings
 
 
 def print_tls_diagnostics(findings: list[TlsFinding]) -> None:
+    logger.debug("print_tls_diagnostics: {} constat(s)", len(findings))
     print("=" * 70)
     print("DIAGNOSTIC TLS -- etat des handshakes par point")
     print("=" * 70)
