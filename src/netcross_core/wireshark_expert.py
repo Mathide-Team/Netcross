@@ -204,6 +204,7 @@ def _flag_label(flag_name: str) -> str:
     algorithmique generique s'est averee fausse dans le cas general,
     mieux vaut un nom brut moins lisible qu'un nom invente incorrect)."""
     known = _KNOWN_FLAGS.get(flag_name)
+    logger.debug("_flag_label: retour conditionnel")
     return known[0] if known else flag_name
 
 
@@ -213,6 +214,7 @@ def _flag_severity(flag_name: str) -> str:
     limites (pas la severite native tshark, jamais surestimee si le flag
     est inconnu de la table)."""
     known = _KNOWN_FLAGS.get(flag_name)
+    logger.debug("_flag_severity: retour conditionnel")
     return known[1] if known else _DEFAULT_SEVERITY
 
 
@@ -309,6 +311,7 @@ def _remediation_for(flag_name: str) -> str | None:
     `None` si le flag est absent de `_REMEDIATION` (voir la table
     ci-dessus pour la justification : pas d'equivalent "prudent" a un
     conseil de verification, contrairement a `_flag_severity`)."""
+    logger.debug("_remediation_for: retour get(...)")
     return _REMEDIATION.get(flag_name)
 
 
@@ -344,6 +347,7 @@ def _layer_and_protocol_for(flag_name: str) -> tuple[str | None, str | None]:
     `_flag_label`/`_flag_severity` pour un flag inconnu de `_KNOWN_FLAGS`."""
     prefix = flag_name.split("_", 1)[0]
     found = _LAYER_AND_PROTOCOL.get(prefix)
+    logger.debug("_layer_and_protocol_for: retour conditionnel")
     return found if found is not None else (None, None)
 
 
@@ -377,7 +381,9 @@ def _confidence_for(flag_name: str, has_native_severity: bool) -> float:
     (nom EK jamais vu par ce projet, aucune confirmation tshark non
     plus)."""
     if has_native_severity:
+        logger.debug("_confidence_for: retour 1.0")
         return 1.0
+    logger.debug("_confidence_for: retour conditionnel")
     return 0.7 if flag_name in _KNOWN_FLAGS else 0.4
 
 
@@ -394,7 +400,9 @@ def _lookup_native_detail(pk, flag_name: str) -> tuple[str | None, str | None, s
     synchronises)."""
     for name, severity, group, message in pk.expert_details:
         if name == flag_name:
+            logger.debug("_lookup_native_detail: retour tuple")
             return severity, group, message
+    logger.debug("_lookup_native_detail: retour tuple")
     return None, None, None
 
 
@@ -538,4 +546,5 @@ def build_wireshark_expert_events(all_packets) -> list[ExpertEvent]:
                 remediation=remediation,
             )
         )
+    logger.debug("build_wireshark_expert_events: retour events")
     return events

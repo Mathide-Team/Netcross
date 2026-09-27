@@ -45,18 +45,24 @@ def jsonable(value: Any) -> Any:
     « amont -> aval », le libellé des constats et des segments (#354).
     """
     if hasattr(value, "items"):
+        logger.debug("jsonable: retour valeur")
         return {(" -> ".join(map(str, k)) if isinstance(k, tuple) else str(k)): jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
+        logger.debug("jsonable: retour liste")
         return [jsonable(v) for v in value]
     if is_dataclass(value) and not isinstance(value, type):
+        logger.debug("jsonable: retour valeur")
         return {f.name: jsonable(getattr(value, f.name)) for f in fields(value)}
     if value is None or isinstance(value, (str, int, float, bool)):
+        logger.debug("jsonable: retour value")
         return value
+    logger.debug("jsonable: retour str(...)")
     return str(value)
 
 
 def report_document(report: Any) -> dict[str, Any]:
     """Document JSON complet d'un ``Report`` (servi par GET /analyses/{id})."""
+    logger.debug("report_document: retour valeur")
     return {f.name: jsonable(getattr(report, f.name)) for f in fields(report)}
 
 
@@ -84,6 +90,7 @@ class AnalysesStore:
 
     @property
     def persistent(self) -> bool:
+        logger.debug("persistent: retour bool(...)")
         return bool(self._db_path)
 
     # -- cycle de vie ------------------------------------------------------
@@ -96,6 +103,7 @@ class AnalysesStore:
         with self._lock:
             self._store[analysis_id] = entry
             self._persist(analysis_id, entry)
+        logger.debug("create_pending: retour analysis_id")
         return analysis_id
 
     def complete(self, analysis_id: str, document: dict, summary: dict) -> None:
@@ -121,15 +129,18 @@ class AnalysesStore:
         """Copie de l'entrée (status, metadata, summary, document, error)."""
         with self._lock:
             entry = self._store.get(analysis_id)
+            logger.debug("get: retour conditionnel")
             return dict(entry) if entry else None
 
     def get_status(self, analysis_id: str) -> str | None:
         with self._lock:
             entry = self._store.get(analysis_id)
+            logger.debug("get_status: retour conditionnel")
             return entry["status"] if entry else None
 
     def list_ids(self) -> list[str]:
         with self._lock:
+            logger.debug("list_ids: retour list(...)")
             return list(self._store.keys())
 
     def clear(self) -> None:
@@ -141,6 +152,7 @@ class AnalysesStore:
 
     def _connect(self) -> sqlite3.Connection:
         assert self._db_path is not None
+        logger.debug("_connect: retour connect(...)")
         return sqlite3.connect(self._db_path)
 
     def _init_db(self) -> None:
@@ -182,6 +194,7 @@ class AnalysesStore:
     def _persist(self, analysis_id: str, entry: dict) -> None:
         """Écrit l'entrée si la persistance est active (appelé sous verrou)."""
         if not self._db_path:
+            logger.debug("_persist: retour (None implicite)")
             return
         with closing(self._connect()) as conn, conn:
             conn.execute(

@@ -48,6 +48,7 @@ class Summary:
     fallback_reason: str = ""
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict")
         return {
             "engine": self.engine,
             "text": self.text,
@@ -62,6 +63,7 @@ class Summary:
 
 def _sev(f: dict) -> str:
     s = str(f.get("severity", "faible")).lower().replace("é", "e")
+    logger.debug("_sev: retour conditionnel")
     return s if s in SEVERITY_ORDER else "faible"
 
 
@@ -71,6 +73,7 @@ def collect_facts(report: Any, ai: dict | None = None) -> dict:
     findings = sorted(getattr(report, "security_findings", []) or [], key=lambda f: SEVERITY_ORDER.index(_sev(f)))
     flows = getattr(report, "flow_anomalies", []) or []
     ai = ai or {}
+    logger.debug("collect_facts: retour dict")
     return {
         "constats_par_severite": dict(Counter(_sev(f) for f in findings)),
         "constats": [
@@ -120,6 +123,7 @@ def _correlations(report: Any, ai: dict | None) -> list[str]:
         has_cve = any(s.startswith("CVE ") for s in signals)
         note = " : exploitation d'une vulnerabilite connue probable" if has_cve and "exploit" in signals else ""
         out.append(f"{host} cumule {len(signals)} signaux ({', '.join(sorted(signals))}){note}.")
+    logger.debug("_correlations: retour element")
     return out[:10]
 
 
@@ -157,6 +161,7 @@ def _recommendations(report: Any, ai: dict | None) -> list[str]:
         add("Controler la segmentation et les comptes utilises par les sources de mouvements lateraux.")
     if any(a.get("is_anomaly") for a in (ai or {}).get("anomalies", [])):
         add("Examiner les flux signales atypiques par rapport a la baseline (detail dans la section IA).")
+    logger.debug("_recommendations: retour element")
     return recs[:15]
 
 
@@ -182,6 +187,7 @@ def template_summary(report: Any, ai: dict | None = None) -> Summary:
         lines.append(f"{len(facts['anomalies_ia'])} flux s'ecartent nettement de la baseline de trafic normal.")
     if facts["services"]:
         lines.append(f"{len(facts['services'])} service(s) identifie(s) passivement.")
+    logger.debug("template_summary: retour Summary(...)")
     return Summary("template", " ".join(lines), _correlations(report, ai), _recommendations(report, ai))
 
 
@@ -193,6 +199,7 @@ def parse_engine(spec: str, endpoint: str | None = None) -> tuple[str, str, str]
     logger.debug("parse_engine: spec={} endpoint={}", summarize(spec, "spec"), summarize(endpoint, "endpoint"))
     kind, _, model = spec.partition(":")
     if kind == "template":
+        logger.debug("parse_engine: retour tuple")
         return "template", "", ""
     if kind not in DEFAULT_ENDPOINTS:
         logger.debug("parse_engine: refus, WriterConfigError")
@@ -202,6 +209,7 @@ def parse_engine(spec: str, endpoint: str | None = None) -> tuple[str, str, str]
         raise WriterConfigError("ollama : preciser le modele (ex. ollama:llama3:8b-instruct-q4_K_M).")
     url = (endpoint or DEFAULT_ENDPOINTS[kind]).rstrip("/")
     check_local_endpoint(url)
+    logger.debug("parse_engine: retour tuple")
     return kind, model, url
 
 
@@ -246,6 +254,7 @@ def _post_json(url: str, payload: dict, timeout: float) -> dict:
         url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST"
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 -- boucle locale verifiee
+        logger.debug("_post_json: retour loads(...)")
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -269,6 +278,7 @@ def llm_generate(kind: str, model: str, url: str, prompt: str, timeout: float = 
     if not str(text).strip():
         logger.debug("llm_generate: refus, RuntimeError")
         raise RuntimeError("reponse vide du modele")
+    logger.debug("llm_generate: retour strip(...)")
     return str(text).strip()
 
 
@@ -278,13 +288,16 @@ def write_summary(
     kind, model, url = parse_engine(engine, endpoint)
     base = template_summary(report, ai)
     if kind == "template":
+        logger.debug("write_summary: retour base")
         return base
     try:
         text = llm_generate(kind, model, url, build_prompt(collect_facts(report, ai)))
     except (OSError, urllib.error.URLError, RuntimeError, ValueError) as exc:
         logger.exception(f"échec dans write_summary: {exc}")
         base.fallback_reason = f"modele local indisponible ({exc}) : resume par gabarit"
+        logger.debug("write_summary: retour base")
         return base
     # Le texte libre du modele ; correlations/recommandations deterministes
     # conservees a cote, verifiables.
+    logger.debug("write_summary: retour Summary(...)")
     return Summary(f"{kind}:{model}" if model else kind, text, base.correlations, base.recommendations)

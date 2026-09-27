@@ -58,8 +58,10 @@ def _linktype_lisible(code) -> str:
     utilisateur remonte une encapsulation exotique.
     """
     if code is None:
+        logger.debug("_linktype_lisible: retour '?'")
         return "?"
     nom = _DLT_NAMES.get(code)
+    logger.debug("_linktype_lisible: retour conditionnel")
     return f"{code} ({nom})" if nom else str(code)
 
 
@@ -960,6 +962,7 @@ def print_annotations(annotations: list[PacketAnnotation]):
     print("\n-- Annotations (etiquettes et signets sur paquets) --")
     if not annotations:
         print("  aucune annotation (pas de sidecar, ou sidecar vide)")
+        logger.debug("print_annotations: retour (None implicite)")
         return
     by_tag = annotations_by_tag(annotations)
     for tag in sorted(by_tag):
@@ -984,7 +987,9 @@ def write_detail_csv(path, flows, points, names=None):
 
     def _label(addr) -> str:
         if names is None:
+            logger.debug("_label: retour str(...)")
             return str(addr)
+        logger.debug("_label: retour conditionnel")
         return names.display(str(addr)) if addr is not None else ""
 
     with open(path, "w", newline="") as f:

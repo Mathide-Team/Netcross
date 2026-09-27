@@ -52,6 +52,7 @@ _INDENT = "    "
 
 
 def _largeur() -> int:
+    logger.debug("_largeur: retour max(...)")
     return max(60, min(shutil.get_terminal_size((100, 24)).columns, 120))
 
 
@@ -72,6 +73,7 @@ def _wrap(texte: str, indent: str) -> list[str]:
                 continue
             suite = indent + ("  " if ligne.startswith("- ") else "")
             lignes += textwrap.wrap(ligne, _largeur(), initial_indent=indent, subsequent_indent=suite) or [indent]
+    logger.debug("_wrap: retour lignes")
     return lignes
 
 
@@ -80,10 +82,12 @@ def _resume(texte: str, n: int = 110) -> str:
     premier = " ".join(texte.split("\n\n", 1)[0].split())
     phrase = premier.split(". ", 1)[0]
     phrase = phrase if phrase.endswith(".") or len(phrase) == len(premier) else phrase + "."
+    logger.debug("_resume: retour conditionnel")
     return phrase if len(phrase) <= n else phrase[: n - 1].rstrip() + "…"
 
 
 def _code(code: str, indent: str) -> list[str]:
+    logger.debug("_code: retour liste")
     return [indent + ligne if ligne else "" for ligne in code.splitlines()]
 
 
@@ -109,6 +113,7 @@ def render_methode(m: Methode, indent: str = "") -> list[str]:
     for ex in m.exemples:
         lignes.append(f"{sous}Exemple :")
         lignes += _code(ex, sous + _INDENT)
+    logger.debug("render_methode: retour lignes")
     return lignes
 
 
@@ -123,6 +128,7 @@ def render_attribut(a: Attribut, indent: str = "") -> list[str]:
         lignes += _wrap(a.description, indent + _INDENT)
     if a.depuis_version:
         lignes.append(f"{indent}{_INDENT}Depuis Wireshark {a.depuis_version}")
+    logger.debug("render_attribut: retour lignes")
     return lignes
 
 
@@ -144,6 +150,7 @@ def render_fiche(f: FicheClasse, version: str) -> list[str]:
         lignes += ["", f"Attributs ({len(f.attributs)})", ""]
         for a in f.attributs:
             lignes += [*render_attribut(a, _INDENT), ""]
+    logger.debug("render_fiche: retour lignes")
     return lignes
 
 
@@ -174,6 +181,7 @@ def render_resultats(conn: sqlite3.Connection, terme: str, res: list[ResultatRec
     classes = sorted({r.classe for r in res})
     if not full and classes:
         lignes += ["", f"Fiche complete : --class {classes[0]}" + (" (ou --full)" if len(res) > 1 else "")]
+    logger.debug("render_resultats: retour lignes")
     return lignes
 
 
@@ -198,6 +206,7 @@ def _json_resultats(conn: sqlite3.Connection, terme: str, res: list[ResultatRech
             detail = lua_doc.get_attribut(conn, r.ref_id) if r.est_attribut else lua_doc.get_methode(conn, r.ref_id)
             item["detail"] = asdict(detail) if detail else None
         items.append(item)
+    logger.debug("_json_resultats: retour dict")
     return {"meta": lua_doc.get_meta(conn), "terme": terme, "resultats": items}
 
 
@@ -224,6 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--source", type=Path, help=f"JSON de l'API (defaut : ${lua_doc.ENV_JSON}, data/lua_api.json du depot/paquet)"
     )
     parser.add_argument("--db", type=Path, default=lua_doc.DEFAULT_DB_PATH, help="banque SQLite (cache)")
+    logger.debug("build_parser: retour parser")
     return parser
 
 
@@ -255,10 +265,12 @@ def main(argv: list[str] | None = None) -> int:
             "Le generer avec : python3 tools/extract_lua_api.py --tag vX.Y.Z",
             file=sys.stderr,
         )
+        logger.debug("main: retour 1")
         return 1
 
     conn = lua_doc.ensure_db(args.db, source)
     try:
+        logger.debug("main: retour _run(...)")
         return _run(conn, args, terme)
     finally:
         conn.close()
@@ -280,6 +292,7 @@ def _run(conn: sqlite3.Connection, args: argparse.Namespace, terme: str) -> int:
             print(json.dumps({"meta": meta, "classes": noms}, ensure_ascii=False, indent=2))
         else:
             _emit([f"{len(noms)} classes -- Wireshark {version}", "", *(f"  {n}" for n in noms)])
+        logger.debug("_run: retour 0")
         return 0
 
     if args.classe:
@@ -291,21 +304,26 @@ def _run(conn: sqlite3.Connection, args: argparse.Namespace, terme: str) -> int:
             if suggestion:
                 msg += f" (voir : {', '.join(suggestion)})"
             print(msg, file=sys.stderr)
+            logger.debug("_run: retour 1")
             return 1
         if args.json:
             print(json.dumps({"meta": meta, "classe": asdict(fiche)}, ensure_ascii=False, indent=2))
         else:
             _emit(render_fiche(fiche, version))
+        logger.debug("_run: retour 0")
         return 0
 
     res = lua_doc.search(conn, terme, args.limit)
     if args.json:
         print(json.dumps(_json_resultats(conn, terme, res, args.full), ensure_ascii=False, indent=2))
+        logger.debug("_run: retour conditionnel")
         return 0 if res else 1
     if not res:
         print(f"Aucun resultat pour « {terme} » (Wireshark {version}).", file=sys.stderr)
+        logger.debug("_run: retour 1")
         return 1
     _emit(render_resultats(conn, terme, res, args.full))
+    logger.debug("_run: retour 0")
     return 0
 
 

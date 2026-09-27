@@ -116,6 +116,7 @@ def _match_pattern(
     groupe de `rule_ids_to_match` doit etre present dans
     `rule_ids_by_segment`."""
     groups_to_match, _, _, _ = pattern
+    logger.debug("_match_pattern: retour all(...)")
     return all(group & rule_ids_by_segment for group in groups_to_match)
 
 

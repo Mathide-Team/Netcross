@@ -38,6 +38,7 @@ def export_training_set(flows: list[dict], path: str | Path) -> int:
     samples = [{"flow": f, "label": f.get("classification") or "normal"} for f in flows]
     data = {"schema": TRAINING_SCHEMA, "labels_suggeres": list(SUGGESTED_LABELS), "samples": samples}
     Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    logger.debug("export_training_set: retour len(...)")
     return len(samples)
 
 
@@ -60,11 +61,13 @@ def load_training_set(path: str | Path) -> list[tuple[dict | list[float], str]]:
                 f"{path} : exemple {i} invalide (attendu {{'flow': {{...}}, 'label': '...'}} "
                 f"ou {{'features': [{len(FEATURE_NAMES)} nombres], 'label': '...'}})."
             )
+    logger.debug("load_training_set: retour samples")
     return samples
 
 
 def is_feature_vector(value: object) -> bool:
     """Vrai pour une liste de len(FEATURE_NAMES) nombres finis (bool exclus)."""
+    logger.debug("is_feature_vector: retour booleen")
     return (
         isinstance(value, list)
         and len(value) == len(FEATURE_NAMES)
@@ -76,6 +79,7 @@ def is_feature_vector(value: object) -> bool:
 
 def sample_vector(sample: dict | list[float]) -> list[float]:
     """Vecteur de caracteristiques d'un exemple (flux FLOW-4 ou vecteur deja calcule)."""
+    logger.debug("sample_vector: retour conditionnel")
     return list(sample) if isinstance(sample, list) else flow_features(sample)
 
 
@@ -87,6 +91,7 @@ class FlowPrediction:
     rule_classification: str
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict")
         return {
             "flow": self.flow,
             "label": self.label,
@@ -114,6 +119,7 @@ class FlowClassifier:
 
     def predict(self, flows: list[dict]) -> list[FlowPrediction]:
         if not flows:
+            logger.debug("predict: retour liste")
             return []
         probas = self._model.predict_proba([flow_features(f) for f in flows])
         classes = list(self._model.classes_)
@@ -128,4 +134,5 @@ class FlowClassifier:
                     rule_classification=str(flow.get("classification", "")),
                 )
             )
+        logger.debug("predict: retour out")
         return out

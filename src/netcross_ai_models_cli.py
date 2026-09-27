@@ -71,6 +71,7 @@ def _cmd_export(args) -> int:
     _print_pack(pack.summary())
     if args.queue:
         print(f"Mis en file : {queue_pack(args.output, args.outbox)}")
+    logger.debug("_cmd_export: retour 0")
     return 0
 
 
@@ -82,6 +83,7 @@ def _cmd_inspect(args) -> int:
     else:
         print("Archive verifiee (contenu attendu, empreintes SHA-256, schemas).")
         _print_pack(pack.summary())
+    logger.debug("_cmd_inspect: retour 0")
     return 0
 
 
@@ -95,6 +97,7 @@ def _cmd_import(args) -> int:
         print(f"Jeu enrichi : {result['training']['path']} ({result['training']['samples']} exemples)")
     if "baseline" not in result and "training" not in result:
         print("Rien a importer pour les fichiers demandes (le paquet ne contient pas ce type de modele).")
+    logger.debug("_cmd_import: retour 0")
     return 0
 
 
@@ -104,6 +107,7 @@ def _cmd_outbox(args) -> int:
             logger.trace("_cmd_outbox: refus, ModelPackError")
             raise ModelPackError("outbox add : chemin du paquet ZIP attendu")
         print(f"Mis en file : {queue_pack(args.target, args.outbox)}")
+        logger.debug("_cmd_outbox: retour 0")
         return 0
     if args.action == "list":
         packs = pending(args.outbox)
@@ -111,20 +115,24 @@ def _cmd_outbox(args) -> int:
             print(f"Boite d'envoi vide ({args.outbox}).")
         for pack in packs:
             _print_pack(pack.summary())
+        logger.debug("_cmd_outbox: retour 0")
         return 0
     if args.action == "done":
         if not args.target:
             logger.trace("_cmd_outbox: refus, ModelPackError")
             raise ModelPackError("outbox done : nom du paquet attendu")
         print(f"Marque comme envoye : {mark_sent(args.target, args.outbox)}")
+        logger.debug("_cmd_outbox: retour 0")
         return 0
     # send
     names = [args.target] if args.target else [p.name for p in pending(args.outbox)]
     if not names:
         print(f"Boite d'envoi vide ({args.outbox}).")
+        logger.debug("_cmd_outbox: retour 0")
         return 0
     if not args.skip_check and not is_online():
         print(f"Hors connexion : {len(names)} paquet(s) en attente dans {args.outbox}, a soumettre plus tard.")
+        logger.debug("_cmd_outbox: retour EXIT_OFFLINE")
         return EXIT_OFFLINE
     for name in names:
         sub = submission(name, args.outbox, args.repo)
@@ -135,6 +143,7 @@ def _cmd_outbox(args) -> int:
         if args.open:
             webbrowser.open(sub.url)
     print(f"\nUne fois le ticket cree : outbox done NOM (range le paquet dans {Path(args.outbox) / 'envoyes'}).")
+    logger.debug("_cmd_outbox: retour 0")
     return 0
 
 
@@ -175,6 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
     box.add_argument("--open", action="store_true", help="ouvrir le formulaire de ticket dans le navigateur")
     box.add_argument("--skip-check", action="store_true", help="ne pas tester la connectivite avant send")
     box.set_defaults(func=_cmd_outbox)
+    logger.debug("build_parser: retour parser")
     return parser
 
 
@@ -184,10 +194,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     apply_debug_argument(args)
     try:
+        logger.debug("main: retour int(...)")
         return int(args.func(args))
     except (ModelPackError, BaselineError, TrainingSetError, OSError) as exc:
         logger.exception(f"échec dans main: {exc}")
         print(f"Erreur : {exc}", file=sys.stderr)
+        logger.debug("main: retour 1")
         return 1
 
 

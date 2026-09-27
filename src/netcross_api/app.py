@@ -87,6 +87,7 @@ def _get_executor() -> ThreadPoolExecutor:
     global _executor
     if _executor is None:
         _executor = ThreadPoolExecutor(max_workers=max(1, _WORKERS), thread_name_prefix="netcross-api")
+    logger.debug("_get_executor: retour _executor")
     return _executor
 
 
@@ -110,6 +111,7 @@ app = FastAPI(
 
 
 def _max_mb() -> int:
+    logger.debug("_max_mb: retour calcul")
     return _MAX_UPLOAD_BYTES // 1024 // 1024
 
 
@@ -195,6 +197,7 @@ def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | N
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
+    logger.debug("_analyse_captures: retour tuple")
     return report_document(report), summary
 
 
@@ -303,6 +306,7 @@ def _parse_labels(labels: str, file_count: int) -> list[str]:
     if doublons:
         logger.debug("_parse_labels: refus, HTTPException")
         raise HTTPException(status_code=400, detail=f"Étiquettes dupliquées : {', '.join(doublons)}")
+    logger.debug("_parse_labels: retour label_list")
     return label_list
 
 
@@ -316,6 +320,7 @@ def _parse_points_order(points_order: str, label_list: list[str]) -> list[str] |
         summarize(label_list, "label_list"),
     )
     if not points_order.strip():
+        logger.debug("_parse_points_order: retour None")
         return None
     order = [p.strip() for p in points_order.split(",") if p.strip()]
     inconnus = [p for p in order if p not in label_list]
@@ -328,6 +333,7 @@ def _parse_points_order(points_order: str, label_list: list[str]) -> list[str] |
             detail += f" ; absente(s) : {', '.join(manquants)}"
         logger.debug("_parse_points_order: refus, HTTPException")
         raise HTTPException(status_code=400, detail=detail)
+    logger.debug("_parse_points_order: retour order")
     return order
 
 
@@ -357,6 +363,7 @@ def segment_losses(report) -> list[SegmentLoss]:
                 latency_avg_ms=round(sum(lat) / len(lat), 3) if lat else None,
             )
         )
+    logger.debug("segment_losses: retour segments")
     return segments
 
 
@@ -423,6 +430,7 @@ def _completed_document(analysis_id: str) -> dict:
     if entry["status"] == FAILED:
         logger.debug("_completed_document: refus, HTTPException")
         raise HTTPException(status_code=409, detail=f"Analyse {analysis_id} en echec : {entry['error']}")
+    logger.debug("_completed_document: retour element")
     return entry["document"]
 
 

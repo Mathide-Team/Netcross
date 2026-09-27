@@ -57,6 +57,7 @@ def queue_pack(pack_path: str | Path, outbox: str | Path = DEFAULT_OUTBOX) -> Pa
         logger.trace("queue_pack: refus, ModelPackError")
         raise ModelPackError(f"un paquet {pack.name} attend deja dans {box} (le renommer ou le soumettre d'abord)")
     shutil.copyfile(pack_path, target)
+    logger.debug("queue_pack: retour target")
     return target
 
 
@@ -64,11 +65,13 @@ def pending(outbox: str | Path = DEFAULT_OUTBOX) -> list[ModelPack]:
     """Paquets en attente (illisibles ignores : ils sont signales par ``inspect``)."""
     box = Path(outbox)
     paths = sorted(box.glob("*.zip")) if box.is_dir() else []
+    logger.debug("pending: retour liste")
     return [pack for pack in map(_try_read, paths) if pack is not None]
 
 
 def _try_read(path: Path) -> ModelPack | None:
     try:
+        logger.debug("_try_read: retour read_pack(...)")
         return read_pack(path)
     except ModelPackError:
         logger.exception("erreur: ModelPackError")
@@ -80,6 +83,7 @@ def _archive(name: str, outbox: str | Path) -> Path:
     if not path.is_file():
         logger.trace("_archive: refus, ModelPackError")
         raise ModelPackError(f"aucun paquet {name} en attente dans {outbox}")
+    logger.debug("_archive: retour path")
     return path
 
 
@@ -93,6 +97,7 @@ def submission(name: str, outbox: str | Path = DEFAULT_OUTBOX, repo: str = DEFAU
     if body_in_url:
         params["body"] = body + "\n\n(archive a joindre ci-dessous)"
     url = f"https://github.com/{repo}/issues/new?{urlencode(params)}"
+    logger.debug("submission: retour Submission(...)")
     return Submission(pack.name, archive, url, body, body_in_url)
 
 
@@ -104,6 +109,7 @@ def mark_sent(name: str, outbox: str | Path = DEFAULT_OUTBOX) -> Path:
     target = sent / archive.name
     if target.exists():
         target.unlink()
+    logger.debug("mark_sent: retour Path(...)")
     return Path(shutil.move(str(archive), target))
 
 
@@ -111,6 +117,7 @@ def is_online(host: str = "github.com", port: int = 443, timeout: float = 3.0) -
     """Test de connectivite TCP (aucune donnee envoyee)."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
+            logger.debug("is_online: retour True")
             return True
     except OSError:
         logger.exception("erreur: OSError")

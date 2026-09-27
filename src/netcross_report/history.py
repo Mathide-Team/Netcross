@@ -100,6 +100,7 @@ def _now_iso() -> str:
     # Meme convention que netcross_report.json_report._now_iso -- copiee
     # plutot que partagee (module autonome, une seule ligne, pas de
     # nouvelle dependance croisee pour ca).
+    logger.debug("_now_iso: retour isoformat(...)")
     return datetime.datetime.now().astimezone().isoformat()
 
 
@@ -123,6 +124,7 @@ def _message_base_invalide(db_path, cause) -> str:
     """Message unique pour les trois CLI : nomme le chemin, la cause lue et la
     seule action utile. Un message sans le chemin est inexploitable quand
     plusieurs bases sont suivies en parallele."""
+    logger.debug("_message_base_invalide: retour valeur")
     return (
         f"Base d'historique illisible : {db_path} ({cause}). "
         "Ce fichier existe mais n'est pas une base SQLite netcross -- verifier "
@@ -147,10 +149,12 @@ def _executer_schema(conn, db_path) -> None:
 def _connect(db_path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     _executer_schema(conn, db_path)
+    logger.debug("_connect: retour conn")
     return conn
 
 
 def _finding_counts(findings) -> dict[str, int]:
+    logger.debug("_finding_counts: retour dict(...)")
     return dict(Counter(f.severity for f in findings))
 
 
@@ -182,6 +186,7 @@ def _insert(conn, *, run_type, label, points, score, count_by_sev, total, meta) 
         ),
     )
     conn.commit()
+    logger.debug("_insert: retour attribut")
     return cur.lastrowid
 
 
@@ -218,6 +223,7 @@ def record_run(r, db_path, findings=None, tls_findings=None, quic_findings=None,
     score = health_score(ranked)
     conn = _connect(db_path)
     try:
+        logger.debug("record_run: retour _insert(...)")
         return _insert(
             conn,
             run_type="analyse",
@@ -259,6 +265,7 @@ def record_diff_run(findings, baseline, current, db_path, meta=None, label=None)
     score = health_score(ranked)
     conn = _connect(db_path)
     try:
+        logger.debug("record_diff_run: retour _insert(...)")
         return _insert(
             conn,
             run_type="diff",
@@ -309,6 +316,7 @@ def list_history(db_path, limit=None, label=None, run_type=None) -> list[History
         summarize(run_type, "run_type"),
     )
     if not os.path.exists(db_path):
+        logger.debug("list_history: retour liste")
         return []
     conn = sqlite3.connect(db_path)
     try:
@@ -334,6 +342,7 @@ def list_history(db_path, limit=None, label=None, run_type=None) -> list[History
         rows = conn.execute(query, params).fetchall()
     finally:
         conn.close()
+    logger.debug("list_history: retour liste")
     return [
         HistoryEntry(
             id=row[0],
@@ -363,6 +372,7 @@ def print_history(entries: list[HistoryEntry]) -> None:
 
     if not entries:
         print("\nAucun run enregistre pour l'instant dans cette base.")
+        logger.debug("print_history: retour (None implicite)")
         return
 
     for e in entries:

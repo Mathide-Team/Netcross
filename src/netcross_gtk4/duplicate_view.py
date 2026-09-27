@@ -24,6 +24,7 @@ def format_duplicate_indicator(report: Any) -> str:
     total = sum(counts.values())
     logger.debug("format_duplicate_indicator: {} paquet(s) en double sur {} paire(s)", total, len(counts))
     if total == 0:
+        logger.debug("format_duplicate_indicator: retour 'Doublons inter-captures : aucun détecté.'")
         return "Doublons inter-captures : aucun détecté."
 
     details = ", ".join(f"{a} ↔ {b} : {count}" for (a, b), count in sorted(counts.items()))
@@ -33,6 +34,7 @@ def format_duplicate_indicator(report: Any) -> str:
         if getattr(report, "duplicates_excluded", False)
         else " — inclus dans les statistiques"
     )
+    logger.debug("format_duplicate_indicator: retour valeur")
     return f"Doublons inter-captures : {total} paquet(s) ({details}){suffix}"
 
 

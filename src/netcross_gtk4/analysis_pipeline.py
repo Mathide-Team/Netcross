@@ -297,6 +297,7 @@ def run_analysis_pipeline(
     text = buf.getvalue()
     _log("Analyse terminée.")
 
+    logger.debug("run_analysis_pipeline: retour AnalysisResult(...)")
     return AnalysisResult(
         mode="single",
         report=report,

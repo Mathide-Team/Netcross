@@ -59,6 +59,7 @@ class NameEntry:
         adresses respecte la casse (les adresses IP n'en ont pas, mais les
         noms d'hotes IPv6 ou labels le pourraient).
         """
+        logger.debug("matches: retour booleen")
         return (address is not None and self.address == address) or (
             mac is not None and self.mac is not None and self.mac.lower() == mac.lower()
         )
@@ -101,14 +102,18 @@ class NameTable:
     def resolve(self, address: str | None) -> NameEntry | None:
         """Retourne l'entree correspondant a une adresse, ou None."""
         if address is None:
+            logger.debug("resolve: retour None")
             return None
+        logger.debug("resolve: retour get(...)")
         return self._by_address.get(address)
 
     def resolve_mac(self, mac: str | None) -> NameEntry | None:
         """Retourne l'entree correspondant a une MAC, ou None."""
         logger.debug("NameTable.resolve_mac: mac={}", summarize(mac, "mac"))
         if mac is None:
+            logger.debug("resolve_mac: retour None")
             return None
+        logger.debug("resolve_mac: retour get(...)")
         return self._by_mac.get(mac.lower())
 
     def display(self, address: str | None) -> str:
@@ -116,14 +121,17 @@ class NameTable:
         aucune entree ne correspond (ou si l'adresse est None -> chaine
         vide). C'est le point d'entree unique des rendus."""
         if address is None:
+            logger.debug("display: retour ''")
             return ""
         entry = self._by_address.get(address)
+        logger.debug("display: retour conditionnel")
         return entry.name if entry is not None else address
 
     # -- Persistance ------------------------------------------------------
 
     def to_list(self) -> list[dict]:
         """Liste de dictionnaires (ordre stable) pour la serialisation."""
+        logger.debug("to_list: retour liste")
         return [asdict(e) for e in self._entries]
 
     @classmethod
@@ -147,6 +155,7 @@ class NameTable:
                     comment=item.get("comment"),
                 )
             )
+        logger.debug("from_list: retour cls(...)")
         return cls(entries)
 
     @classmethod
@@ -172,6 +181,7 @@ class NameTable:
         if not isinstance(data, list):
             logger.trace("NameTable.load: refus, ValueError")
             raise ValueError(f"la table des noms doit etre une liste, pas {type(data).__name__}")
+        logger.debug("load: retour from_list(...)")
         return cls.from_list(data)
 
     def save(self, path: str | Path) -> None:
@@ -190,9 +200,11 @@ class NameTable:
     # -- Divers -----------------------------------------------------------
 
     def __len__(self) -> int:
+        logger.debug("__len__: retour len(...)")
         return len(self._entries)
 
     def __bool__(self) -> bool:
+        logger.debug("__bool__: retour bool(...)")
         return bool(self._entries)
 
 
@@ -204,6 +216,7 @@ def _load_yaml(text: str):
         raise ImportError(
             "lecture YAML requiert pyyaml (pip install pyyaml) ; utilisez un fichier .json pour eviter cette dependance"
         ) from exc
+    logger.debug("_load_yaml: retour safe_load(...)")
     return yaml.safe_load(text)
 
 
@@ -216,4 +229,5 @@ def _dump_yaml(items: list[dict]) -> str:
             "ecriture YAML requiert pyyaml (pip install pyyaml) ; "
             "utilisez un fichier .json pour eviter cette dependance"
         ) from exc
+    logger.debug("_dump_yaml: retour safe_dump(...)")
     return yaml.safe_dump(items, allow_unicode=True, sort_keys=False)

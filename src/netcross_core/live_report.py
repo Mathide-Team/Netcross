@@ -53,6 +53,7 @@ JOURNAL_TAIL = 200  # lignes de journal recopiees dans la page (lecture hors ser
 
 
 def _iso(ts: float) -> str:
+    logger.debug("_iso: retour isoformat(...)")
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
 
 
@@ -196,6 +197,7 @@ class LiveAggregator:
                 ],
                 "last_events": events,
             }
+        logger.debug("tick: retour tuple")
         return snapshot, journal
 
 

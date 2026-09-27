@@ -59,6 +59,7 @@ def run_ai(report: Any, flows: list[dict], options: AIOptions) -> dict:
         result["training"] = {"path": options.training_path, "labels": classifier.labels}
     if options.summary_engine:
         result["summary"] = write_summary(report, result, options.summary_engine, options.endpoint).to_dict()
+    logger.debug("run_ai: retour result")
     return result
 
 
@@ -97,4 +98,5 @@ def format_ai(result: dict, top: int = 10) -> str:
         if s["recommendations"]:
             lines.append("\nRecommandations :")
             lines.extend(f"  {i}. {r}" for i, r in enumerate(s["recommendations"], 1))
+    logger.debug("format_ai: retour join(...)")
     return "\n".join(lines)

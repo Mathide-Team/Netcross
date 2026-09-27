@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 def available_tags(annotations: list[PacketAnnotation]) -> list[str]:
     """Liste triee des tags distincts presents, pour peupler la ListBox
     de filtre (un toggle par tag, voir docstring du module)."""
+    logger.debug("available_tags: retour sorted(...)")
     return sorted(annotations_by_tag(annotations).keys())
 
 
@@ -42,13 +43,16 @@ def filter_by_tags(annotations: list[PacketAnnotation], selected_tags: set[str])
     (ex. stats_view.build_query), plutot qu'une liste vide qui forcerait
     l'appelant a distinguer "aucun tag coche" de "aucune annotation"."""
     if not selected_tags:
+        logger.debug("filter_by_tags: retour list(...)")
         return list(annotations)
+    logger.debug("filter_by_tags: retour liste")
     return [ann for ann in annotations if ann.tag in selected_tags]
 
 
 def format_annotation_row(annotation: PacketAnnotation) -> str:
     """Formate une annotation pour une ligne de ListBox."""
     suffix = f" -- {annotation.comment}" if annotation.comment else ""
+    logger.debug("format_annotation_row: retour valeur")
     return f"[{annotation.tag}] trame #{annotation.frame_number}{suffix}"
 
 
@@ -103,6 +107,7 @@ def parse_frame_number(text: str) -> int:
         raise ValueError(f"numero de trame invalide : {text!r}") from None
     if number < 1:
         raise ValueError("le numero de trame commence a 1")
+    logger.debug("parse_frame_number: retour number")
     return number
 
 
@@ -142,14 +147,17 @@ class AnnotationStore:
             logger.warning(f"annotations {label} : {self.errors[label]}")
 
     def labels(self) -> list[str]:
+        logger.debug("labels: retour liste")
         return [label for label, _path in self.captures]
 
     def writable_labels(self) -> list[str]:
+        logger.debug("writable_labels: retour liste")
         return [label for label in self.labels() if label not in self.errors]
 
     def _path(self, label: str) -> str:
         for known, path in self.captures:
             if known == label:
+                logger.debug("_path: retour path")
                 return path
         logger.trace("AnnotationStore._path: refus, KeyError")
         raise KeyError(f"point inconnu : {label}")
@@ -179,11 +187,13 @@ class AnnotationStore:
         self._save(label, remove_annotation(self.by_label.get(label, []), frame_number, tag))
 
     def tags(self) -> list[str]:
+        logger.debug("tags: retour available_tags(...)")
         return available_tags([a for anns in self.by_label.values() for a in anns])
 
     def rows(self, selected_tags: set[str] | None = None) -> list[tuple[str, PacketAnnotation]]:
         """(point, annotation) filtrees par tag (aucun tag coche : tout),
         dans l'ordre des points puis des trames."""
+        logger.debug("rows: retour liste")
         return [
             (label, ann)
             for label in self.labels()
@@ -192,4 +202,5 @@ class AnnotationStore:
 
 
 def _ann_key(ann: PacketAnnotation) -> tuple[int, str]:
+    logger.debug("_ann_key: retour tuple")
     return (ann.frame_number, ann.tag)

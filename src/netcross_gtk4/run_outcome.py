@@ -185,7 +185,9 @@ def build_flow_objects(flows: Any) -> Any:
         logger.debug("build_flow_objects: {} flux -> {} Flow", len(flows), len(flow_objects))
         return flow_objects
     if isinstance(flows, list):
+        logger.debug("build_flow_objects: retour flows")
         return flows
+    logger.debug("build_flow_objects: retour list(...)")
     return list(flows)
 
 
@@ -242,11 +244,13 @@ def diff_status_text(findings: Any) -> str:
     regressions = sum(1 for f in findings if getattr(f, "severity", None) == "regression")
     logger.debug("diff_status_text: {} régression(s)", regressions)
     if regressions:
+        logger.debug("diff_status_text: retour format(...)")
         return ngettext(
             "Comparaison terminee -- {n} regression detectee.",
             "Comparaison terminee -- {n} regressions detectees.",
             regressions,
         ).format(n=regressions)
+    logger.debug("diff_status_text: retour _(...)")
     return _("Comparaison terminee -- aucune regression.")
 
 

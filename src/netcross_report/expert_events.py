@@ -55,6 +55,7 @@ def build_expert_events(findings) -> list[ExpertEvent]:
         if hasattr(f, "event"):
             f.event = ev
         events.append(ev)
+    logger.debug("build_expert_events: retour events")
     return events
 
 
@@ -66,4 +67,5 @@ def build_diagnoses(events) -> list[Diagnosis]:
     for ev in events:
         diag = by_segment.setdefault(ev.segment, Diagnosis(segment=ev.segment))
         diag.events.append(ev)
+    logger.debug("build_diagnoses: retour list(...)")
     return list(by_segment.values())

@@ -70,9 +70,11 @@ class ModelPack:
 
     @property
     def label_counts(self) -> dict[str, int]:
+        logger.debug("label_counts: retour dict(...)")
         return dict(sorted(Counter(label for _v, label in self.training).items()))
 
     def summary(self) -> dict:
+        logger.debug("summary: retour dict")
         return {
             "name": self.name,
             "description": self.description,
@@ -86,24 +88,29 @@ class ModelPack:
 
 def _round(x: float) -> float:
     if x == 0 or not math.isfinite(x):
+        logger.debug("_round: retour 0.0")
         return 0.0
     digits = _SIGNIFICANT - 1 - math.floor(math.log10(abs(x)))
+    logger.debug("_round: retour round(...)")
     return round(x, digits)
 
 
 def _clean_vectors(vectors: list[list[float]], rng: random.Random) -> list[list[float]]:
     out = [[_round(float(x)) for x in v] for v in vectors]
     rng.shuffle(out)
+    logger.debug("_clean_vectors: retour out")
     return out
 
 
 def _sha256(data: bytes) -> str:
+    logger.debug("_sha256: retour hexdigest(...)")
     return hashlib.sha256(data).hexdigest()
 
 
 def check_name(name: str) -> str:
     if not _NAME_RE.match(name):
         raise ModelPackError(f"nom de paquet invalide : {name!r} (minuscules, chiffres, '-' et '_', 64 caracteres max)")
+    logger.debug("check_name: retour name")
     return name
 
 
@@ -111,6 +118,7 @@ def ticket_body(pack: ModelPack) -> str:
     """Texte du ticket « modeles » (a coller dans l'issue, archive en piece jointe)."""
     s = pack.summary()
     labels = ", ".join(f"{k} ({v})" for k, v in s["labels"].items()) or "aucun"
+    logger.debug("ticket_body: retour join(...)")
     return "\n".join(
         [
             f"## Paquet de modele : {s['name']}",
@@ -194,6 +202,7 @@ def build_pack(
         zf.writestr(MANIFEST, json.dumps(manifest, ensure_ascii=False, indent=1))
         for n, b in files.items():
             zf.writestr(n, b)
+    logger.debug("build_pack: retour pack")
     return pack
 
 
@@ -223,6 +232,7 @@ def _read_entries(path: Path) -> dict[str, bytes]:
                 if len(data) > MAX_ENTRY_BYTES:
                     raise ModelPackError(f"{path} : {info.filename} trop volumineux")
                 entries[info.filename] = data
+            logger.debug("_read_entries: retour entries")
             return entries
     except (zipfile.BadZipFile, OSError) as exc:
         logger.exception(f"échec dans _read_entries: {exc}")
@@ -231,6 +241,7 @@ def _read_entries(path: Path) -> dict[str, bytes]:
 
 def _json(entries: dict[str, bytes], name: str, path: Path) -> object:
     try:
+        logger.debug("_json: retour loads(...)")
         return json.loads(entries[name].decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         logger.exception(f"échec dans _json: {exc}")
@@ -278,6 +289,7 @@ def read_pack(path: str | Path) -> ModelPack:
             pack.training.append(([float(x) for x in item["features"]], label))
     if pack.baseline is None and not pack.training:
         raise ModelPackError(f"{p} : paquet vide")
+    logger.debug("read_pack: retour pack")
     return pack
 
 
@@ -312,4 +324,5 @@ def import_pack(
         json.dump(doc, buf, ensure_ascii=False, indent=1)
         target.write_text(buf.getvalue(), encoding="utf-8")
         result["training"] = {"path": str(target), "samples": len(doc["samples"])}
+    logger.debug("import_pack: retour result")
     return result

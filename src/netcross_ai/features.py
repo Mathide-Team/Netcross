@@ -38,6 +38,7 @@ def _splt_sizes(flow: dict) -> list[float]:
         value = item[0] if isinstance(item, (list, tuple)) else item
         if isinstance(value, (int, float)):
             sizes.append(abs(float(value)))
+    logger.debug("_splt_sizes: retour sizes")
     return sizes
 
 
@@ -49,6 +50,7 @@ def _size_counts(flow: dict) -> dict[float, int]:
         except (TypeError, ValueError):  # noqa: PERF203 -- entree JSON externe, rare
             logger.exception("échec dans _size_counts")
             continue
+    logger.debug("_size_counts: retour counts")
     return counts
 
 
@@ -71,8 +73,10 @@ def flow_features(flow: dict) -> list[float]:
         sum(n for s, n in counts.items() if s < _SMALL) / total if total else 0.0,
         sum(n for s, n in counts.items() if s > _LARGE) / total if total else 0.0,
     ]
+    logger.debug("flow_features: retour liste")
     return [v if math.isfinite(v) else 0.0 for v in vector]
 
 
 def flow_key(flow: dict) -> str:
+    logger.debug("flow_key: retour valeur")
     return f"{flow.get('src', '?')} -> {flow.get('dst', '?')}"
