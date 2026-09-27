@@ -93,7 +93,10 @@ conforme.
    gh pr create --base dev --head feature/issue-123-ma-feature
    ```
 
-5. La CI tourne automatiquement (lint, tests, coverage, import-linter).
+5. La CI tourne automatiquement : un seul workflow (`ci.yml`) couvre le
+   lint, les tests, la couverture, l'import-linter, la construction de la
+   documentation (mkdocs) et la validation des catalogues i18n. La
+   couverture par PR est commentée par `pr-coverage.yml` (issue #463).
 6. Une fois la CI verte et la review approuvée, merger vers `dev`.
 7. Périodiquement, synchroniser `dev` vers `main` via une PR dédiée.
 
