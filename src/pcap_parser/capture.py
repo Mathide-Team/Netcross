@@ -41,7 +41,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from loguru import logger
@@ -677,6 +677,171 @@ def split_capture(path: str, output_dir: str, by: str = "time", value: float = 6
         len(segments) - len(kept),
     )
     return kept
+
+
+# -- split_by_interface : plusieurs captures dans un seul pcapng (issue #474) --
+
+# Valeur que tshark affiche pour frame.interface_name quand l'IDB ne porte pas
+# d'option if_name (pcap converti, editcap, mergecap sans nom d'interface).
+_TSHARK_UNKNOWN_INTERFACE = "unknown"
+
+# Caracteres gardes tels quels dans un nom de fichier derive d'un nom
+# d'interface (le reste devient "_") : un if_name peut contenir "/" ou ":".
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+@dataclass(frozen=True)
+class InterfaceSlice:
+    """Une capture distincte au sein d'un meme fichier : les paquets d'UNE
+    interface (Interface Description Block) d'UNE section pcapng.
+
+    Le couple (section, interface_id) est la seule cle fiable : dans un
+    fichier fait de plusieurs sections concatenees (`cat a.pcapng b.pcapng`),
+    l'interface_id repart de 0 a chaque section -- tshark rapporte alors
+    interface_id 0 pour les deux captures, seul section les distingue.
+
+    `name` est le nom de point propose, unique dans le fichier : le nom
+    d'interface (option if_name) s'il existe, sinon `ifN` (une seule
+    section) ou `sS-ifN`. `path` est le fichier ne contenant que ces
+    paquets (None tant que split_by_interface ne l'a pas ecrit)."""
+
+    section: int
+    interface_id: int
+    name: str
+    packets: int
+    path: str | None = None
+
+
+def _slice_names(keys: Sequence[tuple[int, int]], raw_names: dict[tuple[int, int], str | None]) -> dict:
+    """Nom de point unique pour chaque (section, interface_id).
+
+    Deux interfaces peuvent porter le meme if_name (deux postes captures sur
+    `eth0`, puis concatenes) : le nom est alors suffixe par sa cle, jamais
+    fusionne -- deux points distincts ne doivent pas devenir un seul label."""
+    several_sections = len({section for section, _iface in keys}) > 1
+
+    def fallback(key: tuple[int, int]) -> str:
+        section, iface = key
+        return f"s{section}-if{iface}" if several_sections else f"if{iface}"
+
+    proposed = {key: raw_names.get(key) or fallback(key) for key in keys}
+    counts: dict[str, int] = {}
+    for name in proposed.values():
+        counts[name] = counts.get(name, 0) + 1
+    names = {key: (name if counts[name] == 1 else f"{name}-{fallback(key)}") for key, name in proposed.items()}
+    logger.debug("_slice_names: {}", names)
+    return names
+
+
+def list_interfaces(path: str) -> list[InterfaceSlice]:
+    """Liste les captures distinctes contenues dans `path` : une entree par
+    couple (section pcapng, interface) ayant au moins un paquet, dans
+    l'ordre (section, interface_id). Un pcap classique ou un pcapng a une
+    seule interface donne une liste d'un element.
+
+    Une seule passe tshark, en champs texte (pas de dissection EK). Limite
+    connue, a documenter pour l'utilisateur : `mergecap` fusionne par defaut
+    les interfaces DECRITES A L'IDENTIQUE dans ses entrees (mode `-I all`) ;
+    ces captures sont alors indiscernables dans le fichier produit, et
+    apparaissent ici comme une seule. `mergecap -I none` les garde separees.
+
+    Leve FileNotFoundError, TsharkNotFoundError ou TsharkError."""
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"capture introuvable : {path}")
+    from pcap_parser.ek_source import _tshark_path
+
+    args = [
+        _tshark_path(),
+        "-r",
+        path,
+        "-T",
+        "fields",
+        "-E",
+        "separator=/t",
+        "-e",
+        "frame.section_number",
+        "-e",
+        "frame.interface_id",
+        "-e",
+        "frame.interface_name",
+    ]
+    logger.debug("list_interfaces: {}", " ".join(args))
+    proc = subprocess.run(args, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise TsharkError(
+            f"tshark a echoue lors de l'inventaire des interfaces (code {proc.returncode}) : {proc.stderr.strip()}",
+            returncode=proc.returncode,
+            stderr=proc.stderr,
+        )
+    counts: dict[tuple[int, int], int] = {}
+    raw_names: dict[tuple[int, int], str | None] = {}
+    for line in proc.stdout.splitlines():
+        section_s, _sep, rest = line.partition("\t")
+        iface_s, _sep, name = rest.partition("\t")
+        try:
+            # frame.section_number est absent (vide) sur un pcap classique
+            key = (int(section_s or 1), int(iface_s or 0))
+        except ValueError:
+            logger.trace("list_interfaces: ligne ignoree {!r}", line)
+            continue
+        counts[key] = counts.get(key, 0) + 1
+        name = name.strip()
+        if key not in raw_names:
+            raw_names[key] = None if name in ("", _TSHARK_UNKNOWN_INTERFACE) else name
+    keys = sorted(counts)
+    names = _slice_names(keys, raw_names)
+    slices = [InterfaceSlice(key[0], key[1], names[key], counts[key]) for key in keys]
+    logger.debug("list_interfaces: {} -> {} capture(s)", path, len(slices))
+    return slices
+
+
+def split_by_interface(path: str, output_dir: str) -> list[InterfaceSlice]:
+    """Separe les captures contenues dans `path` (voir list_interfaces) :
+    ecrit dans `output_dir` (cree si absent) un pcapng par capture et
+    renvoie les InterfaceSlice avec leur `path` renseigne.
+
+    Si le fichier ne contient qu'une capture, rien n'est ecrit : la tranche
+    unique renvoyee pointe sur `path` lui-meme.
+
+    Fichiers produits : `<nom>_<point>.pcapng` (`<nom>` = fichier sans
+    extension, `<point>` = InterfaceSlice.name rendu sur pour un nom de
+    fichier). Toujours en pcapng, seul format qui garde l'IDB (type de lien,
+    snaplen, if_name) de chaque capture. Un fichier deja present n'est
+    jamais ecrase : FileExistsError, et rien n'est ecrit.
+
+    Leve FileNotFoundError, FileExistsError, TsharkNotFoundError ou
+    TsharkError (en cas d'echec, les fichiers deja ecrits sont supprimes)."""
+    slices = list_interfaces(path)
+    if len(slices) <= 1:
+        logger.debug("split_by_interface: {} ne contient qu'une capture, rien a separer", path)
+        return [replace(s, path=path) for s in slices]
+
+    from pcap_parser.ek_source import _tshark_path
+
+    tshark = _tshark_path()
+    stem = os.path.splitext(os.path.basename(path))[0]
+    os.makedirs(output_dir, exist_ok=True)
+    targets = [os.path.join(output_dir, f"{stem}_{_UNSAFE_FILENAME_CHARS.sub('_', s.name)}.pcapng") for s in slices]
+    existing = [t for t in targets if os.path.exists(t)]
+    if existing:
+        raise FileExistsError(f"fichier(s) deja present(s), rien n'est ecrase : {', '.join(existing)}")
+
+    written: list[str] = []
+    result: list[InterfaceSlice] = []
+    try:
+        for s, target in zip(slices, targets):
+            display_filter = f"frame.section_number == {s.section} && frame.interface_id == {s.interface_id}"
+            _run_wireshark_tool([tshark, "-r", path, "-F", "pcapng", "-w", target, "-Y", display_filter])
+            written.append(target)
+            result.append(replace(s, path=target))
+    except TsharkError:
+        logger.exception("split_by_interface: echec, {} fichier(s) partiel(s) supprime(s)", len(written))
+        for target in written:
+            with contextlib.suppress(OSError):
+                os.remove(target)
+        raise
+    logger.debug("split_by_interface: {} -> {} fichier(s) dans {}", path, len(result), output_dir)
+    return result
 
 
 # -- iter_live_multi : capture simultanee sur plusieurs interfaces -------------

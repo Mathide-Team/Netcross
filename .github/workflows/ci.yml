@@ -96,6 +96,7 @@ jobs:
           set -o pipefail
           uv run pytest -q -rs --no-header \
             tests/test_export_filtered.py tests/test_adjust_timestamps.py \
+            tests/test_split_by_interface.py \
             | tee /tmp/reel.txt
           if grep -q "tshark non installe\|editcap non installe" /tmp/reel.txt; then
             echo "::error::des tests exigeant tshark/editcap ont été sautés alors que CI les installe"
