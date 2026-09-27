@@ -111,6 +111,7 @@ def run_detectors(detectors: list[Detector], packets: list[Any], report: Any) ->
         if problems:
             logger.warning("detecteur {} : {} constat(s) invalide(s) ignore(s) -- {}", name, len(problems), problems[0])
         runs.append(_run(name, "detector", status, reason, findings=len(valid), invalid=len(problems)))
+    logger.debug("run_detectors: {} detecteur(s), {} execution(s)", len(detectors), len(runs))
     return runs
 
 
@@ -131,4 +132,5 @@ def run_exporters(exporters: dict[str, Exporter], targets: list[tuple[str, str]]
             runs.append(_run(name, "exporter", "erreur", _error(exc), path=path))
             continue
         runs.append(_run(name, "exporter", "ok", path=path))
+    logger.debug("run_exporters: {} exportation(s)", len(runs))
     return runs

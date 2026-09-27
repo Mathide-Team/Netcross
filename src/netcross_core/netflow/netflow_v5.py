@@ -52,7 +52,9 @@ def _uptime_ms_to_epoch(uptime_ms: int, unix_secs: int, unix_nsecs: int, sys_upt
     unix_secs/unix_nsecs = heure epoch au moment `sys_uptime`."""
     now_epoch = unix_secs + unix_nsecs / 1e9
     delta_ms = sys_uptime - uptime_ms  # anciennete du flux par rapport a "maintenant"
-    return now_epoch - delta_ms / 1000.0
+    result = now_epoch - delta_ms / 1000.0
+    logger.debug("_uptime_ms_to_epoch: uptime_ms={} -> epoch={:.6f}", uptime_ms, result)
+    return result
 
 
 def parse_netflow_v5_packet(data: bytes, exporter: str) -> list[FlowRecord]:
@@ -139,6 +141,7 @@ def parse_netflow_v5_packet(data: bytes, exporter: str) -> list[FlowRecord]:
         )
         offset += _RECORD.size
 
+    logger.debug("parse_netflow_v5_packet: {} enregistrement(s) decode(s)", len(records))
     return records
 
 

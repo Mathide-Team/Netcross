@@ -171,6 +171,7 @@ def parse_capture(label, path, raise_on_error=False) -> list[Pkt]:
         if raise_on_error:
             raise
         print(f"[{label}] impossible de lire {path} : {e}", file=sys.stderr)
+        logger.debug("parse_capture: retour vide apres erreur pour {}", label)
         return []
     # Convertit en liberant chaque RawPacket au fur et a mesure (au lieu
     # d'une comprehension de liste, qui garderait raw_packets ET pkts
@@ -197,7 +198,9 @@ def _parse_capture_timed(label, path):
 
     t0 = time.time()
     pkts = parse_capture(label, path, raise_on_error=True)
-    return pkts, time.time() - t0
+    elapsed = time.time() - t0
+    logger.debug("_parse_capture_timed: {} paquet(s) en {:.3f}s", len(pkts), elapsed)
+    return pkts, elapsed
 
 
 def parse_captures_parallel(captures, max_workers=None) -> tuple[list[Pkt], list[dict]]:

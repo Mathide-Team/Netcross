@@ -52,6 +52,7 @@ def locale_dirs() -> list[Path]:
     for d in dirs:
         if d not in unique:
             unique.append(d)
+    logger.debug("locale_dirs: {} repertoire(s)", len(unique))
     return unique
 
 
@@ -60,8 +61,11 @@ def requested_languages(language: str | None = None) -> list[str] | None:
     laisse gettext lire LANGUAGE/LC_ALL/LC_MESSAGES/LANG."""
     value = language or os.environ.get(ENV_LANG)
     if not value:
+        logger.debug("requested_languages: aucune langue demandee")
         return None
-    return [part.strip() for part in value.split(":") if part.strip()]
+    langs = [part.strip() for part in value.split(":") if part.strip()]
+    logger.debug("requested_languages: {} langue(s)", len(langs))
+    return langs
 
 
 def setup(language: str | None = None) -> gettext.NullTranslations:
@@ -83,6 +87,7 @@ def setup(language: str | None = None) -> gettext.NullTranslations:
     else:
         logger.debug("i18n.setup: aucun catalogue trouve, chaines source (francais)")
     _translation = found
+    logger.debug("setup: catalogue actif={}", found is not None)
     return found
 
 
@@ -90,7 +95,9 @@ def active_language() -> str | None:
     """Langue du catalogue actif (``None`` : chaines source en francais)."""
     logger.debug("active_language()")
     info = _current().info()
-    return info.get("language") or None
+    lang = info.get("language") or None
+    logger.debug("active_language: langue={}", lang)
+    return lang
 
 
 def available_languages(localedir: Path | None = None) -> list[str]:
@@ -102,7 +109,9 @@ def available_languages(localedir: Path | None = None) -> list[str]:
     for d in dirs:
         if d.is_dir():
             langs.update(p.parent.parent.name for p in d.glob(f"*/LC_MESSAGES/{DOMAIN}.mo"))
-    return sorted(langs)
+    result = sorted(langs)
+    logger.debug("available_languages: {} langue(s)", len(result))
+    return result
 
 
 def _current() -> gettext.NullTranslations:
