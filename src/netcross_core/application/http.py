@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 
 from netcross_core.application.models import ApplicationTransaction
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -20,11 +20,13 @@ logger = get_logger(__name__)
 
 def _flow_key(pkt: Pkt) -> tuple[str, str, int | None, int | None]:
     """Clé directionnelle client -> serveur pour apparier HTTP."""
+    logger.debug("_flow_key: retour tuple de 4")
     return (pkt.src, pkt.dst, pkt.sport, pkt.dport)
 
 
 def _reverse_flow_key(pkt: Pkt) -> tuple[str, str, int | None, int | None]:
     """Clé inverse serveur -> client pour trouver la requête correspondante."""
+    logger.debug("_reverse_flow_key: retour tuple de 4")
     return (pkt.dst, pkt.src, pkt.dport, pkt.sport)
 
 
@@ -84,6 +86,7 @@ def build_http_transactions(
             transactions.append(txn)
 
     transactions.sort(key=lambda t: t.request_ts or 0.0)
+    logger.debug("build_http_transactions: retour transactions={}", summarize(transactions, "transactions"))
     return transactions
 
 
@@ -103,6 +106,7 @@ def _build_http_transaction(
     # prétend pas séparer réseau/serveur avec un seul point de capture).
     server_time_ms = response.http_response_time_ms if response.http_response_time_ms is not None else None
 
+    logger.debug("_build_http_transaction: retour ApplicationTransaction(…)")
     return ApplicationTransaction(
         protocol="HTTP",
         point=request.point,
