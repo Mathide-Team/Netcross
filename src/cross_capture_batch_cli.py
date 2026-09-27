@@ -78,6 +78,7 @@ def list_captures(folder: str, recursive: bool = False) -> tuple[list[str], list
                 captures.append(path)
             else:
                 ignored.append(path)
+    logger.debug("list_captures: retour tuple de 2")
     return sorted(captures), sorted(ignored)
 
 
@@ -100,6 +101,7 @@ def make_labels(paths: list[str]) -> dict[str, str]:
             n += 1
         used.add(label)
         labels[path] = label
+    logger.debug("make_labels: retour labels={}", summarize(labels, "labels"))
     return labels
 
 
@@ -111,16 +113,20 @@ def build_inventory(label: str, path: str) -> CaptureInventory:
     except Exception as exc:  # noqa: BLE001 -- une capture illisible ne doit pas arreter le lot
         logger.exception(f"échec dans build_inventory: {exc}")
         msg = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+        logger.debug("build_inventory: except Exception -> retour CaptureInventory(…)")
         return CaptureInventory(label=label, path=path, error=msg[:200])
+    logger.debug("build_inventory: retour inventory_from_packets(…)")
     return inventory_from_packets(label, path, packets)
 
 
 def _cache_path(output: str, label: str) -> str:
+    logger.debug("_cache_path: retour os.path.join(…)")
     return os.path.join(output, CACHE_DIR, "inventaire", f"{label}.json")
 
 
 def _fingerprint(path: str) -> list:
     st = os.stat(path)
+    logger.debug("_fingerprint: retour liste")
     return [st.st_size, int(st.st_mtime)]
 
 
@@ -130,10 +136,15 @@ def load_cached_inventory(output: str, label: str, path: str) -> CaptureInventor
         with open(cache, encoding="utf-8") as fh:
             data = json.load(fh)
         if data.get("fingerprint") != _fingerprint(path) or data["inventory"]["path"] != path:
+            logger.debug(
+                "load_cached_inventory: si data.get('fingerprint') != _fingerprint(path) or data['inve… -> retour None"
+            )
             return None
+        logger.debug("load_cached_inventory: retour CaptureInventory.from_dict(…)")
         return CaptureInventory.from_dict(data["inventory"])
     except (OSError, ValueError, KeyError, TypeError):
         logger.exception("échec dans load_cached_inventory")
+        logger.debug("load_cached_inventory: except (OSError, ValueError, KeyError, TypeErr… -> retour None")
         return None
 
 
@@ -143,6 +154,7 @@ def save_cached_inventory(output: str, inv: CaptureInventory) -> None:
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     with open(cache, "w", encoding="utf-8") as fh:
         json.dump({"fingerprint": _fingerprint(inv.path), "inventory": inv.to_dict()}, fh)
+    logger.debug("save_cached_inventory: fin")
 
 
 def collect_inventories(paths, labels, output, jobs=1, skip_existing=False) -> list[CaptureInventory]:
@@ -173,6 +185,7 @@ def collect_inventories(paths, labels, output, jobs=1, skip_existing=False) -> l
         print(f"  inventaire {inv.label} : {'ECHEC -- ' + inv.error if inv.error else f'{inv.packet_count} paquet(s)'}")
         if inv.error is None:
             save_cached_inventory(output, inv)
+    logger.debug("collect_inventories: retour liste")
     return [results[p] for p in paths]
 
 
@@ -199,6 +212,7 @@ def analyse_and_write(members: list[CaptureInventory], out_path: str, security: 
             for f in report.security_findings:
                 sev = str(f.get("severity") or "faible")
                 counts[sev] = counts.get(sev, 0) + 1
+    logger.debug("analyse_and_write: retour dictionnaire")
     return {"findings": counts}
 
 
@@ -238,6 +252,7 @@ def run_analyses(plan: BatchPlan, output: str, security: bool, skip_existing: bo
             logger.exception("analyse %s en echec", key)
             errors.append(f"analyse {key} en echec : {exc}")
             print(f"  {name} : ECHEC -- {exc}", file=sys.stderr)
+    logger.debug("run_analyses: retour tuple de 4")
     return group_reports, capture_reports, summaries, errors
 
 
@@ -270,6 +285,7 @@ def build_synthesis(plan, summaries, errors, ignored, security) -> list[str]:
         shown = ", ".join(os.path.basename(p) for p in ignored[:5])
         more = f", ... (+{len(ignored) - 5})" if len(ignored) > 5 else ""
         lines.append(f"{len(ignored)} fichier(s) ignore(s) (extension non reconnue) : {shown}{more}")
+    logger.debug("build_synthesis: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
@@ -371,6 +387,7 @@ def main(argv=None):
     print(f"\nIndex du lot ecrit dans {index_path}")
     if plan.failures or errors:
         sys.exit(2)
+    logger.debug("main: fin")
 
 
 if __name__ == "__main__":
