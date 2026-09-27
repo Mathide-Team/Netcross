@@ -64,6 +64,12 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
   appliquer par un administrateur, et le workflow « Protection de dev »
   (`scripts/check_branch_protection.py`) signale tout écart entre ce fichier
   et la protection réelle.
+- Le workflow « Documentation » échouait à chaque push sur `main` (erreur
+  404 au déploiement) : il publiait vers GitHub Pages, qui n'est pas activé
+  sur le dépôt. La publication est retirée ; la construction
+  `mkdocs build --strict` reste bloquante et le site HTML reste
+  téléchargeable comme artefact du run. Permissions du workflow réduites
+  à `contents: read`, `site_url` retiré de `mkdocs.yml`.
 - Le tableau de bord analytique, la vue statistiques et la sélection de flux
   de la GUI plantaient silencieusement (`AttributeError` dans un callback
   `GLib.idle_add`) dès qu'un flux existait : les deux threads d'analyse
