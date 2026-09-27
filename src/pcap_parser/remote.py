@@ -85,12 +85,14 @@ class CaptureSource:
 
     @property
     def is_remote(self) -> bool:
+        logger.debug("CaptureSource.is_remote: retour self.kind in ('rpcap', 'sshdump')")
         return self.kind in ("rpcap", "sshdump")
 
 
 def is_source_url(text: str) -> bool:
     """Vrai si ``text`` commence par un schema de source connu (``rpcap://``...)."""
     scheme, sep, _rest = text.partition("://")
+    logger.debug("is_source_url: retour bool(sep) and scheme.lower() in REMOTE_SCHEMES")
     return bool(sep) and scheme.lower() in REMOTE_SCHEMES
 
 
@@ -104,6 +106,7 @@ def split_live_target(text: str) -> tuple[str, str | None]:
     """
     if not is_source_url(text):
         iface, sep, bpf = text.partition(":")
+        logger.debug("split_live_target: si not is_source_url(text) -> retour tuple de 2")
         return iface, (bpf if sep else None)
     body_start = text.index("://") + 3
     if text.lower().startswith("pipe://-"):
@@ -113,6 +116,7 @@ def split_live_target(text: str) -> tuple[str, str | None]:
         path_start = len(text) if slash < 0 else slash
     colon = text.find(":", path_start)
     if colon < 0:
+        logger.debug("split_live_target: si colon < 0 -> retour tuple de 2")
         return text, None
     logger.debug("split_live_target: URL de source avec filtre BPF")
     return text[:colon], text[colon + 1 :]
@@ -121,17 +125,21 @@ def split_live_target(text: str) -> tuple[str, str | None]:
 def _check_host(host: str) -> str:
     if host.startswith("[") and host.endswith("]"):
         try:
+            logger.debug("_check_host: si host.startswith('[') and host.endswith(']') -> retour str(…)")
             return str(ipaddress.IPv6Address(host[1:-1]))
         except ValueError:
             logger.debug("_check_host: IPv6 invalide {!r}", host)
             raise CaptureSourceError(f"adresse IPv6 invalide : {host}") from None
     try:
+        logger.debug("_check_host: retour str(…)")
         return str(ipaddress.IPv4Address(host))
     except ValueError:
         # cas normal pour un nom DNS : pas une erreur
         logger.debug("_check_host: {!r} n'est pas une IPv4, vérifié comme nom DNS", host)
     if _HOSTNAME_RE.match(host):
+        logger.debug("_check_host: si _HOSTNAME_RE.match(host) -> retour host")
         return host
+    logger.debug("_check_host: levée CaptureSourceError")
     raise CaptureSourceError(f"hote invalide : {host!r} (nom DNS, IPv4 ou [IPv6])")
 
 
@@ -142,6 +150,7 @@ def _split_netloc(netloc: str, scheme: str, default_port: int) -> tuple[str | No
         if ":" in userinfo:
             logger.debug("_split_netloc: mot de passe present dans l'URL {}://, refuse", scheme)
             env = ENV_RPCAP_PASSWORD if scheme == "rpcap" else ENV_SSH_PASSWORD
+            logger.debug("_split_netloc: si ':' in userinfo -> levée CaptureSourceError")
             raise CaptureSourceError(
                 f"mot de passe interdit dans l'URL {scheme}:// (visible dans l'historique et la liste "
                 f"des processus) : utiliser la variable d'environnement {env}"
@@ -154,10 +163,12 @@ def _split_netloc(netloc: str, scheme: str, default_port: int) -> tuple[str | No
     if netloc.startswith("["):
         end = netloc.find("]")
         if end < 0:
+            logger.debug("_split_netloc: si end < 0 -> levée CaptureSourceError")
             raise CaptureSourceError(f"adresse IPv6 non fermee : {netloc}")
         host, rest = netloc[: end + 1], netloc[end + 1 :]
         if rest:
             if not rest.startswith(":"):
+                logger.debug("_split_netloc: si not rest.startswith(':') -> levée CaptureSourceError")
                 raise CaptureSourceError(f"hote invalide : {netloc}")
             port = _check_port(rest[1:])
     elif ":" in netloc:
@@ -174,7 +185,9 @@ def _split_netloc(netloc: str, scheme: str, default_port: int) -> tuple[str | No
 
 def _check_port(text: str) -> int:
     if not text.isdigit() or not 1 <= int(text) <= 65535:
+        logger.debug("_check_port: si not text.isdigit() or not 1 <= int(text) <= 65535 -> levée CaptureSourceError")
         raise CaptureSourceError(f"port invalide : {text!r} (1-65535)")
+    logger.debug("_check_port: retour int(…)")
     return int(text)
 
 
@@ -182,19 +195,24 @@ def _check_iface(iface: str, scheme: str) -> str:
     iface = unquote(iface)
     logger.debug("_check_iface: {}:// interface {!r}", scheme, iface)
     if not iface:
+        logger.debug("_check_iface: si not iface -> levée CaptureSourceError")
         raise CaptureSourceError(f"interface distante manquante : {scheme}://hote/INTERFACE")
     if not _IFACE_RE.match(iface):
+        logger.debug("_check_iface: si not _IFACE_RE.match(iface) -> levée CaptureSourceError")
         raise CaptureSourceError(f"nom d'interface invalide : {iface!r}")
+    logger.debug("_check_iface: retour iface")
     return iface
 
 
 def _host_for_url(host: str) -> str:
+    logger.debug("_host_for_url: retour f'[(host)]' if ':' in host else host")
     return f"[{host}]" if ":" in host else host
 
 
 def _parse_rpcap(body: str, env: Mapping[str, str]) -> CaptureSource:
     netloc, _, path = body.partition("/")
     if "?" in path:
+        logger.debug("_parse_rpcap: si '?' in path -> levée CaptureSourceError")
         raise CaptureSourceError("rpcap:// n'accepte pas de parametres (?...)")
     user, host, port = _split_netloc(netloc, "rpcap", RPCAP_DEFAULT_PORT)
     iface = _check_iface(path, "rpcap")
@@ -203,6 +221,7 @@ def _parse_rpcap(body: str, env: Mapping[str, str]) -> CaptureSource:
     if user is not None:
         password = env.get(ENV_RPCAP_PASSWORD)
         if not password:
+            logger.debug("_parse_rpcap: si not password -> levée CaptureSourceError")
             raise CaptureSourceError(
                 f"rpcap:// avec utilisateur ({user}) : definir le mot de passe dans {ENV_RPCAP_PASSWORD}"
             )
@@ -221,9 +240,11 @@ def _parse_sshdump(body: str, env: Mapping[str, str]) -> CaptureSource:
     params = parse_qs(query, keep_blank_values=True, strict_parsing=False) if query else {}
     unknown = sorted(set(params) - {"key", "priv"})
     if unknown:
+        logger.debug("_parse_sshdump: si unknown -> levée CaptureSourceError")
         raise CaptureSourceError(f"parametre(s) sshdump inconnu(s) : {', '.join(unknown)} (attendus : key, priv)")
 
     def pref(name: str, value: object) -> tuple[str, str]:
+        logger.debug("_parse_sshdump.pref: retour tuple de 2")
         return ("-o", f"extcap.sshdump.{name}:{value}")
 
     extra: list[str] = []
@@ -236,12 +257,14 @@ def _parse_sshdump(body: str, env: Mapping[str, str]) -> CaptureSource:
     if "key" in params:
         key = os.path.expanduser(params["key"][-1])
         if not key or not os.path.isfile(key):
+            logger.debug("_parse_sshdump: si not key or not os.path.isfile(key) -> levée CaptureSourceError")
             raise CaptureSourceError(f"cle SSH introuvable : {key!r}")
         extra += pref("sshkey", key)
         key_desc = f"?key={key}"
     if "priv" in params:
         priv = params["priv"][-1]
         if priv not in _SSHDUMP_PRIVS:
+            logger.debug("_parse_sshdump: si priv not in _SSHDUMP_PRIVS -> levée CaptureSourceError")
             raise CaptureSourceError(f"priv={priv!r} invalide (attendus : {', '.join(_SSHDUMP_PRIVS)})")
         extra += pref("remotepriv", priv)
         key_desc += ("&" if key_desc else "?") + f"priv={priv}"
@@ -259,6 +282,7 @@ def _parse_pipe(body: str) -> CaptureSource:
         logger.debug("_parse_pipe: entrée standard")
         return CaptureSource("pipe", "-", (), "pipe://- (entree standard)", uses_stdin=True)
     if not body.startswith("/"):
+        logger.debug("_parse_pipe: si not body.startswith('/') -> levée CaptureSourceError")
         raise CaptureSourceError("pipe:// attend '-' (entree standard) ou un chemin absolu : pipe:///chemin/fifo")
     path = unquote(body)
     try:
@@ -267,6 +291,7 @@ def _parse_pipe(body: str) -> CaptureSource:
         logger.warning("_parse_pipe: tube nommé introuvable {}", path)
         raise CaptureSourceError(f"tube nomme introuvable : {path} (le creer avec mkfifo)") from None
     if not stat.S_ISFIFO(mode):
+        logger.debug("_parse_pipe: si not stat.S_ISFIFO(mode) -> levée CaptureSourceError")
         raise CaptureSourceError(f"{path} n'est pas un tube nomme (pour un fichier, utiliser --capture)")
     logger.debug("_parse_pipe: tube nommé {}", path)
     return CaptureSource("pipe", path, (), f"pipe://{path}")
@@ -281,29 +306,37 @@ def parse_source(text: str, env: Mapping[str, str] | None = None) -> CaptureSour
     env = os.environ if env is None else env
     text = text.strip()
     if not text:
+        logger.debug("parse_source: si not text -> levée CaptureSourceError")
         raise CaptureSourceError("interface manquante")
     if text == "-":
+        logger.debug("parse_source: si text == '-' -> retour _parse_pipe(…)")
         return _parse_pipe("-")
     scheme, sep, body = text.partition("://")
     if not sep:
         if text.startswith("-"):
+            logger.debug("parse_source: si text.startswith('-') -> levée CaptureSourceError")
             raise CaptureSourceError(f"nom d'interface invalide : {text!r}")
         logger.debug("parse_source: interface locale {}", text)
         return CaptureSource("local", text, (), text)
     logger.debug("parse_source: schéma {}", scheme.lower())
     scheme = scheme.lower()
     if scheme == "rpcap":
+        logger.debug("parse_source: si scheme == 'rpcap' -> retour _parse_rpcap(…)")
         return _parse_rpcap(body, env)
     if scheme in ("sshdump", "ssh"):
+        logger.debug("parse_source: si scheme in ('sshdump', 'ssh') -> retour _parse_sshdump(…)")
         return _parse_sshdump(body, env)
     if scheme == "pipe":
+        logger.debug("parse_source: si scheme == 'pipe' -> retour _parse_pipe(…)")
         return _parse_pipe(body)
+    logger.debug("parse_source: levée CaptureSourceError")
     raise CaptureSourceError(f"schema de source inconnu : {scheme}:// (attendus : rpcap, sshdump, ssh, pipe)")
 
 
 def source_display(text: str) -> str:
     """Forme lisible et sans secret de ``text`` (ou ``text`` si invalide)."""
     try:
+        logger.debug("source_display: retour parse_source(text, env=()).display")
         return parse_source(text, env={}).display
     except CaptureSourceError as exc:
         # repli attendu : source invalide affichee telle quelle
