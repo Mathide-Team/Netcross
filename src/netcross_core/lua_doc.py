@@ -213,6 +213,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     Une base creee avec un autre schema (``PRAGMA user_version``) est
     videe et recreee : son contenu est de toute facon regenerable.
     """
+    logger.debug("connect: db_path={}", summarize(db_path, "db_path"))
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA foreign_keys = ON")
     version = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -353,6 +354,7 @@ def load_json_file(conn: sqlite3.Connection, json_path: str | Path) -> dict[str,
 
 def json_candidates() -> list[Path]:
     """Emplacements du JSON, par priorite : $NETCROSS_LUA_API_JSON, depot, paquet deb/rpm."""
+    logger.debug("json_candidates()")
     here = Path(__file__).resolve()
     candidats = [
         here.parents[2] / "data" / "lua_api.json",  # depot : src/netcross_core/lua_doc.py -> data/
@@ -407,6 +409,12 @@ def search(conn: sqlite3.Connection, terme: str, limit: int = 20) -> list[Result
     lequel suffit. Les correspondances sur le nom pesent plus que sur la
     description.
     """
+    logger.debug(
+        "search: conn={} terme={} limit={}",
+        summarize(conn, "conn"),
+        summarize(terme, "terme"),
+        summarize(limit, "limit"),
+    )
     query = _fts_query(terme)
     if not query:
         return []
@@ -464,6 +472,7 @@ _ATTRIBUT_SELECT = (
 
 def get_class(conn: sqlite3.Connection, nom: str) -> FicheClasse | None:
     """Fiche complete d'une classe (insensible a la casse), ou None si inconnue."""
+    logger.debug("get_class: conn={} nom={}", summarize(conn, "conn"), summarize(nom, "nom"))
     row = conn.execute(
         "SELECT id, nom, module, description FROM classes WHERE nom = ? COLLATE NOCASE", (nom,)
     ).fetchone()

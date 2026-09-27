@@ -33,7 +33,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -173,6 +173,7 @@ class ExtractionResult:
 
 def _extract_http(packets: list[Pkt]) -> list[ExtractedFile]:
     """Extrait les fichiers des réponses HTTP (Content-Type, Content-Length)."""
+    logger.debug("_extract_http: packets={}", summarize(packets, "packets"))
     files: list[ExtractedFile] = []
     for pkt in packets:
         if not pkt.http_is_response:
@@ -213,6 +214,7 @@ def _extract_email(packets: list[Pkt]) -> list[ExtractedFile]:
     avec Content-Type multipart ou application/* sont considérés comme
     contenant des pièces jointes.
     """
+    logger.debug("_extract_email: packets={}", summarize(packets, "packets"))
     files: list[ExtractedFile] = []
     for pkt in packets:
         if pkt.dport not in _EMAIL_PORTS and pkt.sport not in _EMAIL_PORTS:
@@ -255,6 +257,7 @@ def _extract_email(packets: list[Pkt]) -> list[ExtractedFile]:
 
 def _extract_smb(packets: list[Pkt]) -> list[ExtractedFile]:
     """Extrait les transferts de fichiers SMB2/3 (port 445)."""
+    logger.debug("_extract_smb: packets={}", summarize(packets, "packets"))
     files: list[ExtractedFile] = []
     for pkt in packets:
         if pkt.dport not in _SMB_PORTS and pkt.sport not in _SMB_PORTS:
@@ -290,6 +293,7 @@ def _extract_smb(packets: list[Pkt]) -> list[ExtractedFile]:
 
 def _extract_ftp(packets: list[Pkt]) -> list[ExtractedFile]:
     """Extrait les transferts de fichiers FTP (ports 20/21)."""
+    logger.debug("_extract_ftp: packets={}", summarize(packets, "packets"))
     files: list[ExtractedFile] = []
     for pkt in packets:
         if pkt.dport not in _FTP_PORTS and pkt.sport not in _FTP_PORTS:
@@ -333,6 +337,11 @@ def detect_extracted_files(
     ``extract_dir`` : répertoire de sortie (non utilisé pour l'instant,
     réservé pour une future écriture sur disque des payloads extraits).
     """
+    logger.debug(
+        "detect_extracted_files: packets={} extract_dir={}",
+        summarize(packets, "packets"),
+        summarize(extract_dir, "extract_dir"),
+    )
     packets = list(packets)
     files: list[ExtractedFile] = []
     files.extend(_extract_http(packets))

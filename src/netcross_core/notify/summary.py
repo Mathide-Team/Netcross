@@ -22,7 +22,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.support.scrubber import TextScrubber
 
 logger = get_logger(__name__)
@@ -65,6 +65,7 @@ def findings_fingerprint(findings: Iterable[Mapping[str, Any]]) -> str:
     des compteurs volatils : deux analyses de la meme capture -- ou une tache
     planifiee qui retrouve le meme probleme toutes les heures -- donnent la
     meme empreinte."""
+    logger.debug("findings_fingerprint: findings={}", summarize(findings, "findings"))
     keys = sorted({finding_key(f) for f in findings})
     return hashlib.sha256(json.dumps(keys, ensure_ascii=False).encode("utf-8")).hexdigest()
 

@@ -338,6 +338,7 @@ def segment_losses(report) -> list[SegmentLoss]:
     aval, taux = pertes / paquets vus à ce point), recalculée ici parce que
     la couche API ne dépend pas de netcross_report (contrat import-linter).
     """
+    logger.debug("segment_losses: report={}", summarize(report, "report"))
     segments = []
     for upstream, downstream in report.pairs:
         loss = int(report.loss_count.get(downstream, 0))

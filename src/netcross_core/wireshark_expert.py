@@ -162,7 +162,7 @@ from __future__ import annotations
 
 from netcross_core.correlate import flow_key
 from netcross_core.expert_model import EvidenceLink, ExpertEvent, PacketEvidence
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -452,6 +452,7 @@ def build_wireshark_expert_events(all_packets) -> list[ExpertEvent]:
     # min/max de pk.ts sur TOUTES les occurrences (Session 40), flux
     # concernes dedoublonnes dans l'ordre de premiere rencontre (Session 43),
     # PacketEvidence de TOUTES les occurrences avec frame_number (Session 44).
+    logger.debug("build_wireshark_expert_events: all_packets={}", summarize(all_packets, "all_packets"))
     groups: dict[tuple[str, str], list] = {}
     counts: dict[tuple[str, str], int] = {}
     first_seen: dict[tuple[str, str], float] = {}
