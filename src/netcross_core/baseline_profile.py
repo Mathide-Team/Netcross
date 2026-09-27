@@ -74,12 +74,15 @@ def _percentile(sorted_values: list[float], p: float) -> float:
     Methode d'interpolation lineaire (meme convention que numpy/Excel).
     """
     if not sorted_values:
+        logger.debug("_percentile: retour 0.0")
         return 0.0
     if len(sorted_values) == 1:
+        logger.debug("_percentile: retour valeur")
         return sorted_values[0]
     k = (len(sorted_values) - 1) * (p / 100.0)
     f = int(k)
     c = min(f + 1, len(sorted_values) - 1)
+    logger.debug("_percentile: retour valeur")
     return sorted_values[f] + (sorted_values[c] - sorted_values[f]) * (k - f)
 
 
@@ -91,6 +94,7 @@ def build_baseline_profile(metric: str, values: list[float]) -> BaselineProfile:
     statistiques a zero.
     """
     if not values:
+        logger.debug("build_baseline_profile: retour BaselineProfile(...)")
         return BaselineProfile(metric=metric, count=0)
 
     sorted_vals = sorted(values)
@@ -99,6 +103,7 @@ def build_baseline_profile(metric: str, values: list[float]) -> BaselineProfile:
     var = statistics.variance(sorted_vals) if n > 1 else 0.0
     std = statistics.stdev(sorted_vals) if n > 1 else 0.0
 
+    logger.debug("build_baseline_profile: retour BaselineProfile(...)")
     return BaselineProfile(
         metric=metric,
         count=n,
@@ -137,6 +142,7 @@ def _extract_metrics_from_row(row: sqlite3.Row) -> dict[str, float]:
         logger.exception("échec dans _extract_metrics_from_row")
         pass
 
+    logger.debug("_extract_metrics_from_row: retour metrics")
     return metrics
 
 
@@ -182,11 +188,13 @@ def load_baseline_from_db(
     except sqlite3.Error:
         logger.exception("échec dans load_baseline_from_db")
         conn.close()
+        logger.debug("load_baseline_from_db: retour None")
         return None
     finally:
         conn.close()
 
     if not rows:
+        logger.debug("load_baseline_from_db: retour None")
         return None
 
     values: list[float] = []
@@ -196,8 +204,10 @@ def load_baseline_from_db(
             values.append(metrics[metric])
 
     if not values:
+        logger.debug("load_baseline_from_db: retour None")
         return None
 
+    logger.debug("load_baseline_from_db: retour build_baseline_profile(...)")
     return build_baseline_profile(metric, values)
 
 
@@ -235,11 +245,13 @@ def load_all_baselines(
     except sqlite3.Error:
         logger.exception("échec dans load_all_baselines")
         conn.close()
+        logger.debug("load_all_baselines: retour liste")
         return []
     finally:
         conn.close()
 
     if not rows:
+        logger.debug("load_all_baselines: retour liste")
         return []
 
     # Collecter toutes les metriques disponibles
@@ -249,4 +261,5 @@ def load_all_baselines(
         for metric_name, value in metrics.items():
             all_metrics.setdefault(metric_name, []).append(value)
 
+    logger.debug("load_all_baselines: retour liste")
     return [build_baseline_profile(m, vals) for m, vals in all_metrics.items() if vals]

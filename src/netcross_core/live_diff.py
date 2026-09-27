@@ -271,6 +271,7 @@ class LiveDiffEngine:
 
         pkts = self.state.packets_in_window
         if len(pkts) < self.config.min_packets_for_diff:
+            logger.debug("_evaluate_diff: retour liste")
             return []
 
         # Construction d'un Report partiel sur la fenetre courante.
@@ -298,6 +299,7 @@ class LiveDiffEngine:
             for event in self.alarm_engine.events:
                 self.on_alarm(event)
 
+        logger.debug("_evaluate_diff: retour findings")
         return findings
 
 

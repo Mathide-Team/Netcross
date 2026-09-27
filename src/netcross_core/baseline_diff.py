@@ -61,22 +61,27 @@ class DiffFinding:
 
 
 def _pct(n: float, d: float) -> float:
+    logger.debug("_pct: retour conditionnel")
     return (n / d * 100.0) if d else 0.0
 
 
 def _mean(values: list[float]) -> float | None:
+    logger.debug("_mean: retour conditionnel")
     return statistics.mean(values) if values else None
 
 
 def _p95(values: list[float]) -> float | None:
     if not values:
+        logger.debug("_p95: retour None")
         return None
     s = sorted(values)
     idx = min(len(s) - 1, round(0.95 * (len(s) - 1)))
+    logger.debug("_p95: retour valeur")
     return s[idx]
 
 
 def _fmt(v: float | None, unit: str = "") -> str:
+    logger.debug("_fmt: retour conditionnel")
     return "n/a" if v is None else f"{v:.1f}{unit}"
 
 
@@ -96,11 +101,13 @@ def _evidence(point: str, texts, frames: list[int | None] | None = None) -> list
     (Session 35, pilote PMTUD ; Session 37, etendu aux huit autres
     categories deja porteuses d'un EvidenceLink textuel sur DiffFinding)."""
     if not frames:
+        logger.debug("_evidence: retour liste")
         return [EvidenceLink(point, t) for t in texts]
     links = []
     for t, fn in zip(texts, frames):
         packet = PacketEvidence(point, fn) if fn is not None else None
         links.append(EvidenceLink(point, t, packet=packet))
+    logger.debug("_evidence: retour links")
     return links
 
 
@@ -127,6 +134,7 @@ def _http_error_evidence(examples: list[str], status_class: int, frames: list[in
             texts.append(ex)
             if frames is not None and i < len(frames):
                 filtered_frames.append(frames[i])
+    logger.debug("_http_error_evidence: retour tuple")
     return texts, filtered_frames
 
 
@@ -141,6 +149,7 @@ def _common_points(baseline: Report, current: Report) -> tuple[list[str], list[s
     common = sorted(b & c)
     only_before = sorted(b - c)
     only_after = sorted(c - b)
+    logger.debug("_common_points: retour tuple")
     return common, only_before, only_after
 
 
@@ -180,6 +189,7 @@ def _compare_rate(
     after_rate = _pct(after_n, after_d)
     delta = after_rate - before_rate
     if abs(delta) < min_pp:
+        logger.debug("_compare_rate: retour (None implicite)")
         return
     severity = "regression" if delta > 0 else "amelioration"
     findings.append(
@@ -231,9 +241,11 @@ def _compare_count(
     )
     delta = after - before
     if abs(delta) < min_delta:
+        logger.debug("_compare_count: retour (None implicite)")
         return
     rel = abs(delta) / before if before else float("inf")
     if rel < rel_threshold:
+        logger.debug("_compare_count: retour (None implicite)")
         return
     got_worse = delta > 0 if higher_is_worse else delta < 0
     severity = "regression" if got_worse else "amelioration"
@@ -289,10 +301,12 @@ def _compare_latency(
                     sample_size=len(after),
                 )
             )
+        logger.debug("_compare_latency: retour (None implicite)")
         return
     delta = a_mean - b_mean
     rel = abs(delta) / b_mean if b_mean else float("inf")
     if abs(delta) < min_ms or rel < rel_threshold:
+        logger.debug("_compare_latency: retour (None implicite)")
         return
     severity = "regression" if delta > 0 else "amelioration"
     b_p95, a_p95 = _p95(before), _p95(after)
@@ -877,6 +891,7 @@ def diff_reports(
                 continue
             key = s["label"].split(" (SSRC=")[0]
             out[key] = s
+        logger.debug("_rtp_by_label: retour out")
         return out
 
     b_rtp, a_rtp = _rtp_by_label(baseline), _rtp_by_label(current)
@@ -924,6 +939,7 @@ def diff_reports(
             )
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f.severity, 9), f.category, f.segment))
+    logger.debug("diff_reports: retour findings")
     return findings
 
 
@@ -935,6 +951,7 @@ def print_diff_report(findings: list[DiffFinding]) -> None:
 
     if not findings:
         print("\nAucun ecart significatif detecte entre les deux runs.")
+        logger.debug("print_diff_report: retour (None implicite)")
         return
 
     counts = {sev: sum(1 for f in findings if f.severity == sev) for sev in SEVERITY_ORDER}
