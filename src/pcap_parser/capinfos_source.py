@@ -179,7 +179,10 @@ class CaptureInfo:
         """Total des paquets perdus par les interfaces, ou None si la capture
         ne porte aucune statistique (pcap classique, pcapng sans ISB)."""
         values = [i.dropped_by_interface for i in self.interfaces if i.dropped_by_interface is not None]
-        return sum(values) if values else None
+        if not values:
+            logger.debug("dropped_by_interface: aucune statistique d'interface (ISB) dans la capture")
+            return None
+        return sum(values)
 
     @property
     def dropped_by_os(self) -> int | None:
@@ -196,8 +199,11 @@ class CaptureInfo:
         counters = [self.dropped_by_interface, self.dropped_by_os]
         known = [c for c in counters if c is not None]
         if not known:
+            logger.debug("has_drops: aucune statistique de perte, information absente")
             return None
-        return any(c > 0 for c in known)
+        drops = any(c > 0 for c in known)
+        logger.debug("has_drops: {} (interface={}, os={})", drops, self.dropped_by_interface, self.dropped_by_os)
+        return drops
 
 
 def _parse_table_report(stdout: str) -> dict[str, str] | None:

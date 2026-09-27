@@ -51,6 +51,8 @@ def _parse_frame_time_epoch(value: str | None) -> float | None:
         return None
     m = _FRAME_TIME_RE.match(value)
     if not m:
+        # chemin chaud (une fois par paquet) : TRACE, et seulement le cas anormal
+        logger.trace("_parse_frame_time_epoch: horodatage non reconnu {!r}", value)
         return None
     y, mo, d, h, mi, se, frac = m.groups()
     dt = datetime.datetime(int(y), int(mo), int(d), int(h), int(mi), int(se), tzinfo=datetime.timezone.utc)
@@ -162,6 +164,10 @@ def redact_args(args: Sequence[str]) -> list:
         match = _SECRET_PREF_RE.match(str(arg))
         out.append(f"{match.group(1)}:***" if match else arg)
         mask_next = arg == "-A"
+    masked = sum(1 for a, b in zip(args, out) if a != b)
+    if masked:
+        # ne jamais journaliser la valeur : seulement le nombre de secrets masques
+        logger.debug("redact_args: {} argument(s) secret(s) masque(s)", masked)
     return out
 
 
@@ -177,7 +183,17 @@ def _build_args(
     read_via_stdin: bool = False,
 ) -> list:
     if (path is None) == (interface is None):
+        logger.debug("_build_args: path et interface tous deux {}", "absents" if path is None else "fournis")
         raise ValueError("fournir soit path= (batch), soit interface= (live), pas les deux")
+    logger.debug(
+        "_build_args: mode {}, stdin={}, bpf={}, filtre={}, {} pref(s), {} script(s) lua",
+        "fichier" if path is not None else "live",
+        read_via_stdin,
+        bool(bpf_filter),
+        bool(display_filter),
+        len(extra_prefs),
+        len(lua_scripts),
+    )
 
     args = [_tshark_path()]
     if path is not None:

@@ -111,7 +111,11 @@ def _read_exact_or_none(f: BinaryIO, n: int) -> bytes | None:
     """n octets, ou None si le fichier s'arrete avant (fin de fichier
     tronquee -- cas normal d'une capture interrompue en cours d'ecriture)."""
     data = f.read(n)
-    return data if len(data) == n else None
+    if len(data) != n:
+        # chemin chaud (appele par enregistrement) : seul le cas tronque est trace
+        logger.trace("_read_exact_or_none: {} octet(s) lus sur {} attendus, fin tronquee", len(data), n)
+        return None
+    return data
 
 
 def _iter_pcap_records(f: BinaryIO, endian: str) -> Iterator[bytes]:
@@ -126,9 +130,11 @@ def _iter_pcap_records(f: BinaryIO, endian: str) -> Iterator[bytes]:
             return
         incl_len = struct.unpack_from(endian + "I", header, 8)[0]
         if incl_len > _MAX_UNIT_LEN:
+            logger.debug("_iter_pcap_records: longueur aberrante {} octets, fichier corrompu", incl_len)
             raise ValueError(f"enregistrement pcap corrompu (longueur capturee {incl_len} octets)")
         data = _read_exact_or_none(f, incl_len)
         if data is None:
+            logger.debug("_iter_pcap_records: dernier enregistrement tronque ({} octets annonces), ignore", incl_len)
             return
         yield header + data
 
@@ -152,13 +158,16 @@ def _iter_pcapng_blocks(f: BinaryIO) -> Iterator[tuple[int, bytes]]:
             elif bom == _BOM_BE:
                 endian = ">"
             else:
+                logger.debug("_iter_pcapng_blocks: byte-order magic invalide {!r}", bom)
                 raise ValueError("pcapng corrompu (byte-order magic invalide dans un Section Header Block)")
             head += bom
         block_type, total_len = struct.unpack_from(endian + "II", head, 0)
         if total_len < len(head) + 4 or total_len % 4 or total_len > _MAX_UNIT_LEN:
+            logger.debug("_iter_pcapng_blocks: bloc {:#x} de longueur invalide {}", block_type, total_len)
             raise ValueError(f"bloc pcapng corrompu (type {block_type:#x}, longueur {total_len} octets)")
         rest = _read_exact_or_none(f, total_len - len(head))
         if rest is None:
+            logger.debug("_iter_pcapng_blocks: dernier bloc {:#x} tronque, ignore", block_type)
             return
         yield block_type, head + rest
 
@@ -226,6 +235,7 @@ def _iter_options(data: bytes, endian: str) -> Iterator[tuple[int, bytes]]:
             return
         offset += 4
         if offset + length > len(data):
+            logger.trace("_iter_options: option {} tronquee ({} octets annonces), arret", code, length)
             return
         value = data[offset : offset + length]
         yield code, value
@@ -326,6 +336,7 @@ class _SegmentSink:
         self._file: BinaryIO | None = None
         self._size = 0
         self._packets = 0
+        logger.debug("_SegmentSink: prefixe {}, extension {}, {} octets max par segment", prefix, ext, max_bytes)
 
     @property
     def is_open(self) -> bool:
@@ -353,6 +364,7 @@ class _SegmentSink:
     def write(self, raw: bytes, *, is_packet: bool) -> None:
         overflow = self._size + len(raw) > self._max_bytes
         if self._file is None or (is_packet and self._packets > 0 and overflow):
+            logger.trace("_SegmentSink.write: nouveau segment (depassement={})", overflow)
             self._roll()
         assert self._file is not None  # garanti par _roll
         self._file.write(raw)
@@ -365,6 +377,7 @@ class _SegmentSink:
         cours, le bloc y est ecrit aussi ; sinon il ne sera ecrit que dans le
         preambule du prochain segment."""
         if self._file is not None:
+            logger.trace("_SegmentSink.write_if_open: bloc de preambule recopie dans le segment courant")
             self._file.write(raw)
             self._size += len(raw)
 
@@ -438,16 +451,20 @@ def split_by_size(path: str, out_prefix: str, max_bytes: int) -> list[str]:
 def _split_pcap(f: BinaryIO, sink: _SegmentSink) -> None:
     header = _read_exact_or_none(f, _PCAP_HEADER_LEN)
     if header is None:
+        logger.debug("_split_pcap: en-tete global incomplet, rien a decouper")
         return
     endian = _PCAP_MAGICS[header[:4]][0]
+    logger.debug("_split_pcap: pcap classique, boutisme {}", endian)
     sink.preamble = [header]
     for record in _iter_pcap_records(f, endian):
         sink.write(record, is_packet=True)
 
 
 def _split_pcapng(f: BinaryIO, sink: _SegmentSink) -> None:
+    logger.debug("_split_pcapng: decoupage bloc par bloc")
     for block_type, raw in _iter_pcapng_blocks(f):
         if block_type == _BLOCK_SHB:
+            logger.debug("_split_pcapng: nouvelle section (SHB), preambule reinitialise")
             # Nouvelle section : les interfaces precedentes ne valent plus.
             sink.preamble = [raw]
             sink.write_if_open(raw)
@@ -493,7 +510,9 @@ def _first_timestamp_pcap(f: BinaryIO, endian: str, nsec: bool) -> float:
     timestamp epoch en secondes (float)."""
     header = f.read(_PCAP_RECORD_HEADER_LEN)
     if len(header) < _PCAP_RECORD_HEADER_LEN:
+        logger.debug("_first_timestamp_pcap: aucun enregistrement apres l'en-tete global")
         raise ValueError("pcap sans paquet (en-tete global seul)")
+    logger.debug("_first_timestamp_pcap: horodatage en {}", "nanosecondes" if nsec else "microsecondes")
     ts_sec, ts_frac = struct.unpack_from(endian + "II", header, 0)
     divisor = 1e9 if nsec else 1e6
     return ts_sec + ts_frac / divisor
