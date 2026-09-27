@@ -24,7 +24,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.security.cpe_match import build_cpe23, version_in_range
 
 logger = get_logger(__name__)
@@ -74,7 +74,11 @@ class AffectedProduct:
 
     def matches(self, vendor: str, product: str, version: str) -> bool:
         if self.vendor.lower() != vendor.lower() or self.product.lower() != product.lower():
+            logger.debug(
+                "AffectedProduct.matches: si self.vendor.lower() != vendor.lower() or self.product.lower… -> retour F…"
+            )
             return False
+        logger.debug("AffectedProduct.matches: retour version_in_range(…)")
         return version_in_range(
             version,
             exact=self.version,
@@ -112,7 +116,11 @@ class CveEntry:
                 end_including=product.version_end_including,
                 end_excluding=product.version_end_excluding,
             ):
+                logger.debug(
+                    "CveEntry.matching_cpe: si version_in_range(version, exact=product.version, start_incl… -> retour…"
+                )
                 return build_cpe23(product.vendor, product.product, product.version or version)
+        logger.debug("CveEntry.matching_cpe: retour None")
         return None
 
 
@@ -121,16 +129,19 @@ def connect_cve_db(db_path) -> sqlite3.Connection:
     logger.debug("connect_cve_db: {}", db_path)
     conn = sqlite3.connect(db_path)
     conn.executescript(_SCHEMA)
+    logger.debug("connect_cve_db: retour conn={}", summarize(conn, "conn"))
     return conn
 
 
 def init_db(db_path) -> sqlite3.Connection:
     """Alias explicite de connect_cve_db() pour les appelants qui ne font que creer la base (scripts/import_nvd.py)."""
+    logger.debug("init_db: retour connect_cve_db(…)")
     return connect_cve_db(db_path)
 
 
 def close_db(conn: sqlite3.Connection) -> None:
     conn.close()
+    logger.debug("close_db: fin")
 
 
 def upsert_cve(conn: sqlite3.Connection, entry: CveEntry) -> None:
@@ -170,6 +181,7 @@ def upsert_cve(conn: sqlite3.Connection, entry: CveEntry) -> None:
         ],
     )
     conn.commit()
+    logger.debug("upsert_cve: fin")
 
 
 def get_cve(conn: sqlite3.Connection, cve_id: str) -> CveEntry | None:
@@ -186,6 +198,7 @@ def get_cve(conn: sqlite3.Connection, cve_id: str) -> CveEntry | None:
         "version_end_including, version_end_excluding FROM cve_products WHERE cve_id = ?",
         (cve_id,),
     ).fetchall()
+    logger.debug("get_cve: retour CveEntry(…)")
     return CveEntry(
         cve_id=row[0],
         description=row[1],
@@ -233,6 +246,7 @@ def query_by_product(conn: sqlite3.Connection, vendor: str, product: str) -> lis
     for row in product_rows:
         by_cve.setdefault(row[0], []).append(AffectedProduct(*row[1:]))
 
+    logger.debug("query_by_product: retour liste")
     return [
         CveEntry(
             cve_id=row[0],
@@ -247,4 +261,5 @@ def query_by_product(conn: sqlite3.Connection, vendor: str, product: str) -> lis
 
 
 def count_cves(conn: sqlite3.Connection) -> int:
+    logger.debug("count_cves: retour conn.execute('SELECT COUNT(*) FROM cves').fetchon…")
     return conn.execute("SELECT COUNT(*) FROM cves").fetchone()[0]
