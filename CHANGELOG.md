@@ -8,6 +8,13 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Ajouté
+- Guide utilisateur (#465), `docs/guide/` : installation, préparation des
+  captures, première analyse pas à pas, interface graphique (captures
+  d'écran réelles), lecture du rapport et du score de santé, comparaison
+  avant/après, dépannage. Il s'appuie sur des captures d'exemple versionnées
+  (`docs/guide/exemples/`, 5 pertes connues entre LAN et WAN) et sur leur
+  générateur reproductible : chaque sortie citée a été obtenue avec ces
+  fichiers.
 - Matrice de parité GUI / CLI / API (#330), `docs/parite-surfaces.md` :
   chaque fonction et sa disponibilité sur chaque surface, avec les écarts
   classés par impact. Le principal : le JSON de l'API n'est pas celui de
@@ -65,6 +72,9 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - `docs/fingerprints-ja4-hassh.md` (#259)
 
 ### Corrigé
+- Page d'accueil de la documentation : la commande « Première analyse »
+  (`--capture point_a.pcapng --analyze`) échouait, car `--analyze`
+  n'existe pas et `--capture` exige `NOM=chemin`.
 - `CONTRIBUTING.md` décrivait la branche `dev` comme protégée alors
   qu'aucune protection n'existait (`protected: false`) : c'est ce qui avait
   permis de fusionner les PR #316 à #327 avec une CI rouge (#334). La règle
