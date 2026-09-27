@@ -93,15 +93,20 @@ def level_from_env() -> str:
     """Niveau demandé par l'environnement (``NETCROSS_LOG_LEVEL`` puis ``NETCROSS_DEBUG``)."""
     level = os.environ.get("NETCROSS_LOG_LEVEL", "").strip()
     if level:
+        _logger.debug("level_from_env: NETCROSS_LOG_LEVEL défini -> retour {}", level.upper())
         return level.upper()
     if os.environ.get("NETCROSS_DEBUG", "").strip().lower() in _TRUE:
+        _logger.debug("level_from_env: NETCROSS_DEBUG actif -> retour DEBUG")
         return "DEBUG"
+    _logger.debug("level_from_env: aucun indicateur -> retour {}", DEFAULT_LEVEL)
     return DEFAULT_LEVEL
 
 
 def is_debug_level(level: str) -> bool:
     """Vrai si ``level`` active le mode debug (``DEBUG`` ou ``TRACE``)."""
-    return level.strip().upper() in DEBUG_LEVELS
+    result = level.strip().upper() in DEBUG_LEVELS
+    _logger.debug("is_debug_level: niveau={} -> retour {}", level, result)
+    return result
 
 
 def configure_logging(level: str | None = None, *, log_file: str | None = None, force: bool = False) -> None:
@@ -114,6 +119,7 @@ def configure_logging(level: str | None = None, *, log_file: str | None = None, 
     """
     global _CONFIGURED, _LEVEL
     if _CONFIGURED and not force:
+        _logger.debug("configure_logging: déjà configuré (force=False) -> retour")
         return
 
     # Issue #446 : pcap_parser se désactive dans son __init__ (usage
@@ -170,18 +176,22 @@ def configure_logging(level: str | None = None, *, log_file: str | None = None, 
 def enable_debug(level: str = "DEBUG", *, log_file: str | None = None) -> None:
     """Active le mode debug à chaud (option ``--debug`` d'une CLI ou de la GUI)."""
     configure_logging(level, log_file=log_file, force=True)
+    _logger.debug("enable_debug: fin (level={}, log_file={})", level, log_file or "aucun")
 
 
 def current_level() -> str:
     """Niveau effectivement configuré."""
     if not _CONFIGURED:
         configure_logging()
+    _logger.debug("current_level: retour {}", _LEVEL)
     return _LEVEL
 
 
 def is_debug_enabled() -> bool:
     """Vrai si le mode debug est actif."""
-    return is_debug_level(current_level())
+    result = is_debug_level(current_level())
+    _logger.debug("is_debug_enabled: retour {}", result)
+    return result
 
 
 def add_debug_argument(parser) -> None:
@@ -192,18 +202,21 @@ def add_debug_argument(parser) -> None:
         help="Active le tracing debug : niveau DEBUG, thread émetteur, tracebacks détaillés "
         "(equivaut a NETCROSS_DEBUG=1 ; NETCROSS_LOG_FILE=chemin pour copier les logs dans un fichier).",
     )
+    _logger.debug("add_debug_argument: option --debug ajoutée")
 
 
 def apply_debug_argument(args) -> None:
     """Active le mode debug si ``args.debug`` est vrai (après ``parse_args``)."""
     if getattr(args, "debug", False):
         enable_debug()
+    _logger.debug("apply_debug_argument: fin (args.debug={})", getattr(args, "debug", False))
 
 
 def get_logger(name: str):
     """Retourne un logger loguru configuré pour le module ``name``."""
     if not _CONFIGURED:
         configure_logging()
+    _logger.debug("get_logger: retour logger lié à {}", name)
     return _logger.bind(name=name)
 
 
@@ -225,18 +238,29 @@ def summarize(value: object, name: str = "") -> str:
     jeton, clé...) est toujours masqué.
     """
     if name and _SECRET_NAME_RE.search(name):
+        _logger.debug("summarize: nom sensible -> retour ***")
         return "***"
     if value is None or isinstance(value, (bool, int, float)):
+        _logger.debug("summarize: scalaire -> retour repr")
         return repr(value)
     if isinstance(value, str):
         text = _URL_USERINFO_RE.sub(r"\1***@", value)
-        return repr(text) if len(text) <= _MAX_STR else f"<str {len(text)} car.>"
+        if len(text) <= _MAX_STR:
+            _logger.debug("summarize: chaîne courte -> retour repr")
+            return repr(text)
+        _logger.debug("summarize: chaîne longue ({} car.) -> retour taille", len(text))
+        return f"<str {len(text)} car.>"
     if isinstance(value, (bytes, bytearray, memoryview)):
+        _logger.debug("summarize: octets ({} octets) -> retour taille", len(value))
         return f"<{type(value).__name__} {len(value)} octets>"
     if isinstance(value, os.PathLike):
+        _logger.debug("summarize: PathLike -> récursion sur fspath")
         return summarize(os.fspath(value))
     if isinstance(value, enum.Enum):
+        _logger.debug("summarize: Enum -> retour nom qualifié")
         return f"{type(value).__name__}.{value.name}"
     if isinstance(value, Sized):
+        _logger.debug("summarize: Sized ({} éléments) -> retour taille", len(value))
         return f"<{type(value).__name__} {len(value)}>"
+    _logger.debug("summarize: type par défaut -> retour nom du type")
     return f"<{type(value).__name__}>"
