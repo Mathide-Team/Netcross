@@ -65,6 +65,7 @@ def _collect_packets(packets: list[RawPacket], path: str, *, read_via_stdin: boo
         pkt = build_packet(record.ts, record.layers)
         if pkt is not None:
             packets.append(pkt)
+    logger.debug("_collect_packets: fin")
 
 
 def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
@@ -90,6 +91,7 @@ def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
             raise
         except TsharkError as first:
             if not is_permission_error(first):
+                logger.debug("parse_capture: si not is_permission_error(first) -> relance de l'exception en cours")
                 raise
             # Le fichier est lisible par l'utilisateur (verifie en amont) mais
             # tshark refuse de l'ouvrir : tshark confine (snap, AppArmor) ou
@@ -111,6 +113,7 @@ def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
         else:
             logger.exception("échec dans parse_capture({}) : {}", path, e)
         print(f"impossible de lire {path} : {e}", file=sys.stderr)
+        logger.debug("parse_capture: except (TsharkNotFoundError, TsharkError) -> retour liste vide")
         return []
     logger.debug("parse_capture: {} -> {} paquet(s)", path, len(packets))
     return packets
@@ -197,6 +200,7 @@ def parse_captures_parallel(
 
 def _source_kwargs(source: CaptureSource) -> dict:
     """Arguments tshark propres a une source distante (vide pour une interface locale)."""
+    logger.debug("_source_kwargs: retour ('extra_args': source.extra_args) if source.extra…")
     return {"extra_args": source.extra_args} if source.extra_args else {}
 
 
@@ -227,6 +231,7 @@ def iter_live(interface: str, bpf_filter: str | None = None, stop_event=None) ->
         pkt = build_packet(record.ts, record.layers)
         if pkt is not None:
             yield pkt
+    logger.debug("iter_live: fin")
 
 
 class CaptureRingBuffer:
@@ -267,8 +272,10 @@ class CaptureRingBuffer:
         extension: str = ".pcapng",
     ) -> None:
         if max_files < 1:
+            logger.debug("CaptureRingBuffer.__init__: si max_files < 1 -> levée ValueError")
             raise ValueError("max_files doit etre >= 1")
         if max_duration_per_file <= 0:
+            logger.debug("CaptureRingBuffer.__init__: si max_duration_per_file <= 0 -> levée ValueError")
             raise ValueError("max_duration_per_file doit etre > 0")
         self.directory = directory
         self.prefix = prefix
@@ -289,11 +296,13 @@ class CaptureRingBuffer:
     @property
     def files(self) -> tuple[str, ...]:
         """Fichiers actuellement suivis, du plus ancien au plus recent."""
+        logger.debug("CaptureRingBuffer.files: retour tuple(…)")
         return tuple(self._files)
 
     @property
     def current_path(self) -> str | None:
         """Chemin du fichier de capture courant (None avant la premiere rotation)."""
+        logger.debug("CaptureRingBuffer.current_path: retour self._files[-1] if self._files else None")
         return self._files[-1] if self._files else None
 
     def rotate(self, now: float | None = None) -> str:
@@ -327,6 +336,7 @@ class CaptureRingBuffer:
         if self._rotation_started_ts is None or (ts - self._rotation_started_ts) >= self.max_duration_per_file:
             logger.debug("maybe_rotate: rotation declenchee (premiere={})", self._rotation_started_ts is None)
             return self.rotate(ts)
+        logger.debug("CaptureRingBuffer.maybe_rotate: retour None")
         return None
 
     def _prune(self) -> None:
@@ -336,6 +346,7 @@ class CaptureRingBuffer:
             with contextlib.suppress(FileNotFoundError):
                 logger.debug("CaptureRingBuffer._prune: suppression de {}", oldest)
                 os.remove(oldest)
+        logger.debug("CaptureRingBuffer._prune: fin")
 
 
 def _wireshark_tool_path(name: str) -> str:
@@ -360,11 +371,13 @@ def _run_wireshark_tool(args: list[str]) -> None:
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
     logger.debug("{} : code {} en {:.3f} s", os.path.basename(args[0]), proc.returncode, time.monotonic() - t0)
     if proc.returncode != 0:
+        logger.debug("_run_wireshark_tool: si proc.returncode != 0 -> levée TsharkError")
         raise TsharkError(
             f"{os.path.basename(args[0])} a echoue (code {proc.returncode}) : {proc.stderr.strip()}",
             returncode=proc.returncode,
             stderr=proc.stderr,
         )
+    logger.debug("_run_wireshark_tool: fin")
 
 
 def merge_captures(paths: Sequence[str], output_path: str, dedup: bool = False) -> None:
@@ -403,16 +416,20 @@ def merge_captures(paths: Sequence[str], output_path: str, dedup: bool = False) 
     echoue).
     """
     if not paths:
+        logger.debug("merge_captures: si not paths -> levée ValueError")
         raise ValueError("au moins un fichier de capture est requis pour la fusion")
     output_real = os.path.realpath(output_path)
     for path in paths:
         if not os.path.isfile(path):
+            logger.debug("merge_captures: si not os.path.isfile(path) -> levée FileNotFoundError")
             raise FileNotFoundError(f"fichier de capture introuvable : {path}")
         if os.path.realpath(path) == output_real:
+            logger.debug("merge_captures: si os.path.realpath(path) == output_real -> levée ValueError")
             raise ValueError(f"le fichier de sortie ne peut pas etre aussi une entree de la fusion : {path}")
 
     output_dir = os.path.dirname(output_real)
     if not os.path.isdir(output_dir):
+        logger.debug("merge_captures: si not os.path.isdir(output_dir) -> levée FileNotFoundError")
         raise FileNotFoundError(f"repertoire de sortie introuvable : {output_dir}")
 
     logger.debug("merge_captures: {} entrée(s) -> {} (dedup={})", len(paths), output_path, dedup)
@@ -435,6 +452,7 @@ def merge_captures(paths: Sequence[str], output_path: str, dedup: bool = False) 
             result = deduped
         logger.debug("merge_captures: format {}, résultat écrit dans {}", file_type, output_real)
         os.replace(result, output_real)
+    logger.debug("merge_captures: fin")
 
 
 class TcpreplayNotFoundError(RuntimeError):
@@ -456,6 +474,7 @@ class TcpreplayError(RuntimeError):
         super().__init__(message)
         self.returncode = returncode
         self.stderr = stderr
+        logger.debug("TcpreplayError.__init__: fin")
 
 
 def _tcpreplay_path() -> str:
@@ -466,6 +485,7 @@ def _tcpreplay_path() -> str:
             "tcpreplay introuvable dans le PATH -- installer le paquet "
             "'tcpreplay' (apt install tcpreplay / dnf install tcpreplay)."
         )
+    logger.debug("_tcpreplay_path: retour path")
     return path
 
 
@@ -474,11 +494,13 @@ def _run_tcpreplay(args: list[str]) -> None:
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
     logger.debug("tcpreplay : code {}", proc.returncode)
     if proc.returncode != 0:
+        logger.debug("_run_tcpreplay: si proc.returncode != 0 -> levée TcpreplayError")
         raise TcpreplayError(
             f"tcpreplay a echoue (code {proc.returncode}) : {proc.stderr.strip()}",
             returncode=proc.returncode,
             stderr=proc.stderr,
         )
+    logger.debug("_run_tcpreplay: fin")
 
 
 def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: int = 1) -> None:
@@ -522,8 +544,10 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
     si tcpreplay a demarre mais a echoue (code de retour non nul).
     """
     if not os.path.isfile(path):
+        logger.debug("replay_capture: si not os.path.isfile(path) -> levée FileNotFoundError")
         raise FileNotFoundError(f"fichier de capture introuvable : {path}")
     if loop < 1:
+        logger.debug("replay_capture: si loop < 1 -> levée ValueError")
         raise ValueError(f"loop doit etre >= 1 (recu {loop!r})")
 
     topspeed = isinstance(speed, str) and speed.strip().lower() == "topspeed"
@@ -536,6 +560,7 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
                 f"speed doit etre un nombre strictement positif ou la chaine 'topspeed' (recu {speed!r})"
             ) from None
         if speed <= 0:
+            logger.debug("replay_capture: si speed <= 0 -> levée ValueError")
             raise ValueError(f"speed doit etre strictement positif (recu {speed!r})")
 
     logger.debug(
@@ -550,6 +575,7 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
     args.append("--topspeed" if topspeed else f"--multiplier={speed}")
     args.append(path)
     _run_tcpreplay(args)
+    logger.debug("replay_capture: fin")
 
 
 # -- split_capture -------------------------------------------------------------
@@ -563,17 +589,24 @@ def _format_seconds(value: float) -> str:
     des secondes entieres pour -i)."""
     text = str(int(value)) if float(value).is_integer() else repr(float(value))
     logger.trace("_format_seconds: {} -> {}", value, text)
+    logger.debug("_format_seconds: retour text")
     return text
 
 
 def _check_split_args(by: str, value: float) -> None:
     logger.debug("_check_split_args: by={} value={!r}", by, value)
     if by not in SPLIT_MODES:
+        logger.debug("_check_split_args: si by not in SPLIT_MODES -> levée ValueError")
         raise ValueError(f"by doit valoir l'un de {SPLIT_MODES} (recu : {by!r})")
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        logger.debug(
+            "_check_split_args: si isinstance(value, bool) or not isinstance(value, (int, floa… -> levée ValueError"
+        )
         raise ValueError(f"value doit etre un nombre > 0 (recu : {value!r})")
     if by != "time" and not float(value).is_integer():
+        logger.debug("_check_split_args: si by != 'time' and (not float(value).is_integer()) -> levée ValueError")
         raise ValueError(f"by={by!r} exige une valeur entiere (recu : {value!r})")
+    logger.debug("_check_split_args: fin")
 
 
 # <stem>_<NNNNN>[_<YYYYMMDDhhmmss>].pcap|pcapng : nommage d'editcap (avec
@@ -632,18 +665,21 @@ def split_capture(path: str, output_dir: str, by: str = "time", value: float = 6
     """
     _check_split_args(by, value)
     if not os.path.isfile(path):
+        logger.debug("split_capture: si not os.path.isfile(path) -> levée FileNotFoundError")
         raise FileNotFoundError(f"capture introuvable : {path}")
     editcap = _wireshark_tool_path("editcap") if by != "size" else None
 
     stem = os.path.splitext(os.path.basename(path))[0]
     os.makedirs(output_dir, exist_ok=True)
     if _list_segments(output_dir, stem):
+        logger.debug("split_capture: si _list_segments(output_dir, stem) -> levée FileExistsError")
         raise FileExistsError(
             f"{output_dir} contient deja des segments de {stem!r} -- les supprimer ou choisir un autre repertoire"
         )
 
     logger.debug("split_capture: {} -> {} par {}={}", path, output_dir, by, value)
     if by == "size":
+        logger.debug("split_capture: si by == 'size' -> retour split_by_size(…)")
         return split_by_size(path, os.path.join(output_dir, stem), int(value))
 
     assert editcap is not None  # garanti par la ligne editcap = ... ci-dessus
@@ -662,6 +698,7 @@ def split_capture(path: str, output_dir: str, by: str = "time", value: float = 6
         logger.exception("split_capture: editcap a échoué, segments partiels de {} supprimés", stem)
         for segment in _list_segments(output_dir, stem):  # jeu partiel trompeur : on ne le laisse pas
             os.remove(segment)
+        logger.debug("split_capture: except TsharkError -> relance de l'exception en cours")
         raise
     segments = _list_segments(output_dir, stem)
 
@@ -718,13 +755,16 @@ def _validate_live_sources(interfaces: Sequence[tuple[str, str]]) -> list[tuple[
     """Verifie la liste (label, interface) et la renvoie sous forme de liste."""
     sources = list(interfaces)
     if not sources:
+        logger.debug("_validate_live_sources: si not sources -> levée ValueError")
         raise ValueError("iter_live_multi : au moins une interface est requise")
     for label, interface in sources:
         if not label or not interface:
+            logger.debug("_validate_live_sources: si not label or not interface -> levée ValueError")
             raise ValueError(f"iter_live_multi : label et interface sont obligatoires (recu : {(label, interface)!r})")
     labels = [label for label, _interface in sources]
     duplicates = sorted({label for label in labels if labels.count(label) > 1})
     if duplicates:
+        logger.debug("_validate_live_sources: si duplicates -> levée ValueError")
         raise ValueError(
             f"iter_live_multi : label(s) en double ({', '.join(duplicates)}) -- un label distinct par interface"
         )
@@ -732,6 +772,7 @@ def _validate_live_sources(interfaces: Sequence[tuple[str, str]]) -> list[tuple[
     # des l'appel ; une seule source peut lire l'entree standard.
     stdin_labels = [label for label, interface in sources if parse_source(interface).uses_stdin]
     if len(stdin_labels) > 1:
+        logger.debug("_validate_live_sources: si len(stdin_labels) > 1 -> levée ValueError")
         raise ValueError(
             f"iter_live_multi : une seule source peut lire l'entree standard (pipe://-) : {', '.join(stdin_labels)}"
         )
@@ -773,6 +814,7 @@ def _live_source_worker(
     else:
         logger.debug("_live_source_worker [{}] : source terminée", label)
         out.put(_SourceDone(label))
+    logger.debug("_live_source_worker: fin")
 
 
 def _relay_stop(stop_event: threading.Event, halt: threading.Event) -> None:
@@ -782,7 +824,9 @@ def _relay_stop(stop_event: threading.Event, halt: threading.Event) -> None:
         if stop_event.wait(_LIVE_MULTI_RELAY_POLL_SECONDS):
             logger.debug("_relay_stop: arrêt demandé par l'appelant")
             halt.set()
+            logger.debug("_relay_stop: si stop_event.wait(_LIVE_MULTI_RELAY_POLL_SECONDS) -> retour")
             return
+    logger.debug("_relay_stop: fin")
 
 
 def _drain_queue(out: queue.Queue) -> None:
@@ -810,6 +854,7 @@ def _shutdown_live_sources(out: queue.Queue, threads: Sequence[threading.Thread]
                     thread.name,
                     _LIVE_MULTI_SHUTDOWN_TIMEOUT_SECONDS,
                 )
+    logger.debug("_shutdown_live_sources: fin")
 
 
 def _raise_source_failure(failure: _SourceFailed) -> None:
@@ -819,7 +864,9 @@ def _raise_source_failure(failure: _SourceFailed) -> None:
     error = failure.error
     logger.debug("_raise_source_failure: source {} en échec ({})", failure.label, type(failure.error).__name__)
     if isinstance(error, TsharkError):
+        logger.debug("_raise_source_failure: si isinstance(error, TsharkError) -> levée TsharkError")
         raise TsharkError(f"[{failure.label}] {error}", returncode=error.returncode, stderr=error.stderr) from error
+    logger.debug("_raise_source_failure: levée error")
     raise error
 
 
@@ -864,6 +911,7 @@ def _iter_live_multi(
         # d'iter_ek_records (un par processus), sinon en attente indefinie.
         halt.set()
         _shutdown_live_sources(out, threads)
+    logger.debug("_iter_live_multi: fin")
 
 
 def iter_live_multi(
@@ -1036,6 +1084,7 @@ def _verifier_filtre_affichage(expr: str) -> None:
                 "Traduisez, par exemple : 'tcp port 80' -> 'tcp.port == 80', "
                 "'host 10.0.0.1' -> 'ip.addr == 10.0.0.1', 'src net 10.0.0.0/8' -> 'ip.src == 10.0.0.0/8'."
             )
+    logger.debug("_verifier_filtre_affichage: fin")
 
 
 def export_filtered(
@@ -1076,10 +1125,15 @@ def export_filtered(
     (endpoints vides, time_start > time_end, filtre en syntaxe BPF).
     """
     if not os.path.isfile(path_in):
+        logger.debug("export_filtered: si not os.path.isfile(path_in) -> levée FileNotFoundError")
         raise FileNotFoundError(f"capture introuvable : {path_in}")
     if endpoints is not None and len(endpoints) == 0:
+        logger.debug("export_filtered: si endpoints is not None and len(endpoints) == 0 -> levée ValueError")
         raise ValueError("endpoints ne peut pas etre une liste vide (utilisez None pour ignorer ce critere)")
     if time_start is not None and time_end is not None and float(time_start) > float(time_end):
+        logger.debug(
+            "export_filtered: si time_start is not None and time_end is not None and (float(… -> levée ValueError"
+        )
         raise ValueError(f"time_start ({time_start}) > time_end ({time_end})")
     if bpf_filter:
         _verifier_filtre_affichage(bpf_filter)
@@ -1098,11 +1152,13 @@ def export_filtered(
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
     logger.debug("export_filtered: tshark code {}", proc.returncode)
     if proc.returncode != 0:
+        logger.debug("export_filtered: si proc.returncode != 0 -> levée TsharkError")
         raise TsharkError(
             f"tshark a echoue lors de l'export filtre (code {proc.returncode}) : {proc.stderr.strip()}",
             returncode=proc.returncode,
             stderr=proc.stderr,
         )
+    logger.debug("export_filtered: fin")
 
 
 # -- adjust_timestamps --------------------------------------------------------
@@ -1137,6 +1193,7 @@ def adjust_timestamps(
     (echec d'editcap).
     """
     if not os.path.isfile(path_in):
+        logger.debug("adjust_timestamps: si not os.path.isfile(path_in) -> levée FileNotFoundError")
         raise FileNotFoundError(f"capture introuvable : {path_in}")
 
     # Calculer l'offset reel a appliquer
@@ -1164,6 +1221,7 @@ def adjust_timestamps(
     # que soit le nom du fichier de sortie (issue #262).
     args = [editcap, *_output_format_args(path_out), "-t", repr(float(actual_offset)), path_in, path_out]
     _run_wireshark_tool(args)
+    logger.debug("adjust_timestamps: fin")
 
 
 # -- convert_capture (Job 49 / issue #169) ------------------------------------
@@ -1194,6 +1252,7 @@ def _check_in_out(path_in: str, path_out: str) -> None:
     if os.path.exists(path_out) and os.path.samefile(path_in, path_out):
         logger.debug("_check_in_out: sortie {} identique a la source, refus", path_out)
         raise ValueError(f"la sortie {path_out} est le fichier source : choisir un autre chemin.")
+    logger.debug("_check_in_out: fin")
 
 
 def convert_capture(path_in: str, path_out: str, fmt: str = "pcapng") -> None:
@@ -1207,6 +1266,7 @@ def convert_capture(path_in: str, path_out: str, fmt: str = "pcapng") -> None:
     _check_in_out(path_in, path_out)
     fmt_lower = fmt.lower()
     if fmt_lower not in _SUPPORTED_FORMATS:
+        logger.debug("convert_capture: si fmt_lower not in _SUPPORTED_FORMATS -> levée ValueError")
         raise ValueError(f"format non supporte : {fmt!r}. Formats reconnus : {', '.join(sorted(_SUPPORTED_FORMATS))}.")
     from pcap_parser.ek_source import _tshark_path
 
@@ -1216,11 +1276,13 @@ def convert_capture(path_in: str, path_out: str, fmt: str = "pcapng") -> None:
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
     logger.debug("convert_capture: tshark code {}", proc.returncode)
     if proc.returncode != 0:
+        logger.debug("convert_capture: si proc.returncode != 0 -> levée TsharkError")
         raise TsharkError(
             f"tshark a echoue lors de la conversion (code {proc.returncode}) : {proc.stderr.strip()}",
             returncode=proc.returncode,
             stderr=proc.stderr,
         )
+    logger.debug("convert_capture: fin")
 
 
 def export_csv(path_in: str, path_out: str) -> None:
@@ -1248,11 +1310,13 @@ def export_csv(path_in: str, path_out: str) -> None:
         proc = subprocess.run(args, stdout=fh, stderr=subprocess.PIPE, text=True, check=False)
     logger.debug("export_csv: tshark code {}", proc.returncode)
     if proc.returncode != 0:
+        logger.debug("export_csv: si proc.returncode != 0 -> levée TsharkError")
         raise TsharkError(
             f"tshark a echoue lors de l'export CSV (code {proc.returncode}) : {proc.stderr.strip()}",
             returncode=proc.returncode,
             stderr=proc.stderr,
         )
+    logger.debug("export_csv: fin")
 
 
 def export_json(path_in: str, path_out: str) -> None:
@@ -1272,8 +1336,10 @@ def export_json(path_in: str, path_out: str) -> None:
         proc = subprocess.run(args, stdout=fh, stderr=subprocess.PIPE, text=True, check=False)
     logger.debug("export_json: tshark code {}", proc.returncode)
     if proc.returncode != 0:
+        logger.debug("export_json: si proc.returncode != 0 -> levée TsharkError")
         raise TsharkError(
             f"tshark a echoue lors de l'export JSON (code {proc.returncode}) : {proc.stderr.strip()}",
             returncode=proc.returncode,
             stderr=proc.stderr,
         )
+    logger.debug("export_json: fin")
