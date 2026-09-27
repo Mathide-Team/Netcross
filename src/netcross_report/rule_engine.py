@@ -645,7 +645,7 @@ import statistics
 
 from netcross_core.expert_model import EvidenceLink, PacketEvidence
 from netcross_core.expert_rules import Rule, get_rule
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 from netcross_report.synthesis import Finding
 
@@ -658,6 +658,7 @@ def _pct(n: int, d: int) -> float:
     meme au sein du meme paquet `netcross_report`) : un seul calcul
     trivial (n/d*100), pas une logique de detection dupliquee au sens ou
     la docstring de module met en garde ailleurs dans ce projet."""
+    logger.debug("_pct: retour n / d * 100.0 if d else 0.0")
     return (n / d * 100.0) if d else 0.0
 
 
@@ -674,11 +675,13 @@ def _evidence(point: str, texts, frames: list[int | None] | None = None) -> list
     liste d'`EvidenceLink`/`PacketEvidence` a partir de listes deja
     collectees dans `Report`."""
     if not frames:
+        logger.debug("_evidence: si not frames -> retour liste")
         return [EvidenceLink(point, t) for t in texts]
     links = []
     for t, fn in zip(texts, frames):
         packet = PacketEvidence(point, fn) if fn is not None else None
         links.append(EvidenceLink(point, t, packet=packet))
+    logger.debug("_evidence: retour links={}", summarize(links, "links"))
     return links
 
 
@@ -709,6 +712,7 @@ def _http_error_evidence(
             texts.append(ex)
             if frames is not None and i < len(frames):
                 filtered_frames.append(frames[i])
+    logger.debug("_http_error_evidence: retour tuple de 2")
     return texts, filtered_frames
 
 
@@ -738,6 +742,7 @@ def _evaluate_loss_per_segment(rule: Rule, report: Report) -> list[Finding]:
                 rule_id=rule.id,
             )
         )
+    logger.debug("_evaluate_loss_per_segment: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -765,6 +770,7 @@ def _evaluate_tcp_zero_window(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tcp_zero_window: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -786,6 +792,7 @@ def _evaluate_dns_nxdomain(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_dns_nxdomain: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -808,6 +815,7 @@ def _evaluate_dns_servfail(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_dns_servfail: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -836,6 +844,7 @@ def _evaluate_hop_delta_outliers(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_hop_delta_outliers: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -866,6 +875,7 @@ def _evaluate_dns_timeout(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_dns_timeout: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -897,6 +907,7 @@ def _evaluate_dns_missing(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_dns_missing: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -919,6 +930,7 @@ def _evaluate_tcp_retransmission_rto(rule: Rule, report: Report) -> list[Finding
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tcp_retransmission_rto: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -941,6 +953,7 @@ def _evaluate_tcp_retransmission_spurious(rule: Rule, report: Report) -> list[Fi
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tcp_retransmission_spurious: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -962,6 +975,7 @@ def _evaluate_tcp_retransmission_fast(rule: Rule, report: Report) -> list[Findin
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tcp_retransmission_fast: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -981,6 +995,7 @@ def _evaluate_tcp_rst_localized(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tcp_rst_localized: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1000,6 +1015,7 @@ def _evaluate_tcp_syn_no_synack(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tcp_syn_no_synack: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1019,6 +1035,7 @@ def _evaluate_syn_reply_missing(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_syn_reply_missing: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1067,6 +1084,7 @@ def _evaluate_tcp_options_stripped(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tcp_options_stripped: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1104,6 +1122,7 @@ def _evaluate_tcp_mss_clamped(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tcp_mss_clamped: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1150,6 +1169,7 @@ def _evaluate_nat_fw_silent_drop(rule: Rule, report: Report) -> list[Finding]:
                 rule_id=rule.id,
             )
         )
+    logger.debug("_evaluate_nat_fw_silent_drop: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1173,6 +1193,7 @@ def _evaluate_ttl_variation(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_ttl_variation: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1197,6 +1218,7 @@ def _evaluate_pcp_change(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_pcp_change: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1236,6 +1258,7 @@ def _evaluate_icmp_fragmentation_needed(rule: Rule, report: Report) -> list[Find
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_icmp_fragmentation_needed: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1270,6 +1293,7 @@ def _evaluate_tls_cert_invalid_dates(rule: Rule, report: Report) -> list[Finding
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tls_cert_invalid_dates: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1305,6 +1329,7 @@ def _evaluate_tls_cert_mismatch(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tls_cert_mismatch: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1336,6 +1361,7 @@ def _evaluate_tls_handshake_no_reply(rule: Rule, report: Report) -> list[Finding
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tls_handshake_no_reply: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1367,6 +1393,7 @@ def _evaluate_tls_handshake_incomplete(rule: Rule, report: Report) -> list[Findi
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_tls_handshake_incomplete: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1395,6 +1422,7 @@ def _evaluate_http_timeout(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_http_timeout: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1428,6 +1456,7 @@ def _evaluate_http_missing(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_http_missing: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1463,6 +1492,7 @@ def _evaluate_http_client_error(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_http_client_error: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1497,6 +1527,7 @@ def _evaluate_http_server_error(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_http_server_error: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1561,6 +1592,7 @@ def _evaluate_dhcp_issues(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_dhcp_issues: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1610,6 +1642,7 @@ def _evaluate_sip_issues(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_sip_issues: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1636,6 +1669,7 @@ def _evaluate_vlan_change(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_vlan_change: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1680,6 +1714,7 @@ def _evaluate_arp_ip_conflict(rule: Rule, report: Report) -> list[Finding]:
                 rule_id=rule.id,
             )
         )
+    logger.debug("_evaluate_arp_ip_conflict: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1740,6 +1775,7 @@ def _evaluate_stp_instability(rule: Rule, report: Report) -> list[Finding]:
                 rule_id=rule.id,
             )
         )
+    logger.debug("_evaluate_stp_instability: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1763,10 +1799,13 @@ def _evaluate_dns_slow_resolution(rule: Rule, report: Report) -> list[Finding]:
     `StatisticsError`)."""
     mean_duration_ms_min = rule.thresholds["mean_duration_ms_min"]
     if not report.dns_duration_ms:
+        logger.debug("_evaluate_dns_slow_resolution: si not report.dns_duration_ms -> retour liste vide")
         return []
     avg = statistics.mean(report.dns_duration_ms)
     if avg <= mean_duration_ms_min:
+        logger.debug("_evaluate_dns_slow_resolution: si avg <= mean_duration_ms_min -> retour liste vide")
         return []
+    logger.debug("_evaluate_dns_slow_resolution: retour liste")
     return [
         Finding(
             rule.severity,
@@ -1795,10 +1834,13 @@ def _evaluate_http_slow_response(rule: Rule, report: Report) -> list[Finding]:
     toutes les regles de ce pilote)."""
     mean_duration_ms_min = rule.thresholds["mean_duration_ms_min"]
     if not report.http_response_time_ms:
+        logger.debug("_evaluate_http_slow_response: si not report.http_response_time_ms -> retour liste vide")
         return []
     avg = statistics.mean(report.http_response_time_ms)
     if avg <= mean_duration_ms_min:
+        logger.debug("_evaluate_http_slow_response: si avg <= mean_duration_ms_min -> retour liste vide")
         return []
+    logger.debug("_evaluate_http_slow_response: retour liste")
     return [
         Finding(
             rule.severity,
@@ -1856,6 +1898,7 @@ def _evaluate_qos_dscp_remarking(rule: Rule, report: Report) -> list[Finding]:
                 rule_id=rule.id,
             )
         )
+    logger.debug("_evaluate_qos_dscp_remarking: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1918,6 +1961,7 @@ def _evaluate_fragmentation_new(rule: Rule, report: Report) -> list[Finding]:
                     rule_id=rule.id,
                 )
             )
+    logger.debug("_evaluate_fragmentation_new: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -1966,6 +2010,7 @@ def _evaluate_saturation(rule: Rule, report: Report) -> list[Finding]:
             else "a_surveiller"
         )
         findings.append(Finding(sev, rule.domain, f"{a} -> {b}", verdict, rule_id=rule.id))
+    logger.debug("_evaluate_saturation: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -2007,6 +2052,7 @@ def _evaluate_bufferbloat(rule: Rule, report: Report) -> list[Finding]:
                 rule_id=rule.id,
             )
         )
+    logger.debug("_evaluate_bufferbloat: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -2056,6 +2102,7 @@ def _evaluate_pmtud_blackhole(rule: Rule, report: Report) -> list[Finding]:
                 rule_id=rule.id,
             )
         )
+    logger.debug("_evaluate_pmtud_blackhole: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -2117,6 +2164,7 @@ def _evaluate_rtp_quality_mos(rule: Rule, report: Report) -> list[Finding]:
                 rule_id=rule.id,
             )
         )
+    logger.debug("_evaluate_rtp_quality_mos: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -2145,20 +2193,27 @@ def _evaluate_server_processing_dominant(rule: Rule, report: Report) -> list[Fin
     `sample_size` = `len(overall)` (nombre de tours requete-reponse mesures),
     meme discipline que le bloc source."""
     if not report.server_think_time:
+        logger.debug("_evaluate_server_processing_dominant: si not report.server_think_time -> retour liste vide")
         return []
     overall = [t for turns in report.server_think_time.values() for t in turns]
     if not overall:
+        logger.debug("_evaluate_server_processing_dominant: si not overall -> retour liste vide")
         return []
     avg_server = statistics.mean(overall)
     net_pair = (report.points[0], report.points[-1]) if len(report.points) >= 2 else None
     net_lat = report.latency.get(net_pair) if net_pair else None
     if not net_lat:
+        logger.debug("_evaluate_server_processing_dominant: si not net_lat -> retour liste vide")
         return []
     avg_net = statistics.mean(net_lat)
     ratio = rule.thresholds["ratio_serveur_reseau"]
     seuil_ms = rule.thresholds["seuil_serveur_ms"]
     if avg_server <= ratio * avg_net or avg_server <= seuil_ms:
+        logger.debug(
+            "_evaluate_server_processing_dominant: si avg_server <= ratio * avg_net or avg_server <= seuil_ms -> reto…"
+        )
         return []
+    logger.debug("_evaluate_server_processing_dominant: retour liste")
     return [
         Finding(
             rule.severity,

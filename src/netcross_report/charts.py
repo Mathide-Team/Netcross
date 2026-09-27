@@ -23,6 +23,7 @@ def chart_topology(r, path):
     convergence et isoles distingues par couleur.
     """
     if not r.topology_edges:
+        logger.debug("chart_topology: si not r.topology_edges -> retour None")
         return None
 
     import networkx as nx
@@ -117,6 +118,7 @@ def chart_topology(r, path):
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
+    logger.debug("chart_topology: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -124,12 +126,14 @@ def _save(fig, path):
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
+    logger.debug("_save: fin")
 
 
 def chart_throughput(r, path):
     logger.debug("chart_throughput: r={} path={}", summarize(r, "r"), summarize(path, "path"))
     points = [p for p in r.points if r.throughput.get(p)]
     if not points:
+        logger.debug("chart_throughput: si not points -> retour None")
         return None
     avgs = [statistics.mean(r.throughput[p].values()) * 8 / 1000 / r.bucket_seconds for p in points]
     maxs = [max(r.throughput[p].values()) * 8 / 1000 / r.bucket_seconds for p in points]
@@ -143,6 +147,7 @@ def chart_throughput(r, path):
     ax.set_title("Debit par point")
     ax.legend()
     _save(fig, path)
+    logger.debug("chart_throughput: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -150,6 +155,7 @@ def chart_latency(r, path):
     logger.debug("chart_latency: r={} path={}", summarize(r, "r"), summarize(path, "path"))
     pairs = [(a, b) for (a, b) in r.pairs if r.latency.get((a, b))]
     if not pairs:
+        logger.debug("chart_latency: si not pairs -> retour None")
         return None
     labels = [f"{a}->{b}" for a, b in pairs]
     avgs = [statistics.mean(r.latency[(a, b)]) for a, b in pairs]
@@ -163,6 +169,7 @@ def chart_latency(r, path):
     ax.set_ylabel("ms")
     ax.set_title("Latence moyenne par segment (barre d'erreur = gigue)")
     _save(fig, path)
+    logger.debug("chart_latency: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -170,6 +177,7 @@ def chart_loss(r, path):
     logger.debug("chart_loss: r={} path={}", summarize(r, "r"), summarize(path, "path"))
     points = [p for p in r.points if r.loss_count.get(p, 0) > 0]
     if not points:
+        logger.debug("chart_loss: si not points -> retour None")
         return None
     values = [r.loss_count[p] for p in points]
     fig, ax = plt.subplots(figsize=(6, 3))
@@ -177,6 +185,7 @@ def chart_loss(r, path):
     ax.set_ylabel("paquets manquants")
     ax.set_title("Pertes par point")
     _save(fig, path)
+    logger.debug("chart_loss: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -221,10 +230,12 @@ def chart_topn_timeseries(r, point, dimension, path):
     )
     by_cat = r.topn_timeseries.get(dimension, {}).get(point)
     if not by_cat:
+        logger.debug("chart_topn_timeseries: si not by_cat -> retour None")
         return None
 
     all_buckets = sorted({b for buckets in by_cat.values() for b in buckets})
     if not all_buckets:
+        logger.debug("chart_topn_timeseries: si not all_buckets -> retour None")
         return None
 
     # "autres" (s'il existe) trace en dernier et grise -- le reste dans
@@ -249,6 +260,7 @@ def chart_topn_timeseries(r, point, dimension, path):
     ax.set_title(f"{TOPN_DIMENSION_TITLES.get(dimension, dimension)} au fil du temps -- point {point}")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=min(len(cats), 4), fontsize=7, framealpha=0.9)
     _save(fig, path)
+    logger.debug("chart_topn_timeseries: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -273,6 +285,7 @@ def generate_topn_charts(r, tmpdir, point=None):
     if point is None:
         point = r.points[0] if r.points else None
     if point is None:
+        logger.debug("generate_topn_charts: si point is None -> retour dictionnaire vide")
         return {}
     charts = {}
     for dimension in r.topn_timeseries:
@@ -280,6 +293,7 @@ def generate_topn_charts(r, tmpdir, point=None):
         result = chart_topn_timeseries(r, point, dimension, path)
         if result:
             charts[dimension] = result
+    logger.debug("generate_topn_charts: retour charts={}", summarize(charts, "charts"))
     return charts
 
 
@@ -311,6 +325,7 @@ def chart_severity_summary(findings, path, scheme=None):
         if f.severity in counts:
             counts[f.severity] += 1
     if sum(counts.values()) == 0:
+        logger.debug("chart_severity_summary: si sum(counts.values()) == 0 -> retour None")
         return None
     labels = [label for _, label, _ in scheme]
     values = [counts[key] for key, _, _ in scheme]
@@ -322,6 +337,7 @@ def chart_severity_summary(findings, path, scheme=None):
         if v:
             ax.text(i, v, str(v), ha="center", va="bottom")
     _save(fig, path)
+    logger.debug("chart_severity_summary: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -344,6 +360,7 @@ def chart_path_quality(metrics, path):
     """
     logger.debug("chart_path_quality: metrics={} path={}", summarize(metrics, "metrics"), summarize(path, "path"))
     if not metrics:
+        logger.debug("chart_path_quality: si not metrics -> retour None")
         return None
 
     labels = [seg.label for seg in metrics]
@@ -382,6 +399,7 @@ def chart_path_quality(metrics, path):
     handles = ax.get_legend_handles_labels()[0] + ax2.get_legend_handles_labels()[0]
     ax.legend(handles=handles, loc="upper left", fontsize=7, framealpha=0.9)
     _save(fig, path)
+    logger.debug("chart_path_quality: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -405,6 +423,7 @@ def chart_sequence_diagram(view, path):
     """
     logger.debug("chart_sequence_diagram: view={} path={}", summarize(view, "view"), summarize(path, "path"))
     if not view or not view.steps or len(view.hosts) < 2:
+        logger.debug("chart_sequence_diagram: si not view or not view.steps or len(view.hosts) < 2 -> retour None")
         return None
 
     x = {host: i for i, host in enumerate(view.hosts)}
@@ -465,6 +484,7 @@ def chart_sequence_diagram(view, path):
     ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.01), ncol=2, fontsize=7, framealpha=0.9)
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
+    logger.debug("chart_sequence_diagram: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -486,6 +506,7 @@ def chart_comm_map(cmap, path):
     """
     logger.debug("chart_comm_map: cmap={} path={}", summarize(cmap, "cmap"), summarize(path, "path"))
     if not cmap or not cmap.edges:
+        logger.debug("chart_comm_map: si not cmap or not cmap.edges -> retour None")
         return None
 
     import networkx as nx
@@ -566,6 +587,7 @@ def chart_comm_map(cmap, path):
     )
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
+    logger.debug("chart_comm_map: retour path={}", summarize(path, "path"))
     return path
 
 
@@ -597,4 +619,5 @@ def generate_all_charts(r, findings, tmpdir):
     # generate_topn_charts() directement (voir __init__.py).
     for dimension, path in generate_topn_charts(r, tmpdir).items():
         charts[f"topn_{dimension}"] = path
+    logger.debug("generate_all_charts: retour charts={}", summarize(charts, "charts"))
     return charts

@@ -82,6 +82,7 @@ class SequenceStep:
             parts.append(f"[{self.flags}]")
         if self.is_retransmission:
             parts.append("retr.")
+        logger.debug("SequenceStep.label: retour ' '.join(…)")
         return " ".join(parts)
 
 
@@ -129,6 +130,7 @@ def build_sequence_view(packets_by_point, title="", max_steps=DEFAULT_MAX_STEPS)
     packets = [pk for pkts in (packets_by_point or {}).values() for pk in (pkts or [])]
     view = SequenceView(title=title)
     if not packets:
+        logger.debug("build_sequence_view: si not packets -> retour view={}", summarize(view, "view"))
         return view
 
     packets.sort(key=lambda pk: (pk.ts, pk.point, pk.frame_number or 0))
@@ -164,6 +166,7 @@ def build_sequence_view(packets_by_point, title="", max_steps=DEFAULT_MAX_STEPS)
                 view.hosts.append(host)
         if step.point not in view.points:
             view.points.append(step.point)
+    logger.debug("build_sequence_view: retour view={}", summarize(view, "view"))
     return view
 
 
@@ -179,7 +182,9 @@ def flow_title(flow) -> str:
     proto = key[0] if key and isinstance(key[0], str) and key[0] != "NAT" else ""
     if endpoints:
         base = f"{endpoints[0]} <-> {endpoints[1]}"
+        logger.debug("flow_title: si endpoints -> retour f'(proto) (base)'.strip(…)")
         return f"{proto} {base}".strip()
+    logger.debug("flow_title: retour str(…)")
     return str(key)
 
 
@@ -212,4 +217,5 @@ def top_flow_views(flows, flow_objects=None, max_flows=1, max_steps=DEFAULT_MAX_
     views = []
     for key, per_point in ranked[: max(max_flows, 0)]:
         views.append(build_sequence_view(per_point, title=titles.get(key) or str(key), max_steps=max_steps))
+    logger.debug("top_flow_views: retour views={}", summarize(views, "views"))
     return views
