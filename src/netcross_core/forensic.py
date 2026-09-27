@@ -114,6 +114,7 @@ def detect_cross_capture_duplicates(
     detecte rien : le critere est un delta STRICTEMENT inferieur).
     """
     if threshold_ms < 0:
+        logger.debug("detect_cross_capture_duplicates: seuil negatif {} refuse", threshold_ms)
         raise ValueError(f"threshold_ms doit etre >= 0, recu {threshold_ms!r}")
 
     by_hash: dict[str, list[Pkt]] = defaultdict(list)
@@ -146,6 +147,13 @@ def detect_cross_capture_duplicates(
             pair = (original.point, pk.point) if original.point <= pk.point else (pk.point, original.point)
             counts[pair] += 1
 
+    logger.debug(
+        "detect_cross_capture_duplicates: {} empreinte(s), seuil {} ms, {} doublon(s) sur {} paire(s) de points",
+        len(by_hash),
+        threshold_ms,
+        sum(counts.values()),
+        len(counts),
+    )
     return dict(counts)
 
 
@@ -198,6 +206,12 @@ class ForensicIndex:
             self._events_by_segment[ev.segment].append(ev)
             for fk in ev.flow_keys:
                 self._events_by_flow_key[fk].append(ev)
+        logger.debug(
+            "ForensicIndex: {} paquet(s) indexe(s), {} flux, {} segment(s) d'evenements",
+            len(self._packet_to_key),
+            len(self._flow_by_key),
+            len(self._events_by_segment),
+        )
 
     # -- Evenement → flows ------------------------------------------------
 
@@ -218,6 +232,7 @@ class ForensicIndex:
 
         # 2. evidence → PacketEvidence → flow_key
         if not flows:
+            logger.trace("event_to_flows: aucun flow_key direct, repli sur les preuves paquet")
             for link in event.evidence:
                 if link.packet and link.packet.point and link.packet.frame_number is not None:
                     pk_key = (link.packet.point, link.packet.frame_number)
@@ -228,6 +243,7 @@ class ForensicIndex:
 
         # 3. matching par segment (point ou paire "A -> B")
         if not flows:
+            logger.debug("event_to_flows: repli sur le segment {!r}", event.segment)
             segment = event.segment
             points: list[str] = []
             if " -> " in segment:
@@ -241,6 +257,7 @@ class ForensicIndex:
                     flows.append(flow)
                     seen_keys.add(fk)
 
+        logger.trace("event_to_flows: {} flux lie(s)", len(flows))
         return flows
 
     # -- Evenement → paquets -----------------------------------------------
@@ -278,6 +295,7 @@ class ForensicIndex:
                             pkts.append(PacketEvidence(point=point, frame_number=pk.frame_number))
                             seen.add(key)
 
+        logger.trace("event_to_packets: {} paquet(s) de preuve", len(pkts))
         return pkts
 
     # -- Paquet → flow ------------------------------------------------------
@@ -288,6 +306,7 @@ class ForensicIndex:
         pk_key = (point, frame_number)
         fk = self._packet_to_key.get(pk_key)
         if fk is None:
+            logger.debug("packet_to_flow: trame {} du point {} hors index", frame_number, point)
             return None
         return self._flow_by_key.get(fk)
 
@@ -307,6 +326,7 @@ class ForensicIndex:
 
         # 2. matching par segment : les points du flow
         if not events:
+            logger.trace("flow_to_events: aucun evenement par flow_key, repli sur les points {}", flow.points)
             for point in flow.points:
                 for ev in self._events_by_segment.get(point, []):
                     if id(ev) not in seen:
@@ -324,6 +344,7 @@ class ForensicIndex:
         result: list[Pkt] = []
         for point in flow.points:
             result.extend(per_point.get(point, []))
+        logger.trace("flow_to_packets: {} paquet(s) sur {} point(s)", len(result), len(flow.points))
         return result
 
 
@@ -358,9 +379,11 @@ def read_annotations(capture_path: str) -> list[PacketAnnotation]:
     erreur reelle (fichier corrompu) et remonte l'exception."""
     path = annotations_sidecar_path(capture_path)
     if not os.path.exists(path):
+        logger.debug("read_annotations: aucun fichier d'annotations {}", path)
         return []
     with open(path, encoding="utf-8") as f:
         raw = json.load(f)
+    logger.debug("read_annotations: {} annotation(s) lue(s) depuis {}", len(raw), path)
     return [
         PacketAnnotation(
             frame_number=item["frame_number"],
@@ -391,6 +414,7 @@ def write_annotations(capture_path: str, annotations: list[PacketAnnotation]) ->
     ]
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
+    logger.debug("write_annotations: {} annotation(s) ecrite(s) dans {}", len(payload), path)
 
 
 def annotations_by_tag(annotations: list[PacketAnnotation]) -> dict[str, list[PacketAnnotation]]:
@@ -400,6 +424,7 @@ def annotations_by_tag(annotations: list[PacketAnnotation]) -> dict[str, list[Pa
     grouped: dict[str, list[PacketAnnotation]] = defaultdict(list)
     for ann in annotations:
         grouped[ann.tag].append(ann)
+    logger.debug("annotations_by_tag: {} annotation(s) en {} etiquette(s)", len(annotations), len(grouped))
     return dict(grouped)
 
 
@@ -473,6 +498,7 @@ def _fill_gaps(gaps: list[_OpenGap], start: int, span: int) -> list[_OpenGap]:
         if lo >= hi:
             remaining.append(gap)
             continue
+        logger.trace("_fill_gaps: trou {}+{} comble sur [{}, {}[", gap.start, gap.length, lo, hi)
         if lo > 0:
             remaining.append(_OpenGap(gap.start, lo, gap.prev_ts, gap.reveal_frame, gap.reveal_ts))
         if hi < gap.length:
@@ -502,6 +528,8 @@ def _track_stream(ordered: list[Pkt]) -> list[_OpenGap]:
     last_ts = 0.0
 
     def close_epoch(ts: float) -> None:
+        if open_gaps:
+            logger.trace("_track_stream: fin d'epoque a {}, {} trou(s) cloture(s)", ts, len(open_gaps))
         for gap in open_gaps:
             gap.epoch_end_ts = ts
         finished.extend(open_gaps)
@@ -511,6 +539,7 @@ def _track_stream(ordered: list[Pkt]) -> list[_OpenGap]:
         if pk.tcp_len is None or pk.seq is None:
             # longueur inconnue : la borne suivante n'est plus calculable, on
             # repart de zero plutot que de fabriquer un faux trou
+            logger.trace("_track_stream: trame {} sans longueur/sequence TCP, suivi reinitialise", pk.frame_number)
             finished.extend(open_gaps)
             open_gaps.clear()
             next_seq = None
@@ -532,6 +561,7 @@ def _track_stream(ordered: list[Pkt]) -> list[_OpenGap]:
         delta = _seq_delta(seq, next_seq)
         if delta > 0:
             if delta > _MAX_PLAUSIBLE_GAP_BYTES:
+                logger.trace("_track_stream: saut de {} octets invraisemblable, nouvelle epoque", delta)
                 close_epoch(pk.ts)
             else:
                 open_gaps.append(_OpenGap(next_seq, delta, last_ts, pk.frame_number, pk.ts))
@@ -544,6 +574,8 @@ def _track_stream(ordered: list[Pkt]) -> list[_OpenGap]:
             if _seq_delta(end, next_seq) > 0:
                 next_seq, last_ts = end, pk.ts
     finished.extend(open_gaps)
+    if finished:
+        logger.trace("_track_stream: {} paquet(s), {} trou(s) de sequence", len(ordered), len(finished))
     return finished
 
 
@@ -554,6 +586,7 @@ def _classify_gap(gap: _OpenGap, ack_ts: list[float], ack_nums: list[int]) -> tu
     la fin de la connexion suivie (un ACK d'une connexion ulterieure sur le
     meme 5-uplet n'a aucun sens ici)."""
     end = (gap.start + gap.length) % _SEQ_MODULO
+    logger.trace("_classify_gap: trou {}..{} ({} octets), {} ACK(s)", gap.start, end, gap.length, len(ack_ts))
     first = bisect_left(ack_ts, gap.prev_ts)
     last = bisect_left(ack_ts, gap.epoch_end_ts)
     for i in range(first, last):
@@ -606,6 +639,7 @@ def detect_sequence_gaps(packets: Iterable[Pkt]) -> list[SequenceGap]:
         pkts.sort(key=lambda pk: pk.ts)  # tri stable : l'ordre du fichier departage les ex aequo
         found.extend((key, gap) for gap in _track_stream(pkts))
     if not found:
+        logger.debug("detect_sequence_gaps: {} flux TCP, aucun trou de sequence", len(streams))
         return []
 
     acks_by_stream: dict[_StreamKey, tuple[list[float], list[int]]] = {}
@@ -637,6 +671,10 @@ def detect_sequence_gaps(packets: Iterable[Pkt]) -> list[SequenceGap]:
             )
         )
     gaps.sort(key=lambda g: (g.point, g.ts, g.start_seq))
+    causes: dict[str, int] = defaultdict(int)
+    for g in gaps:
+        causes[g.cause] += 1
+    logger.debug("detect_sequence_gaps: {} flux TCP, {} trou(s), causes {}", len(streams), len(gaps), dict(causes))
     return gaps
 
 
@@ -689,4 +727,5 @@ def validate_checksums(packets: Iterable[Pkt]) -> list[ChecksumError]:
                         checksum=checksum,
                     )
                 )
+    logger.debug("validate_checksums: {} checksum(s) invalide(s)", len(errors))
     return errors
