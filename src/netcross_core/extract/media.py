@@ -169,6 +169,7 @@ def parse_sdp(payload: bytes) -> _SdpMap:
     trouves dans une charge utile (SIP sur UDP/TCP). ``(None, None)``
     recoit aussi chaque correspondance : repli quand l'adresse ne colle pas
     (NAT, c= au niveau session seulement)."""
+    logger.debug("parse_sdp: payload={}", summarize(payload, "payload"))
     out: _SdpMap = {}
     if b"a=rtpmap:" not in payload:
         return out
@@ -277,6 +278,7 @@ def _ordered_unique(st: RtpStream) -> list[tuple[int, _RtpPacket]]:
 
 
 def analyse_stream(st: RtpStream) -> StreamQuality:
+    logger.debug("analyse_stream: st={}", summarize(st, "st"))
     exts = _extended(st.packets)
     unique = sorted(set(exts))
     expected = unique[-1] - unique[0] + 1
@@ -420,6 +422,7 @@ def depacketize_h264(ordered: Iterable[tuple[int, bytes]]) -> bytes:
     simple, STAP-A, FU-A). Un fragment FU-A dont un morceau manque est
     ecarte entier : le decodeur masque l'image plutot que d'avaler un NAL
     tronque."""
+    logger.debug("depacketize_h264: ordered={}", summarize(ordered, "ordered"))
     out = bytearray()
     frag: bytearray | None = None
     prev = None

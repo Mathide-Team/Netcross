@@ -38,7 +38,7 @@ from netcross_ai.outbox import (
     queue_pack,
     submission,
 )
-from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -46,6 +46,7 @@ EXIT_OFFLINE = 3
 
 
 def _print_pack(summary: dict) -> None:
+    logger.debug("_print_pack: summary={}", summarize(summary, "summary"))
     labels = ", ".join(f"{k}={v}" for k, v in summary["labels"].items()) or "-"
     print(f"Paquet {summary['name']} (cree le {summary['created']})")
     if summary["description"]:
@@ -55,6 +56,7 @@ def _print_pack(summary: dict) -> None:
 
 
 def _cmd_export(args) -> int:
+    logger.debug("_cmd_export: args={}", summarize(args, "args"))
     baseline = Baseline.load(args.baseline) if args.baseline else None
     training = load_training_set(args.training) if args.training else None
     pack = build_pack(
@@ -73,6 +75,7 @@ def _cmd_export(args) -> int:
 
 
 def _cmd_inspect(args) -> int:
+    logger.debug("_cmd_inspect: args={}", summarize(args, "args"))
     pack = read_pack(args.pack)
     if args.json:
         print(json.dumps(pack.summary(), ensure_ascii=False, indent=1))
@@ -83,6 +86,7 @@ def _cmd_inspect(args) -> int:
 
 
 def _cmd_import(args) -> int:
+    logger.debug("_cmd_import: args={}", summarize(args, "args"))
     result = import_pack(args.pack, baseline_path=args.baseline, training_path=args.training)
     _print_pack(result["pack"])
     if "baseline" in result:
