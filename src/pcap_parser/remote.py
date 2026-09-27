@@ -140,6 +140,7 @@ def _split_netloc(netloc: str, scheme: str, default_port: int) -> tuple[str | No
     if "@" in netloc:
         userinfo, netloc = netloc.rsplit("@", 1)
         if ":" in userinfo:
+            logger.debug("_split_netloc: mot de passe present dans l'URL {}://, refuse", scheme)
             env = ENV_RPCAP_PASSWORD if scheme == "rpcap" else ENV_SSH_PASSWORD
             raise CaptureSourceError(
                 f"mot de passe interdit dans l'URL {scheme}:// (visible dans l'historique et la liste "
@@ -147,6 +148,7 @@ def _split_netloc(netloc: str, scheme: str, default_port: int) -> tuple[str | No
             )
         user = unquote(userinfo)
         if not _USER_RE.match(user):
+            logger.debug("_split_netloc: nom d'utilisateur refuse")
             raise CaptureSourceError(f"nom d'utilisateur invalide : {user!r}")
     port = default_port
     if netloc.startswith("["):
@@ -164,7 +166,9 @@ def _split_netloc(netloc: str, scheme: str, default_port: int) -> tuple[str | No
     else:
         host = netloc
     if not host:
+        logger.debug("_split_netloc: hote manquant ({}://)", scheme)
         raise CaptureSourceError(f"hote manquant dans l'URL {scheme}://")
+    logger.debug("_split_netloc: {}:// hote={} port={} utilisateur={}", scheme, host, port, user is not None)
     return user, _check_host(host), port
 
 
@@ -176,6 +180,7 @@ def _check_port(text: str) -> int:
 
 def _check_iface(iface: str, scheme: str) -> str:
     iface = unquote(iface)
+    logger.debug("_check_iface: {}:// interface {!r}", scheme, iface)
     if not iface:
         raise CaptureSourceError(f"interface distante manquante : {scheme}://hote/INTERFACE")
     if not _IFACE_RE.match(iface):
