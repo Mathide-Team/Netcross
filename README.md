@@ -341,6 +341,14 @@ Options utiles :
   chronologique. Fonctionne aussi avec `--parallel` (un processus
   `tshark` par segment). Même syntaxe sur `--baseline`/`--current` du
   CLI de comparaison ci-dessous.
+- `--split-interfaces` : un fichier pcapng peut contenir plusieurs
+  captures, une par interface (IDB) et par section (fichiers concaténés,
+  `mergecap -I none`). Chaque capture d'un `--capture NOM=fichier.pcapng`
+  devient alors un point distinct nommé `NOM:INTERFACE` (option `if_name`
+  du fichier, sinon `ifN`, ou `sS-ifN` s'il y a plusieurs sections). Un
+  fichier à une seule capture est lu tel quel. `mergecap` sans `-I none`
+  fusionne les interfaces décrites à l'identique : elles ne sont alors
+  plus séparables (#474).
 - `--bucket-ms` : largeur des fenêtres temporelles pour le débit et la
   corrélation pertes/saturation (défaut 1000ms, réduire pour des
   microbursts).

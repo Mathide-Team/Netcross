@@ -22,6 +22,7 @@ Organisation en couches (bas en haut) :
                    (+ merge_captures : fusion de fichiers via mergecap, sans decodage
                    + replay_capture : rejeu de trafic via tcpreplay, sans decodage
                    + split_capture : decoupage par duree, nombre de paquets ou taille
+                   + split_by_interface : une capture par interface d'un pcapng (#474)
                    + iter_live_multi : capture simultanee sur plusieurs interfaces)
 
 Utilisation typique :
@@ -66,6 +67,7 @@ from pcap_parser.capfile import first_timestamp
 from pcap_parser.capinfos_source import CaptureInfo, read_capture_comment, read_capture_info
 from pcap_parser.capture import (
     CaptureRingBuffer,
+    InterfaceSlice,
     TcpreplayError,
     TcpreplayNotFoundError,
     adjust_timestamps,
@@ -75,10 +77,12 @@ from pcap_parser.capture import (
     export_json,
     iter_live,
     iter_live_multi,
+    list_interfaces,
     merge_captures,
     parse_capture,
     parse_captures_parallel,
     replay_capture,
+    split_by_interface,
     split_capture,
 )
 from pcap_parser.ek_source import CaptureAccessError, TsharkError, TsharkNotFoundError
@@ -108,6 +112,7 @@ __all__ = [
     "CaptureAccessError",
     "CaptureInfo",
     "CaptureRingBuffer",
+    "InterfaceSlice",
     "RawPacket",
     "TcpreplayError",
     "TcpreplayNotFoundError",
@@ -129,6 +134,7 @@ __all__ = [
     "is_tunnel",
     "iter_live",
     "iter_live_multi",
+    "list_interfaces",
     "merge_captures",
     "parse_capture",
     "parse_captures_parallel",
@@ -136,5 +142,6 @@ __all__ = [
     "read_capture_info",
     "replay_capture",
     "select_innermost_layers",
+    "split_by_interface",
     "split_capture",
 ]

@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-160 modules · 242 classes · 548 fonctions publiques de module.
+160 modules · 243 classes · 550 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -35,7 +35,7 @@ flowchart TD
     CLI -->|"17 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"40 imports"| netcross_core
-    CLI -->|"5 imports"| pcap_parser
+    CLI -->|"6 imports"| pcap_parser
     netcross_gtk4 -->|"13 imports"| netcross_report
     netcross_gtk4 -->|"54 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
@@ -205,6 +205,14 @@ classDiagram
     class TcpreplayError {
         <<RuntimeError>>
     }
+    class InterfaceSlice {
+        <<dataclass, frozen>>
+        +int section
+        +int interface_id
+        +str name
+        +int packets
+        +str? path
+    }
     class _SourceDone {
         <<dataclass, frozen>>
         +str label
@@ -222,6 +230,8 @@ classDiagram
         +merge_captures(paths, output_path, dedup) None
         +replay_capture(path, interface, speed, loop) None
         +split_capture(path, output_dir, by, value) list~str~
+        +list_interfaces(path) list~InterfaceSlice~
+        +split_by_interface(path, output_dir) list~InterfaceSlice~
         +iter_live_multi(interfaces, stop_event, bpf_filter) Iterator~tuple~str, RawPacket~~
         +export_filtered(path_in, path_out, bpf_filter, time_start, time_end, endpoints) None
         +adjust_timestamps(path_in, path_out, offset_seconds, normalize, align_to) None
