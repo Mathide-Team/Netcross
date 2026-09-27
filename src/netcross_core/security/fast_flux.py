@@ -79,6 +79,7 @@ class FastFluxAlert:
 
     @property
     def point(self) -> str | None:
+        logger.debug("FastFluxAlert.point: retour self.points[0] if self.points else None")
         return self.points[0] if self.points else None
 
 
@@ -90,6 +91,7 @@ class FastFluxResult:
 
     @property
     def suspicious(self) -> bool:
+        logger.debug("FastFluxResult.suspicious: retour bool(…)")
         return bool(self.alerts)
 
 

@@ -51,7 +51,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from statistics import mean, median, pstdev
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -125,6 +125,7 @@ class FlowStat:
     points: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        logger.debug("FlowStat.to_dict: retour dictionnaire")
         return {
             "src": self.src,
             "dst": self.dst,
@@ -155,6 +156,7 @@ class FlowStatsResult:
     flows: list[FlowStat] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        logger.debug("FlowStatsResult.to_dict: retour dictionnaire")
         return {"flows": [f.to_dict() for f in self.flows]}
 
 
@@ -162,7 +164,9 @@ def _shannon_entropy(counter: Counter) -> float:
     """Entropie de Shannon sur une distribution (Counter), en bits."""
     total = sum(counter.values())
     if total == 0:
+        logger.debug("_shannon_entropy: si total == 0 -> retour 0.0")
         return 0.0
+    logger.debug("_shannon_entropy: retour -sum((c / total * math.log2(c / total) for c in c…")
     return -sum((c / total) * math.log2(c / total) for c in counter.values())
 
 
@@ -170,6 +174,10 @@ def _classify_flow(flow: FlowStat, thresholds: FlowStatsThresholds) -> str:
     """Classifie un flux selon les seuils."""
     sizes = list(flow.size_distribution.elements())
     if not sizes:
+        logger.debug(
+            "_classify_flow: si not sizes -> retour CLASSIFICATION_NORMAL={}",
+            summarize(CLASSIFICATION_NORMAL, "CLASSIFICATION_NORMAL"),
+        )
         return CLASSIFICATION_NORMAL
 
     flow.median_size = median(sizes)
@@ -216,6 +224,9 @@ def _classify_flow(flow: FlowStat, thresholds: FlowStatsThresholds) -> str:
             round(flow.upload_ratio, 3),
         )
         return CLASSIFICATION_TRANSFER
+    logger.debug(
+        "_classify_flow: retour CLASSIFICATION_NORMAL={}", summarize(CLASSIFICATION_NORMAL, "CLASSIFICATION_NORMAL")
+    )
     return CLASSIFICATION_NORMAL
 
 
