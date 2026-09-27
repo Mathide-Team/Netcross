@@ -35,6 +35,10 @@ dev = [
     # validation des bundles STIX 2.1 dans les tests (issue #279) ; 3.3.x est
     # publie sans les schemas OASIS (schemas-2.1 absent du wheel)
     "stix2-validator>=3.2,<3.3",
+    # lecture des workflows GitHub Actions dans les tests (issue #334) : deja
+    # tiree par pre-commit, declaree ici pour ne pas dependre d'une dependance
+    # transitive
+    "pyyaml>=6.0",
 ]
 # API REST (issue #209) : jamais obligatoire pour le cœur ou les rapports.
 # Installé avec : pip install -e ".[api]" ou uv sync --extra api
