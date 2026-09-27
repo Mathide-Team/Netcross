@@ -1,8 +1,14 @@
-# .github/workflows/docs.yml -- construction et publication de la
-# documentation MkDocs (issue #282).
+# .github/workflows/docs.yml -- construction de la documentation MkDocs
+# (issue #282).
 #
 # - PR/push : mkdocs build --strict (bloquant sur lien mort)
-# - main uniquement : publication vers GitHub Pages
+# - le site HTML est conserve comme artefact du run (mkdocs-site), a
+#   telecharger depuis l'onglet Actions pour le consulter hors ligne.
+#
+# Pas de publication GitHub Pages : Pages n'est pas active sur le depot
+# (choix de la mainteneuse, 26/09/2026) et le job de deploiement echouait
+# en 404 a chaque push sur main. La documentation se lit directement dans
+# docs/ sur GitHub, ou en local : uv run --with mkdocs-material mkdocs serve
 
 name: Documentation
 
@@ -14,9 +20,7 @@ name: Documentation
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 jobs:
   build:
@@ -43,36 +47,3 @@ jobs:
         with:
           name: mkdocs-site
           path: site/
-
-  deploy:
-    name: Publication GitHub Pages
-    needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-
-    steps:
-      - name: Checkout du depot
-        uses: actions/checkout@v7
-
-      - name: Installation de Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-
-      - name: Installation de mkdocs-material
-        run: pip install mkdocs-material pymdown-extensions
-
-      - name: Construction
-        run: mkdocs build --strict
-
-      - name: Upload GitHub Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site/
-
-      - name: Déploiement GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@v4

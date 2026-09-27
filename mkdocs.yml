@@ -5,13 +5,14 @@
 # (README.md inclus depuis la racine via docs/index.md, pas de copie).
 #
 # En local : uv run --with mkdocs-material mkdocs serve
-# En CI : mkdocs build --strict (bloque sur lien mort)
+# En CI : mkdocs build --strict (bloque sur lien mort). Pas de site_url :
+# la documentation n'est pas publiee (pas de GitHub Pages), un site_url
+# pointerait vers une adresse qui n'existe pas.
 
 site_name: Netcross
 site_description: >-
   Analyse croisée de captures réseau multi-points — pcap_parser/tshark,
   netcross_core, netcross_report, CLI, GUI GTK4.
-site_url: https://mathildedec.github.io/Netcross/
 repo_url: https://github.com/MathildeDec/Netcross
 repo_name: MathildeDec/Netcross
 docs_dir: docs
