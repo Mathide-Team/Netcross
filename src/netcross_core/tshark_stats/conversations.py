@@ -33,7 +33,9 @@ def _split_endpoints(field: str) -> tuple[str, str]:
     """Separe le premier champ (adresses A et B combinees) en deux."""
     tokens = field.split()
     if len(tokens) >= 2:
+        logger.debug("_split_endpoints: si len(tokens) >= 2 -> retour tuple de 2")
         return tokens[0], tokens[-1]
+    logger.debug("_split_endpoints: retour tuple de 2")
     return (field, "")
 
 
@@ -83,4 +85,5 @@ def parse_conversations(text: str, protocol: str = "tcp") -> list[ConversationSt
                 **attrs,  # type: ignore[arg-type]
             )
         )
+    logger.debug("parse_conversations: {} conversation(s) {}", len(out), protocol)
     return out

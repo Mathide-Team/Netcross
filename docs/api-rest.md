@@ -62,7 +62,8 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/captures` | Upload d'un pcap, lance l'analyse |
 | `POST` | `/captures/multi` | Plusieurs pcaps étiquetés, analyse croisée entre points |
 | `GET` | `/analyses/{id}/status` | Statut `pending` / `completed` / `failed` (+ résumé) |
-| `GET` | `/analyses/{id}` | Rapport complet (JSON) |
+| `GET` | `/analyses/{id}` | Mesures brutes (copie de chaque champ du `Report`) |
+| `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
 | `GET` | `/analyses` | Liste des analyses |
 | `GET` | `/health` | Health check |
@@ -154,6 +155,46 @@ Dans `GET /analyses/{id}`, les champs indexés par segment (`latency`,
 ```bash
 curl http://localhost:8000/analyses/a1b2c3d4e5f6
 ```
+
+### Options d'analyse (issue #330)
+
+Les deux routes `POST` acceptent, en champs de formulaire, les options de
+la CLI qui changent le résultat :
+
+| Champ | Défaut | Équivalent CLI |
+|---|---|---|
+| `nat_tolerant` | `false` | `--nat-tolerant` |
+| `nat_window_ms` | `200` | `--nat-window-ms` (avec `nat_tolerant`) |
+| `tls` | `false` | `--tls` (clé `tls_findings` du rapport structuré) |
+| `quic` | `false` | `--quic` (clé `quic_findings` ; nécessite `cryptography`) |
+| `redact` | `false` | `--redact` |
+
+Mêmes règles que la CLI : `redact` avec `tls` ou `quic` est refusé (400),
+car ces diagnostics relisent les fichiers d'origine avec les adresses
+réelles ; avec `redact`, le rapport de sécurité n'est pas calculé
+(`security_report_absent` l'indique). Les options retenues sont
+enregistrées dans les métadonnées de l'analyse (`options`).
+
+```bash
+curl -X POST "http://localhost:8000/captures/multi?wait=true" \
+  -F "files=@lan.pcap" -F "files=@dc.pcap" -F "labels=LAN,DC" \
+  -F "nat_tolerant=true" -F "tls=true"
+```
+
+### Récupérer le rapport structuré (issue #330)
+
+```bash
+curl http://localhost:8000/analyses/a1b2c3d4e5f6/report
+```
+
+Même document que `netcross --json-report rapport.json --security-report`
+et que l'export JSON de la GUI : `findings`, `triage`, `health_score`,
+`health_label`, `security_report`... Le rapport de sécurité est toujours
+calculé par l'API, la clé `security_report` n'est donc jamais vide. La
+clé `meta` vaut `{"Source": "API REST"}` et `_analysis_id` est ajoutée.
+
+Une analyse enregistrée (SQLite) avant cette route n'a pas de rapport
+structuré : la route répond `409`, il faut relancer l'analyse.
 
 ### Récupérer les constats de sécurité
 

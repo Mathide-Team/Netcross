@@ -182,11 +182,13 @@ class AlarmEngine:
         # au premier feed() si AlarmConfig.segment est None.
         self._states: dict[tuple[int, str], _SegmentState] = {}
         self._events: list[AlarmEvent] = []
+        logger.debug("AlarmEngine.__init__: fin")
 
     @property
     def events(self) -> list[AlarmEvent]:
         """Tous les AlarmEvent émis depuis la création du moteur
         (raised ET cleared), dans l'ordre chronologique."""
+        logger.debug("AlarmEngine.events: retour list(…)")
         return list(self._events)
 
     @property
@@ -200,6 +202,7 @@ class AlarmEngine:
                 raised[key] = evt
             else:  # "cleared" — retire l'alarme si elle était active
                 raised.pop(key, None)
+        logger.debug("AlarmEngine.active_alarms: retour list(…)")
         return list(raised.values())
 
     def feed(self, timestamp: float, signals: list[AlarmSignal]) -> list[AlarmEvent]:
@@ -221,6 +224,8 @@ class AlarmEngine:
             key = (sig.rule_id, sig.segment)
             active_keys.add(key)
             signal_values[key] = sig.value
+
+        logger.debug("feed: {} signal(s) reçu(s), {} config(s)", len(signals), len(self._configs))
 
         for ci, cfg in enumerate(self._configs):
             # Déterminer quels segments sont concernés par cette config.
@@ -256,6 +261,7 @@ class AlarmEngine:
                     new_events.append(new_evt)
                     self._events.append(new_evt)
 
+        logger.debug("AlarmEngine.feed: retour new_events={}", summarize(new_events, "new_events"))
         return new_events
 
     def _is_positive(
@@ -275,14 +281,18 @@ class AlarmEngine:
         la normale — c'est l'hystérésis proprement dite.
         """
         if not signal_present:
+            logger.debug("AlarmEngine._is_positive: si not signal_present -> retour False")
             return False
         if cfg.trigger_threshold is None:
+            logger.debug("AlarmEngine._is_positive: si cfg.trigger_threshold is None -> retour True")
             return True
         if value is None:
             # Signal présent mais sans valeur numérique alors qu'un
             # seuil est défini — on ne peut pas conclure, on considère
             # négatif (prudence : ne pas alerter sur donnée incomplète).
+            logger.debug("AlarmEngine._is_positive: si value is None -> retour False")
             return False
+        logger.debug("AlarmEngine._is_positive: retour value >= cfg.trigger_threshold")
         return value >= cfg.trigger_threshold
 
     def _is_cleared(
@@ -299,13 +309,17 @@ class AlarmEngine:
           clear_threshold.
         """
         if not signal_present:
+            logger.debug("AlarmEngine._is_cleared: si not signal_present -> retour True")
             return True
         if cfg.clear_threshold is None:
             # Pas de seuil de clear défini : le signal présent maintient
             # l'alarme, même sous le seuil de trigger.
+            logger.debug("AlarmEngine._is_cleared: si cfg.clear_threshold is None -> retour False")
             return False
         if value is None:
+            logger.debug("AlarmEngine._is_cleared: si value is None -> retour False")
             return False
+        logger.debug("AlarmEngine._is_cleared: retour value < cfg.clear_threshold")
         return value < cfg.clear_threshold
 
     def _evaluate(
@@ -334,6 +348,7 @@ class AlarmEngine:
             # Chercher à lever l'alarme.
             if not is_positive:
                 state.active_since = None
+                logger.debug("AlarmEngine._evaluate: si not is_positive -> retour None")
                 return None
 
             if state.active_since is None:
@@ -347,14 +362,23 @@ class AlarmEngine:
                 ratio = 0.0
 
             if ratio < cfg.min_sample_ratio:
+                logger.debug("AlarmEngine._evaluate: si ratio < cfg.min_sample_ratio -> retour None")
                 return None
 
             # Vérifier la durée de persistance.
             persistence = timestamp - state.active_since
             if persistence < cfg.min_persistence_seconds:
+                logger.debug("AlarmEngine._evaluate: si persistence < cfg.min_persistence_seconds -> retour None")
                 return None
 
             state.alarmed = True
+            logger.debug(
+                "_evaluate: alarme levée {} sur {} (persistance={:.1f}s, ratio={:.0%})",
+                cfg.rule_id,
+                segment,
+                persistence,
+                ratio,
+            )
             return AlarmEvent(
                 rule_id=cfg.rule_id,
                 segment=segment,
@@ -369,10 +393,12 @@ class AlarmEngine:
             # is_clear utilise clear_threshold (hystérésis) : une valeur
             # entre clear et trigger ne clear PAS.
             if not is_clear:
+                logger.debug("AlarmEngine._evaluate: si not is_clear -> retour None")
                 return None  # toujours au-dessus du clear, pas de clear.
 
             state.alarmed = False
             state.active_since = None
+            logger.debug("_evaluate: alarme cleared {} sur {}", cfg.rule_id, segment)
             return AlarmEvent(
                 rule_id=cfg.rule_id,
                 segment=segment,

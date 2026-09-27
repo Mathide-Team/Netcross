@@ -107,6 +107,11 @@ def group_packets_by_client(all_packets, client_group):
         for name, ips in client_group.items():
             if pk.src in ips or pk.dst in ips:
                 by_client[name].append(pk)
+    logger.debug(
+        "group_packets_by_client: {} client(s) -> {}",
+        len(by_client),
+        {name: len(pkts) for name, pkts in by_client.items()},
+    )
     return by_client
 
 
@@ -117,6 +122,7 @@ def _build_signature(packets):
             sig.dhcp_vendor_classes[pk.dhcp_vendor_class] += 1
         if pk.sip_user_agent:
             sig.sip_user_agents[pk.sip_user_agent] += 1
+    logger.debug("_build_signature: retour sig={}", summarize(sig, "sig"))
     return sig
 
 
@@ -138,6 +144,7 @@ def build_client_report(
     Report deviendraient incomparables entre eux."""
     flows = correlate(packets, nat_tolerant, nat_window_ms)
     report = analyse(flows, points_order, packets, bucket_seconds, nat_tolerant, rtp_clock_rate)
+    logger.debug("build_client_report: retour ClientReport(…)")
     return ClientReport(
         client=client,
         ips=tuple(sorted(ips)),
@@ -222,6 +229,12 @@ def compare_clients(
             continue
         diffs[name] = diff_reports(ref_report, cr.report, loss_min_pp, latency_min_ms)
 
+    logger.debug(
+        "compare_clients: référence={}, {} client(s) comparé(s), {} écart(s) total(aux)",
+        reference,
+        len(diffs),
+        sum(len(v) for v in diffs.values()),
+    )
     return ClientComparisonResult(reference=reference, clients=clients, diffs=diffs)
 
 
@@ -232,6 +245,7 @@ def _print_signature(sig, indent="  "):
     if sig.sip_user_agents:
         top = sig.sip_user_agents.most_common(3)
         print(f"{indent}SIP User-Agent    : " + ", ".join(f"{v} ({n})" for v, n in top))
+    logger.debug("_print_signature: fin")
 
 
 def print_client_comparison(result: ClientComparisonResult) -> None:
@@ -267,6 +281,7 @@ def print_client_comparison(result: ClientComparisonResult) -> None:
             before = "n/a" if f.before is None else f"{f.before:.2f}"
             after = "n/a" if f.after is None else f"{f.after:.2f}"
             print(f"    {marker} [{f.category}] {f.segment} : {f.message} (reference={before}, {name}={after})")
+    logger.debug("print_client_comparison: fin")
 
 
 def write_client_diff_csv(result: ClientComparisonResult, path: str) -> None:
@@ -278,6 +293,7 @@ def write_client_diff_csv(result: ClientComparisonResult, path: str) -> None:
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(["client", "reference", "severite", "categorie", "segment", "message", "avant", "apres"])
+        row_count = 0
         for name, findings in result.diffs.items():
             for f in findings:
                 writer.writerow(
@@ -292,3 +308,5 @@ def write_client_diff_csv(result: ClientComparisonResult, path: str) -> None:
                         "" if f.after is None else f.after,
                     ]
                 )
+                row_count += 1
+    logger.debug("write_client_diff_csv: {} ligne(s) écrite(s) dans {}", row_count, path)

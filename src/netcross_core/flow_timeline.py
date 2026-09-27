@@ -84,6 +84,7 @@ class FlowTimeline:
 
     def to_dict(self) -> dict:
         """Serialisation JSON (issue #359)."""
+        logger.debug("FlowTimeline.to_dict: retour dictionnaire")
         return {
             "packet_timings": [
                 {"ts": pt.ts, "point": pt.point, "delta_ms": pt.delta_ms, "cumulative_bytes": pt.cumulative_bytes}
@@ -111,6 +112,7 @@ def build_flow_timeline(
     timeline = FlowTimeline()
 
     if not packets:
+        logger.debug("build_flow_timeline: si not packets -> retour timeline={}", summarize(timeline, "timeline"))
         return timeline
 
     # Trier par timestamp
@@ -176,6 +178,13 @@ def build_flow_timeline(
     # -- RTT estimate ------------------------------------------------------
     timeline.rtt_estimate_ms = _estimate_rtt(sorted_pkts)
 
+    logger.debug(
+        "build_flow_timeline: {} paquet(s), {} phase(s) {}, RTT={}ms",
+        len(sorted_pkts),
+        len(timeline.phases),
+        timeline.phases,
+        round(timeline.rtt_estimate_ms, 2) if timeline.rtt_estimate_ms is not None else "N/A",
+    )
     return timeline
 
 
@@ -183,9 +192,12 @@ def _median(sorted_values: list[float]) -> float:
     """Mediane d'une liste triee."""
     n = len(sorted_values)
     if n == 0:
+        logger.debug("_median: si n == 0 -> retour 0.0")
         return 0.0
     if n % 2 == 1:
+        logger.debug("_median: si n % 2 == 1 -> retour sorted_values[n // 2]")
         return sorted_values[n // 2]
+    logger.debug("_median: retour (sorted_values[n // 2 - 1] + sorted_values[n // 2…")
     return (sorted_values[n // 2 - 1] + sorted_values[n // 2]) / 2.0
 
 
@@ -201,6 +213,7 @@ def _detect_phases(timings: list[PacketTiming], packets: list[Pkt]) -> list[str]
     """
     phases: list[str] = []
     if not timings:
+        logger.debug("_detect_phases: si not timings -> retour phases={}", summarize(phases, "phases"))
         return phases
 
     # Phase initiale : handshake ?
@@ -229,6 +242,7 @@ def _detect_phases(timings: list[PacketTiming], packets: list[Pkt]) -> list[str]
         if ("F" in flags or "R" in flags) and (not phases or phases[-1] != "teardown"):
             phases.append("teardown")
 
+    logger.debug("_detect_phases: {} phase(s) détectée(s) : {}", len(phases), phases)
     return phases
 
 
@@ -247,6 +261,9 @@ def _estimate_rtt(packets: list[Pkt]) -> float | None:
         if "S" in flags and "A" not in flags:
             syn_ts = pk.ts
         elif "S" in flags and "A" in flags and syn_ts is not None:
+            logger.debug(
+                "_estimate_rtt: si 'S' in flags and 'A' in flags and (syn_ts is not None) -> retour (pk.ts - syn_ts)…"
+            )
             return (pk.ts - syn_ts) * 1000.0
 
     # HTTP : request -> response
@@ -255,6 +272,9 @@ def _estimate_rtt(packets: list[Pkt]) -> float | None:
         if pk.http_is_request:
             http_req_ts = pk.ts
         elif pk.http_is_response and http_req_ts is not None:
+            logger.debug(
+                "_estimate_rtt: si pk.http_is_response and http_req_ts is not None -> retour (pk.ts - http_req_ts) *…"
+            )
             return (pk.ts - http_req_ts) * 1000.0
 
     # DNS : request -> response
@@ -264,8 +284,11 @@ def _estimate_rtt(packets: list[Pkt]) -> float | None:
             if not pk.dns_is_response:
                 dns_req_ts = pk.ts
             elif dns_req_ts is not None:
-                return (pk.ts - dns_req_ts) * 1000.0
+                rtt = (pk.ts - dns_req_ts) * 1000.0
+                logger.debug("_estimate_rtt: RTT DNS={}ms", round(rtt, 2))
+                return rtt
 
+    logger.debug("_estimate_rtt: aucune paire SYN/SYN-ACK, HTTP ou DNS trouvée")
     return None
 
 
@@ -277,6 +300,7 @@ def _conversation(pk: Pkt) -> tuple:
     connexion forment une seule chronologie (le RTT SYN/SYN-ACK en a besoin)."""
     a, b = (pk.src, pk.sport), (pk.dst, pk.dport)
     lo, hi = sorted((a, b), key=lambda e: (e[0], -1 if e[1] is None else e[1]))
+    logger.debug("_conversation: retour tuple de 3")
     return (pk.proto, lo, hi)
 
 
@@ -315,4 +339,9 @@ def build_flow_timelines(packets: list[Pkt], window_s: float = 1.0, min_packets:
             }
         )
     flows.sort(key=lambda f: (f["point"], f["start_ts"], f["protocol"], repr(f["endpoints"])))
+    logger.debug(
+        "build_flow_timelines: {} conversation(s) -> {} chronologie(s)",
+        len(groups),
+        len(flows),
+    )
     return {"version": TIMELINES_FORMAT_VERSION, "window_s": window_s, "flows": flows}

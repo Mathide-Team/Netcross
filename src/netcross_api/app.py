@@ -29,6 +29,7 @@ import hmac
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -51,6 +52,9 @@ from netcross_api.store import COMPLETED, FAILED, PENDING, report_document, stor
 from netcross_core import analyse, correlate, parse_capture
 from netcross_core.logging_config import get_logger, summarize
 from netcross_core.security.findings import apply_security_findings, scan_capture_exploits
+from netcross_report.json_report import build_json_report_document
+from netcross_report.security_report import build_security_report
+from netcross_report.synthesis import build_findings
 
 logger = get_logger(__name__)
 # Singleton pour éviter B008 (File() in argument defaults).
@@ -59,6 +63,22 @@ _FILES_REQUIRED = File(default=..., description="Fichiers pcap/pcapng à analyse
 _LABEL_FORM = Form(default="capture", description="Étiquette du point de capture (ex: lan)")
 _LABELS_FORM = Form(default="", description="Étiquettes séparées par virgule (ex: lan,wan,dc)")
 _POINTS_ORDER_FORM = Form(default="", description="Ordre des points séparé par virgule (ex: lan,wan,dc)")
+# Issue #330 (écart 2) : options d'analyse, mêmes noms et même sens que la CLI.
+_NAT_TOLERANT_FORM = Form(
+    default=False, description="true : corrélation tolérante au NAT (équivalent de --nat-tolerant)"
+)
+_NAT_WINDOW_FORM = Form(
+    default=200.0,
+    gt=0,
+    description="Fenêtre de corrélation NAT en ms, avec nat_tolerant (équivalent de --nat-window-ms)",
+)
+_TLS_FORM = Form(default=False, description="true : diagnostic TLS (équivalent de --tls)")
+_QUIC_FORM = Form(default=False, description="true : diagnostic QUIC/HTTP3 (équivalent de --quic)")
+_REDACT_FORM = Form(
+    default=False,
+    description="true : anonymise les adresses IP/MAC avant analyse (équivalent de --redact) ; "
+    "incompatible avec tls/quic, et le rapport de sécurité n'est alors pas calculé",
+)
 _WAIT_QUERY = Query(
     default=False,
     description="true : attendre la fin de l'analyse (201 + résumé) au lieu de 202 + statut pending",
@@ -87,6 +107,7 @@ def _get_executor() -> ThreadPoolExecutor:
     global _executor
     if _executor is None:
         _executor = ThreadPoolExecutor(max_workers=max(1, _WORKERS), thread_name_prefix="netcross-api")
+    logger.debug("_get_executor: retour _executor={}", summarize(_executor, "_executor"))
     return _executor
 
 
@@ -99,7 +120,11 @@ def _verify_api_key(api_key: str | None = Depends(_api_key_header)) -> None:
     """
     if _API_TOKEN and not (api_key and hmac.compare_digest(api_key.encode(), _API_TOKEN.encode())):
         logger.trace("_verify_api_key: refus, HTTPException")
+        logger.debug(
+            "_verify_api_key: si _API_TOKEN and (not (api_key and hmac.compare_digest(api_ke… -> levée HTTPException"
+        )
         raise HTTPException(status_code=401, detail="Jeton d'authentification invalide ou manquant")
+    logger.debug("_verify_api_key: fin")
 
 
 app = FastAPI(
@@ -110,6 +135,7 @@ app = FastAPI(
 
 
 def _max_mb() -> int:
+    logger.debug("_max_mb: retour _MAX_UPLOAD_BYTES // 1024 // 1024")
     return _MAX_UPLOAD_BYTES // 1024 // 1024
 
 
@@ -123,9 +149,13 @@ async def _refuser_corps_trop_gros(request: Request, call_next):
     if request.method == "POST" and request.url.path.startswith("/captures"):
         longueur = request.headers.get("content-length", "")
         if longueur.isdigit() and int(longueur) > _MAX_UPLOAD_BYTES * _MAX_FILES + _MULTIPART_MARGIN:
+            logger.debug(
+                "_refuser_corps_trop_gros: si longueur.isdigit() and int(longueur) > _MAX_UPLOAD_BYTES * … -> retour…"
+            )
             return JSONResponse(
                 status_code=413, content={"detail": f"Requête trop volumineuse (max {_max_mb()} Mo par fichier)"}
             )
+    logger.debug("_refuser_corps_trop_gros: retour await call_next(request)")
     return await call_next(request)
 
 
@@ -146,13 +176,42 @@ async def _save_upload(file: UploadFile, label: str) -> str:
             while chunk := await file.read(_CHUNK_BYTES):
                 total += len(chunk)
                 if total > _MAX_UPLOAD_BYTES:
+                    logger.debug("_save_upload: si total > _MAX_UPLOAD_BYTES -> levée HTTPException")
                     raise HTTPException(status_code=413, detail=f"Fichier {label} trop volumineux (max {_max_mb()} Mo)")
                 tmp.write(chunk)
     except BaseException:
         logger.debug("_save_upload: échec pour {}, fichier temporaire {} supprimé", label, tmp.name)
         Path(tmp.name).unlink(missing_ok=True)
+        logger.debug("_save_upload: except BaseException -> relance de l'exception en cours")
         raise
+    logger.debug("_save_upload: retour tmp.name={}", summarize(tmp.name, "name"))
     return tmp.name
+
+
+@dataclass(frozen=True)
+class ApiAnalysisOptions:
+    """Options d'analyse de l'API (issue #330), miroir des options de la CLI."""
+
+    nat_tolerant: bool = False
+    nat_window_ms: float = 200.0
+    tls: bool = False
+    quic: bool = False
+    redact: bool = False
+
+
+def _options(nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, redact: bool) -> ApiAnalysisOptions:
+    """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
+    qui relisent les fichiers d'origine (adresses réelles)."""
+    if redact and (tls or quic):
+        logger.debug("_options: si redact and (tls or quic) -> levée HTTPException")
+        raise HTTPException(
+            status_code=400,
+            detail="redact n'est pas disponible avec tls/quic : ces diagnostics relisent les fichiers "
+            "d'origine, avec les adresses réelles (même règle que la CLI)",
+        )
+    options = ApiAnalysisOptions(nat_tolerant, nat_window_ms, tls, quic, redact)
+    logger.debug("_options: retour options={}", summarize(options, "options"))
+    return options
 
 
 class AnalysisError(Exception):
@@ -160,9 +219,47 @@ class AnalysisError(Exception):
     quel au client (statut failed, ou 400 avec ?wait=true)."""
 
 
-def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | None, multi: bool) -> tuple[dict, dict]:
-    """Analyse complète (corrélation, sécurité) ; retourne le document JSON
-    du rapport et le résumé. Exécuté hors de la boucle asyncio."""
+def _tls_quic_findings(
+    captures: list[tuple[str, str]], points: list[str], options: ApiAnalysisOptions
+) -> tuple[list | None, list | None]:
+    """Diagnostics TLS / QUIC demandés, relus sur les fichiers comme
+    ``--tls`` / ``--quic`` ; ``None`` pour un diagnostic non demandé."""
+    tls_findings = quic_findings = None
+    if options.tls:
+        from netcross_core.tls_diagnostics import build_handshake_status, diagnose_tls, parse_tls_capture
+
+        tls_events = []
+        for label, path in captures:
+            tls_events.extend(parse_tls_capture(label, path))
+        tls_findings = diagnose_tls(build_handshake_status(tls_events), points)
+    if options.quic:
+        try:
+            from netcross_core.quic_diagnostics import diagnose_quic, parse_quic_capture
+        except ImportError as exc:
+            logger.debug("_tls_quic_findings: except ImportError -> levée AnalysisError")
+            raise AnalysisError("quic nécessite le paquet cryptography (pip install cryptography)") from exc
+        quic_events = []
+        for label, path in captures:
+            quic_events.extend(parse_quic_capture(label, path))
+        quic_findings = diagnose_quic(quic_events, points)
+    logger.debug(
+        "_tls_quic_findings: retour tls={} quic={}",
+        summarize(tls_findings, "tls_findings"),
+        summarize(quic_findings, "quic_findings"),
+    )
+    return tls_findings, quic_findings
+
+
+def _analyse_captures(
+    captures: list[tuple[str, str]],
+    order_list: list[str] | None,
+    multi: bool,
+    options: ApiAnalysisOptions | None = None,
+) -> tuple[dict, dict, dict]:
+    """Analyse complète (corrélation, sécurité) ; retourne le document brut,
+    le résumé et le rapport structuré (celui de ``--json-report``, issue
+    #330). Exécuté hors de la boucle asyncio."""
+    options = options or ApiAnalysisOptions()
     all_packets = []
     for label, path in captures:
         try:
@@ -171,17 +268,46 @@ def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | N
             logger.warning("parsing de la capture {} impossible : {}", label, exc)
             raise AnalysisError(f"Erreur de parsing pour {label}: {exc}") from exc
         if not pkts:
+            logger.debug("_analyse_captures: si not pkts -> levée AnalysisError")
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
         all_packets.extend(pkts)
     try:
-        flows = correlate(all_packets)
+        if options.redact:
+            from netcross_core.redact import redact_packets
+
+            redact_packets(all_packets)
+        flows = correlate(all_packets, options.nat_tolerant, options.nat_window_ms)
         points_order = order_list if multi else [captures[0][0]]
-        report = analyse(flows, points_order=points_order, all_packets=all_packets)
-        # CVE-2 : scanner les exploits sur chaque fichier
-        detections = []
-        for label, path in captures:
-            detections.extend(scan_capture_exploits(label, path))
-        apply_security_findings(report, all_packets, detections=detections)
+        report = analyse(flows, points_order=points_order, all_packets=all_packets, nat_tolerant=options.nat_tolerant)
+        security_report = None
+        if not options.redact:
+            # CVE-2 : scanner les exploits sur chaque fichier. Pas avec redact :
+            # les signatures lisent la charge utile brute des fichiers (même
+            # refus que --security-report --redact).
+            detections = []
+            for label, path in captures:
+                detections.extend(scan_capture_exploits(label, path))
+            apply_security_findings(report, all_packets, detections=detections)
+            security_report = build_security_report(report)
+        tls_findings, quic_findings = _tls_quic_findings(captures, list(report.points), options)
+        # Issue #330 : même document que `netcross --json-report
+        # --security-report` (constats, triage, score de santé).
+        meta = {"Source": "API REST"}
+        if options.redact:
+            meta["Anonymisation"] = "adresses IP/MAC anonymisees (redact)"
+        structured = build_json_report_document(
+            report,
+            findings=build_findings(report),
+            security_report=security_report,
+            tls_findings=tls_findings,
+            quic_findings=quic_findings,
+            meta=meta,
+        )
+        if options.redact:
+            structured["security_report_absent"] = "non disponible avec l'anonymisation (redact=true)"
+    except AnalysisError:
+        logger.debug("_analyse_captures: except AnalysisError -> relance de l'exception en cours")
+        raise
     except Exception as exc:
         logger.exception("échec de l'analyse des captures")
         raise AnalysisError(f"Erreur d'analyse: {exc}") from exc
@@ -195,13 +321,20 @@ def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | N
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
-    return report_document(report), summary
+    logger.debug("_analyse_captures: retour tuple de 3")
+    return report_document(report), summary, structured
 
 
-def _run_job(analysis_id: str, captures: list[tuple[str, str]], order_list: list[str] | None, multi: bool) -> None:
+def _run_job(
+    analysis_id: str,
+    captures: list[tuple[str, str]],
+    order_list: list[str] | None,
+    multi: bool,
+    options: ApiAnalysisOptions | None = None,
+) -> None:
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
-        document, summary = _analyse_captures(captures, order_list, multi)
+        document, summary, structured = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
         store.fail(analysis_id, str(exc))
@@ -209,14 +342,20 @@ def _run_job(analysis_id: str, captures: list[tuple[str, str]], order_list: list
         logger.exception("analyse {} : erreur interne", analysis_id)
         store.fail(analysis_id, f"Erreur interne: {exc}")
     else:
-        store.complete(analysis_id, document, summary)
+        store.complete(analysis_id, document, summary, report=structured)
     finally:
         for _label, path in captures:
             Path(path).unlink(missing_ok=True)
+    logger.debug("_run_job: fin")
 
 
 async def _dispatch(
-    captures: list[tuple[str, str]], metadata: dict, order_list: list[str] | None, multi: bool, wait: bool
+    captures: list[tuple[str, str]],
+    metadata: dict,
+    order_list: list[str] | None,
+    multi: bool,
+    wait: bool,
+    options: ApiAnalysisOptions | None = None,
 ) -> JSONResponse:
     """Enregistre l'analyse en pending puis l'exécute : en tâche de fond
     (202) ou, avec ``wait``, dans le pool de threads de la requête (201)."""
@@ -228,13 +367,15 @@ async def _dispatch(
         summarize(multi, "multi"),
         summarize(wait, "wait"),
     )
-    analysis_id = store.create_pending(metadata)
+    options = options or ApiAnalysisOptions()
+    analysis_id = store.create_pending({**metadata, "options": asdict(options)})
     status_url = f"/analyses/{analysis_id}/status"
     if not wait:
-        _get_executor().submit(_run_job, analysis_id, captures, order_list, multi)
+        _get_executor().submit(_run_job, analysis_id, captures, order_list, multi, options)
         accepted = AnalysisAccepted(analysis_id=analysis_id, status=PENDING, status_url=status_url)
+        logger.debug("_dispatch: si not wait -> retour JSONResponse(…)")
         return JSONResponse(status_code=202, content=accepted.model_dump(), headers={"Location": status_url})
-    await run_in_threadpool(_run_job, analysis_id, captures, order_list, multi)
+    await run_in_threadpool(_run_job, analysis_id, captures, order_list, multi, options)
     entry = store.get(analysis_id)
     assert entry is not None
     if entry["status"] == FAILED:
@@ -242,6 +383,7 @@ async def _dispatch(
         raise HTTPException(status_code=400, detail=entry["error"])
     model = MultiAnalysisSummary if multi else AnalysisSummary
     summary = model(analysis_id=analysis_id, status=COMPLETED, **entry["summary"])
+    logger.debug("_dispatch: retour JSONResponse(…)")
     return JSONResponse(status_code=201, content=summary.model_dump(), headers={"Location": f"/analyses/{analysis_id}"})
 
 
@@ -263,6 +405,11 @@ _UPLOAD_RESPONSES: dict = {
 async def upload_capture(
     file: UploadFile = _FILE_REQUIRED,
     label: str = _LABEL_FORM,
+    nat_tolerant: bool = _NAT_TOLERANT_FORM,
+    nat_window_ms: float = _NAT_WINDOW_FORM,
+    tls: bool = _TLS_FORM,
+    quic: bool = _QUIC_FORM,
+    redact: bool = _REDACT_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -270,13 +417,18 @@ async def upload_capture(
 
     Réponse 202 ``{"status": "pending"}`` : suivre ``status_url`` jusqu'à
     ``completed`` (ou ``failed`` avec ``error``). ``?wait=true`` attend la
-    fin et retourne directement le résumé (201).
+    fin et retourne directement le résumé (201). ``nat_tolerant``,
+    ``nat_window_ms``, ``tls``, ``quic`` et ``redact`` ont le sens des
+    options de même nom de la CLI (issue #330).
     """
+    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
     if not file.filename:
+        logger.debug("upload_capture: si not file.filename -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Nom de fichier manquant")
     path = await _save_upload(file, label)
     metadata = {"filename": file.filename, "label": label}
-    return await _dispatch([(label, path)], metadata, None, multi=False, wait=wait)
+    logger.debug("upload_capture: retour await _dispatch([(label, path)], metadata, None, …")
+    return await _dispatch([(label, path)], metadata, None, multi=False, wait=wait, options=options)
 
 
 def _parse_labels(labels: str, file_count: int) -> list[str]:
@@ -303,6 +455,7 @@ def _parse_labels(labels: str, file_count: int) -> list[str]:
     if doublons:
         logger.debug("_parse_labels: refus, HTTPException")
         raise HTTPException(status_code=400, detail=f"Étiquettes dupliquées : {', '.join(doublons)}")
+    logger.debug("_parse_labels: retour label_list={}", summarize(label_list, "label_list"))
     return label_list
 
 
@@ -316,6 +469,7 @@ def _parse_points_order(points_order: str, label_list: list[str]) -> list[str] |
         summarize(label_list, "label_list"),
     )
     if not points_order.strip():
+        logger.debug("_parse_points_order: si not points_order.strip() -> retour None")
         return None
     order = [p.strip() for p in points_order.split(",") if p.strip()]
     inconnus = [p for p in order if p not in label_list]
@@ -328,6 +482,7 @@ def _parse_points_order(points_order: str, label_list: list[str]) -> list[str] |
             detail += f" ; absente(s) : {', '.join(manquants)}"
         logger.debug("_parse_points_order: refus, HTTPException")
         raise HTTPException(status_code=400, detail=detail)
+    logger.debug("_parse_points_order: retour order={}", summarize(order, "order"))
     return order
 
 
@@ -335,8 +490,8 @@ def segment_losses(report) -> list[SegmentLoss]:
     """Pertes et délai par segment de ``report.pairs`` (issue #354).
 
     Même définition que ``netcross_report.path_metrics`` (pertes au point
-    aval, taux = pertes / paquets vus à ce point), recalculée ici parce que
-    la couche API ne dépend pas de netcross_report (contrat import-linter).
+    aval, taux = pertes / paquets vus à ce point), au format ``SegmentLoss``
+    propre au résumé de l'API.
     """
     logger.debug("segment_losses: report={}", summarize(report, "report"))
     segments = []
@@ -357,6 +512,7 @@ def segment_losses(report) -> list[SegmentLoss]:
                 latency_avg_ms=round(sum(lat) / len(lat), 3) if lat else None,
             )
         )
+    logger.debug("segment_losses: retour segments={}", summarize(segments, "segments"))
     return segments
 
 
@@ -374,6 +530,11 @@ async def upload_multi_capture(
     files: list[UploadFile] = _FILES_REQUIRED,
     labels: str = _LABELS_FORM,
     points_order: str = _POINTS_ORDER_FORM,
+    nat_tolerant: bool = _NAT_TOLERANT_FORM,
+    nat_window_ms: float = _NAT_WINDOW_FORM,
+    tls: bool = _TLS_FORM,
+    quic: bool = _QUIC_FORM,
+    redact: bool = _REDACT_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -384,10 +545,14 @@ async def upload_multi_capture(
     l'ordre des fichiers) ; ``points_order`` (facultatif) fixe l'ordre
     amont -> aval, sinon il est déduit du trafic. Le résumé (``?wait=true``
     ou ``/status``) détaille les pertes et le délai de chaque segment.
+    Options d'analyse : comme ``POST /captures`` (issue #330).
     """
+    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
     if not files or len(files) < 2:
+        logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Au moins 2 fichiers sont requis pour l'analyse multi-points")
     if len(files) > _MAX_FILES:
+        logger.debug("upload_multi_capture: si len(files) > _MAX_FILES -> levée HTTPException")
         raise HTTPException(status_code=400, detail=f"Au plus {_MAX_FILES} fichiers par requête")
     label_list = _parse_labels(labels, len(files))
     order_list = _parse_points_order(points_order, label_list)
@@ -396,33 +561,44 @@ async def upload_multi_capture(
     try:
         for file, label in zip(files, label_list, strict=True):
             if not file.filename:
+                logger.debug("upload_multi_capture: si not file.filename -> levée HTTPException")
                 raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
             captures.append((label, await _save_upload(file, label)))
     except BaseException:
         logger.debug("upload interrompu : {} fichier(s) temporaire(s) supprimé(s)", len(captures))
         for _label, path in captures:
             Path(path).unlink(missing_ok=True)
+        logger.debug("upload_multi_capture: except BaseException -> relance de l'exception en cours")
         raise
 
     metadata = {"files": [f.filename for f in files], "labels": label_list, "points_order": order_list}
-    return await _dispatch(captures, metadata, order_list, multi=True, wait=wait)
+    logger.debug("upload_multi_capture: retour await _dispatch(captures, metadata, order_list, m…")
+    return await _dispatch(captures, metadata, order_list, multi=True, wait=wait, options=options)
 
 
-def _completed_document(analysis_id: str) -> dict:
-    """Document d'une analyse terminée ; 404 inconnue, 409 pending/failed."""
-    logger.debug("_completed_document: analysis_id={}", summarize(analysis_id, "analysis_id"))
+def _completed_entry(analysis_id: str) -> dict:
+    """Entrée d'une analyse terminée ; 404 inconnue, 409 pending/failed."""
+    logger.debug("_completed_entry: analysis_id={}", summarize(analysis_id, "analysis_id"))
     entry = store.get(analysis_id)
     if entry is None:
-        logger.debug("_completed_document: refus, HTTPException")
+        logger.debug("_completed_entry: refus, HTTPException")
         raise HTTPException(status_code=404, detail=f"Analyse {analysis_id} introuvable")
     if entry["status"] == PENDING:
-        logger.debug("_completed_document: refus, HTTPException")
+        logger.debug("_completed_entry: refus, HTTPException")
         raise HTTPException(
             status_code=409, detail=f"Analyse {analysis_id} en cours (pending) : suivre /analyses/{analysis_id}/status"
         )
     if entry["status"] == FAILED:
-        logger.debug("_completed_document: refus, HTTPException")
+        logger.debug("_completed_entry: refus, HTTPException")
         raise HTTPException(status_code=409, detail=f"Analyse {analysis_id} en echec : {entry['error']}")
+    logger.debug("_completed_entry: retour entry={}", summarize(entry, "entry"))
+    return entry
+
+
+def _completed_document(analysis_id: str) -> dict:
+    """Document brut d'une analyse terminée (voir ``_completed_entry``)."""
+    entry = _completed_entry(analysis_id)
+    logger.debug("_completed_document: retour entry['document']")
     return entry["document"]
 
 
@@ -442,6 +618,31 @@ async def get_analysis(analysis_id: str, _auth: None = Depends(_verify_api_key))
     logger.debug("get_analysis(analysis_id={})", analysis_id)
     doc = dict(_completed_document(analysis_id))
     doc["_analysis_id"] = analysis_id
+    logger.debug("get_analysis: retour JSONResponse(…)")
+    return JSONResponse(content=doc)
+
+
+@app.get("/analyses/{analysis_id}/report", tags=["analyses"], responses=_ANALYSIS_RESPONSES)
+async def get_analysis_report(analysis_id: str, _auth: None = Depends(_verify_api_key)) -> JSONResponse:
+    """Rapport structuré d'une analyse terminée : le même document que
+    ``netcross --json-report --security-report`` et que l'export JSON de la
+    GUI (``findings``, ``triage``, ``health_score``, ``security_report``...).
+
+    Issue #330 : ``GET /analyses/{analysis_id}`` sert la copie brute des
+    mesures ; cette route sert les constats et le score de santé. 409 pour
+    une analyse enregistrée avant l'ajout de cette route (à relancer).
+    """
+    logger.debug("get_analysis_report(analysis_id={})", analysis_id)
+    entry = _completed_entry(analysis_id)
+    if entry.get("report") is None:
+        logger.debug("get_analysis_report: si rapport absent -> levée HTTPException")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Analyse {analysis_id} enregistree sans rapport structure (version anterieure) : la relancer",
+        )
+    doc = dict(entry["report"])
+    doc["_analysis_id"] = analysis_id
+    logger.debug("get_analysis_report: retour JSONResponse(…)")
     return JSONResponse(content=doc)
 
 
@@ -464,6 +665,7 @@ async def get_security_report(analysis_id: str, _auth: None = Depends(_verify_ap
         )
         for f in doc.get("security_findings", [])
     ]
+    logger.debug("get_security_report: retour SecurityReport(…)")
     return SecurityReport(
         analysis_id=analysis_id,
         findings=findings,
@@ -492,7 +694,9 @@ async def get_analysis_status(analysis_id: str, _auth: None = Depends(_verify_ap
     le résumé, segments compris en multi-points) ou ``failed`` (``error``)."""
     entry = store.get(analysis_id)
     if entry is None:
+        logger.debug("get_analysis_status: si entry is None -> levée HTTPException")
         raise HTTPException(status_code=404, detail=f"Analyse {analysis_id} introuvable")
+    logger.debug("get_analysis_status: retour AnalysisStatus(…)")
     return AnalysisStatus(
         analysis_id=analysis_id,
         status=entry["status"],

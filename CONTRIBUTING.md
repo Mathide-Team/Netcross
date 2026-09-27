@@ -123,10 +123,13 @@ docs(#216): documentation CLAUDE.md
 - **Architecture** : contrat import-linter avec couches strictes :
 
   ```
-  netcross_gtk4 → netcross_report → netcross_api → netcross_core → pcap_parser
+  netcross_gtk4 | netcross_api → netcross_report → netcross_ai → netcross_core → pcap_parser
   ```
 
-  Une couche ne peut importer que les couches inférieures. `pcap_parser` est
+  Une couche ne peut importer que les couches inférieures. `netcross_gtk4`
+  et `netcross_api` sont deux surfaces de même niveau, indépendantes l'une
+  de l'autre : toutes deux peuvent servir les rapports de `netcross_report`
+  (issue #330). `pcap_parser` est
   la couche la plus basse et ne peut importer de `netcross_core`.
 
 ### Tests

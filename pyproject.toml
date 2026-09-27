@@ -98,10 +98,12 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Pas de cycles internes"
 type = "layers"
+# netcross_gtk4 et netcross_api sont deux surfaces independantes (aucune
+# n'importe l'autre), au-dessus de netcross_report : l'API sert le meme
+# rapport structure que la CLI et la GUI (issue #330).
 layers = [
-    "netcross_gtk4",
+    "netcross_gtk4 | netcross_api",
     "netcross_report",
-    "netcross_api",
     "netcross_ai",
     "netcross_core",
     "pcap_parser",

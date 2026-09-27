@@ -27,6 +27,7 @@ _LABELED_RE = re.compile(r"^\s*(.+?)\s{2,}([\d.,]+)\s*$")
 
 def _match(label: str, *keywords: str) -> bool:
     low = label.lower()
+    logger.debug("_match: retour any(…)")
     return any(kw in low for kw in keywords)
 
 
@@ -64,7 +65,16 @@ def parse_response_time(text: str, application: str = "http") -> ResponseTimeSta
         elif _match(label, "median"):
             median_ms = val
     if not any(v is not None for v in (count, min_ms, max_ms, mean_ms, median_ms)):
+        logger.debug("parse_response_time: aucune métrique trouvée pour {}", application)
         return None
+    logger.debug(
+        "parse_response_time: {} -> count={}, min={}ms, max={}ms, mean={}ms",
+        application,
+        count,
+        min_ms,
+        max_ms,
+        mean_ms,
+    )
     return ResponseTimeStat(
         application=application,
         count=count,

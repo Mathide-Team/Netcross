@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 
 def _metric_pmtud_blackhole_total(report) -> float:
     """Nombre total de noirs PMTUD detectes, tous segments confondus."""
+    logger.debug("_metric_pmtud_blackhole_total: retour float(…)")
     return float(sum(report.pmtud_blackhole.values()))
 
 
@@ -36,7 +37,9 @@ def _metric_loss_rate_pct(report) -> float:
     volume)."""
     seen = sum(report.seen_count.values())
     if not seen:
+        logger.debug("_metric_loss_rate_pct: si not seen -> retour 0.0")
         return 0.0
+    logger.debug("_metric_loss_rate_pct: retour sum(report.loss_count.values()) / seen * 100.0")
     return sum(report.loss_count.values()) / seen * 100.0
 
 
@@ -46,7 +49,9 @@ def _metric_tcp_retransmission_rate_pct(report) -> float:
     indicateur de sante du chemin. Agrege sur tous les points."""
     total_segments = sum(report.tcp_total_segments.values()) if hasattr(report, "tcp_total_segments") else 0
     if not total_segments:
+        logger.debug("_metric_tcp_retransmission_rate_pct: si not total_segments -> retour 0.0")
         return 0.0
+    logger.debug("_metric_tcp_retransmission_rate_pct: retour sum(report.tcp_retransmissions.values()) / total_…")
     return sum(report.tcp_retransmissions.values()) / total_segments * 100.0
 
 
@@ -55,7 +60,9 @@ def _metric_avg_rtt_ms(report) -> float:
     cle de performance. Moyenne sur tous les segments."""
     values = [v for v in report.rtt_ms.values() if v and v > 0] if hasattr(report, "rtt_ms") else []
     if not values:
+        logger.debug("_metric_avg_rtt_ms: si not values -> retour 0.0")
         return 0.0
+    logger.debug("_metric_avg_rtt_ms: retour sum(values) / len(values)")
     return sum(values) / len(values)
 
 
@@ -67,7 +74,9 @@ def _metric_throughput_mbps(report) -> float:
         max(report.capture_duration.values()) if hasattr(report, "capture_duration") and report.capture_duration else 0
     )
     if duration <= 0:
+        logger.debug("_metric_throughput_mbps: si duration <= 0 -> retour 0.0")
         return 0.0
+    logger.debug("_metric_throughput_mbps: retour total_bytes * 8 / 1000000 / duration")
     return total_bytes * 8 / 1_000_000 / duration
 
 
@@ -76,7 +85,9 @@ def _metric_latency_ms(report) -> float:
     bout est une metrique SLO fondamentale. Moyenne sur tous les segments."""
     values = [v for v in report.latency_ms.values() if v and v > 0] if hasattr(report, "latency_ms") else []
     if not values:
+        logger.debug("_metric_latency_ms: si not values -> retour 0.0")
         return 0.0
+    logger.debug("_metric_latency_ms: retour sum(values) / len(values)")
     return sum(values) / len(values)
 
 
@@ -85,7 +96,9 @@ def _metric_jitter_ms(report) -> float:
     est une metrique SLO. Moyenne sur tous les segments."""
     values = [v for v in report.jitter_ms.values() if v and v > 0] if hasattr(report, "jitter_ms") else []
     if not values:
+        logger.debug("_metric_jitter_ms: si not values -> retour 0.0")
         return 0.0
+    logger.debug("_metric_jitter_ms: retour sum(values) / len(values)")
     return sum(values) / len(values)
 
 
@@ -216,14 +229,21 @@ def _compute_status(observed: float, ref: ReferenceProfile, op) -> str:
     comportement d'origine : CONFORME ou VIOLATION uniquement.
     """
     if op(observed, ref.threshold):
-        return "CONFORME"
-    # Au-dela du seuil : verifier si dans la marge de tolerance
-    if ref.deviation_margin is not None and ref.threshold > 0:
+        status = "CONFORME"
+    elif ref.deviation_margin is not None and ref.threshold > 0:
         margin_abs = ref.threshold * ref.deviation_margin
-        # DEVIATION si observed <= threshold + margin_abs
-        if observed <= ref.threshold + margin_abs:
-            return "DEVIATION"
-    return "VIOLATION"
+        status = "DEVIATION" if observed <= ref.threshold + margin_abs else "VIOLATION"
+    else:
+        status = "VIOLATION"
+    logger.debug(
+        "_compute_status: {} {} {} -> {} (observé={})",
+        ref.metric,
+        ref.operator,
+        ref.threshold,
+        status,
+        round(observed, 3),
+    )
+    return status
 
 
 def evaluate_compliance(report, references=None) -> list[ComplianceResult]:
@@ -247,9 +267,22 @@ def evaluate_compliance(report, references=None) -> list[ComplianceResult]:
         func = _METRIC_FUNCS.get(ref.metric)
         op = _OPERATORS.get(ref.operator)
         if func is None or op is None:
+            logger.debug("evaluate_compliance: métrique '{}' indéterminée", ref.metric)
             results.append(ComplianceResult(ref, None, "INDETERMINE"))
             continue
         observed = func(report)
         status = _compute_status(observed, ref, op)
         results.append(ComplianceResult(ref, observed, status))
+    conforme = sum(1 for r in results if r.status == "CONFORME")
+    deviation = sum(1 for r in results if r.status == "DEVIATION")
+    violation = sum(1 for r in results if r.status == "VIOLATION")
+    indetermine = sum(1 for r in results if r.status == "INDETERMINE")
+    logger.debug(
+        "evaluate_compliance: {} référence(s) -> {} conforme(s), {} déviation(s), {} violation(s), {} indéterminé(s)",
+        len(results),
+        conforme,
+        deviation,
+        violation,
+        indetermine,
+    )
     return results

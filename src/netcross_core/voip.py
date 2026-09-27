@@ -35,6 +35,7 @@ class Call:
     correlation_method: str = "time_window"
 
     def to_dict(self) -> dict:
+        logger.debug("Call.to_dict: retour dictionnaire")
         return {
             "call_id": self.call_id,
             "participants": list(self.participants),
@@ -50,13 +51,17 @@ class Call:
 
 def _quality(mos_values: list[float]) -> str:
     if not mos_values:
+        logger.debug("_quality: si not mos_values -> retour 'unknown'")
         return "unknown"
     mos = sum(mos_values) / len(mos_values)
     if mos < 3.0:
-        return "poor"
-    if mos < 3.6:
-        return "fair"
-    return "good"
+        result = "poor"
+    elif mos < 3.6:
+        result = "fair"
+    else:
+        result = "good"
+    logger.debug("_quality: MOS moyen={} -> {}", round(mos, 2), result)
+    return result
 
 
 def build_calls(all_packets, rtp_streams: list[dict]) -> tuple[list[Call], dict[str, int]]:
@@ -197,4 +202,10 @@ def build_calls(all_packets, rtp_streams: list[dict]) -> tuple[list[Call], dict[
             )
 
     distribution = Counter(call.quality for call in calls)
+    logger.debug(
+        "build_calls: {} appel(s), {} flux RTP rattaché(s), {} ambigu(s)",
+        len(calls),
+        attached,
+        ambiguous,
+    )
     return calls, dict(distribution)
