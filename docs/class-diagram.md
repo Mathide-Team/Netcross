@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-160 modules · 243 classes · 550 fonctions publiques de module.
+160 modules · 243 classes · 551 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -1612,6 +1612,7 @@ classDiagram
         <<module>>
         +print_report(r)
         +print_sequence_gaps(r)
+        +print_checksum_errors(r)
         +print_annotations(annotations)
         +write_detail_csv(path, flows, points, names)
     }

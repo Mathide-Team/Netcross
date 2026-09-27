@@ -1213,3 +1213,25 @@ def test_print_report_dns_missing_long(capsys):
     print_report(r)
     out = capsys.readouterr().out
     assert "5 autres messages manquants" in out
+
+
+def test_print_report_checksum_errors_affiche_section(capsys):
+    # Job 43/issue #163
+    pkts = [make_pkt(point="A", frame_number=2, tcp_checksum="0x1111", tcp_checksum_bad=True)]
+    flows = correlate(pkts)
+    r = analyse(flows, points_order=["A", "B"], all_packets=pkts)
+    print_report(r)
+    out = capsys.readouterr().out
+    assert "Integrite de capture : checksums IP/TCP/UDP" in out
+    assert "checksum TCP invalide" in out
+    assert "trame 2" in out
+    assert "0x1111" in out
+
+
+def test_print_report_sans_checksum_errors_message_par_defaut(capsys):
+    pkts = [make_pkt(point="A", frame_number=1, tcp_checksum="0x76be", tcp_checksum_bad=False)]
+    flows = correlate(pkts)
+    r = analyse(flows, points_order=["A", "B"], all_packets=pkts)
+    print_report(r)
+    out = capsys.readouterr().out
+    assert "aucun checksum IP/TCP/UDP invalide detecte" in out

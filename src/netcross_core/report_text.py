@@ -14,6 +14,7 @@ from netcross_core.models import (
     SEQ_GAP_CAPTURE_DROP,
     SEQ_GAP_INDETERMINATE,
     SEQ_GAP_NETWORK_LOSS,
+    ChecksumError,
     PacketAnnotation,
     Report,
     SequenceGap,
@@ -665,6 +666,12 @@ def print_report(r: Report):
     else:
         print("  aucun trou de sequence TCP detecte")
 
+    print("\n-- Integrite de capture : checksums IP/TCP/UDP --")
+    if r.checksum_errors:
+        print_checksum_errors(r)
+    else:
+        print("  aucun checksum IP/TCP/UDP invalide detecte")
+
     print(f"\n-- Flux RTP detectes voix/visio (cadence supposee {r.rtp_clock_rate}Hz) --")
     if r.rtp_streams:
         shown = r.rtp_streams[:50]
@@ -947,6 +954,32 @@ def print_sequence_gaps(r: Report):
         if len(gaps) > _MAX_SEQ_GAP_EXAMPLES:
             print(f"      ... et {len(gaps) - _MAX_SEQ_GAP_EXAMPLES} autre(s) trou(s)")
     logger.debug("print_sequence_gaps: fin")
+
+
+# Meme plafond que _MAX_SEQ_GAP_EXAMPLES ci-dessus (Job 43/issue #163) --
+# coherence d'affichage entre les deux sections "Integrite de capture".
+_MAX_CHECKSUM_ERROR_EXAMPLES = 50
+
+
+def print_checksum_errors(r: Report):
+    """Detail de la section "Integrite de capture" : checksums IP/TCP/UDP
+    invalides, un paquet par ligne (frame_number, protocole, valeur brute
+    recue) -- voir netcross_core.forensic.validate_checksums pour ce qui
+    est exclu (offload materiel a 0x0000, statut non verifie)."""
+    by_point: dict[str, list[ChecksumError]] = defaultdict(list)
+    for err in r.checksum_errors:
+        by_point[err.point].append(err)
+    for p in [*r.points, *sorted(set(by_point) - set(r.points))]:
+        errors = by_point.get(p)
+        if not errors:
+            continue
+        print(f"  {p:15s} : {len(errors)} checksum(s) invalide(s)")
+        for e in errors[:_MAX_CHECKSUM_ERROR_EXAMPLES]:
+            frame = f"trame {e.frame_number}" if e.frame_number is not None else "trame ?"
+            print(f"      ex: checksum {e.protocol} invalide ({frame}, recu {e.checksum})")
+        if len(errors) > _MAX_CHECKSUM_ERROR_EXAMPLES:
+            print(f"      ... et {len(errors) - _MAX_CHECKSUM_ERROR_EXAMPLES} autre(s) checksum(s) invalide(s)")
+    logger.debug("print_checksum_errors: fin")
 
 
 def print_annotations(annotations: list[PacketAnnotation]):
