@@ -1,88 +1,34 @@
-# .github/workflows/i18n.yml -- catalogues de traduction gettext (issue #299).
+# .github/workflows/i18n.yml -- mise à jour des catalogues de traduction
+# gettext (issue #299).
 #
-# check  (PR et push) : le modele lang/messages.pot et les lang/*.po sont a
-#        jour avec les sources, valides (msgfmt --check : syntaxe, pluriels,
-#        formats) et compilables pour toutes les locales de lang/LINGUAS ;
-#        resume dans l'onglet du run.
-# update (push sur dev, ou lancement manuel) : regenere les catalogues et
-#        ouvre/actualise une PR "chore(i18n): update translation catalogs"
-#        ne contenant que lang/. Les nouvelles chaines y arrivent avec
-#        msgstr "" : aucune traduction automatique n'est inseree.
+# Le job « check » (validation des catalogues sur PR/push) a été fusionné
+# dans ci.yml (issue #463) pour réduire le nombre de workflows parallèles.
+# Ce fichier ne conserve que le job « update » : régénération des catalogues
+# et ouverture d'une PR de mise à jour, sur push vers dev ou lancement manuel.
 
-name: i18n
+name: Mise à jour i18n
 
 on:
-  pull_request:
-    paths:
-      - "src/**/*.py"
-      - "lang/**"
-      - "scripts/i18n-update.sh"
-      - "scripts/i18n_report.py"
-      - ".github/workflows/i18n.yml"
   push:
-    branches: [dev, main]
+    branches: [dev]
     paths:
       - "src/**/*.py"
       - "lang/**"
       - "scripts/i18n-update.sh"
       - "scripts/i18n_report.py"
-      - ".github/workflows/i18n.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 concurrency:
   group: i18n-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-
-      - name: Installer gettext
-        run: |
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gettext
-
-      - name: Catalogues a jour et valides
-        id: sync
-        continue-on-error: ${{ github.event_name != 'pull_request' }}
-        run: ./scripts/i18n-update.sh --check
-
-      - name: Compilation de toutes les locales
-        run: ./scripts/i18n-update.sh --compile "$RUNNER_TEMP/locale"
-
-      - name: Resume
-        if: always()
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          since=()
-          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then since=(--since "$BASE"); fi
-          python3 scripts/i18n_report.py --compiled "$RUNNER_TEMP/locale" "${since[@]}"
-          python3 scripts/i18n_report.py --markdown --compiled "$RUNNER_TEMP/locale" "${since[@]}" >> "$GITHUB_STEP_SUMMARY"
-          python3 scripts/i18n_report.py --strict > /dev/null
-
-      - name: Catalogues desynchronises
-        if: steps.sync.outcome == 'failure'
-        run: echo "::warning::catalogues a regenerer -- le job update ouvre la PR de mise a jour"
-
   update:
-    needs: check
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v7
 
