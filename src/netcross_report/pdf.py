@@ -21,7 +21,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_report.charts import (
     DIFF_SEVERITY_SCHEME,
     chart_sequence_diagram,
@@ -78,6 +78,7 @@ MAX_PDF_READABLE_LEN = 90
 
 
 def _styles():
+    logger.debug("_styles()")
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle("H1b", parent=styles["Heading1"], spaceBefore=18, spaceAfter=8))
     styles.add(ParagraphStyle("H2b", parent=styles["Heading2"], spaceBefore=14, spaceAfter=6))
@@ -90,11 +91,14 @@ def _styles():
     # d'assurer que le jeton TIENT : corps reduit + colonnes dimensionnees
     # sur le plus long identifiant du catalogue (voir _compliance_table).
     styles.add(ParagraphStyle("Cell", parent=styles["Normal"], fontSize=7.5, leading=9.5))
+    logger.debug("_styles: retour styles={}", summarize(styles, "styles"))
     return styles
 
 
 def _finding_table(findings, styles):
+    logger.debug("_finding_table: findings={} styles={}", summarize(findings, "findings"), summarize(styles, "styles"))
     if not findings:
+        logger.debug("_finding_table: si not findings -> retour Paragraph(…)")
         return Paragraph("Aucun constat notable.", styles["Normal"])
     data = [["Gravite", "Categorie", "Segment", "Constat"]]
     data.extend(
@@ -124,6 +128,7 @@ def _finding_table(findings, styles):
         style.append(("TEXTCOLOR", (0, i), (0, i), SEVERITY_COLORS[f.severity]))
         style.append(("FONTNAME", (0, i), (0, i), "Helvetica-Bold"))
     t.setStyle(TableStyle(style))
+    logger.debug("_finding_table: retour t={}", summarize(t, "t"))
     return t
 
 
@@ -133,8 +138,15 @@ def _triage_table(ranked, styles, top_n=10):
     convergents (>=2 categories) -- un segment avec un seul constat
     isole n'apporte rien de plus que ce que la table de constats montre
     deja, ce n'est pas ca qui doit orienter "par ou commencer"."""
+    logger.debug(
+        "_triage_table: ranked={} styles={} top_n={}",
+        summarize(ranked, "ranked"),
+        summarize(styles, "styles"),
+        summarize(top_n, "top_n"),
+    )
     convergent = [s for s in ranked if s.convergent]
     if not convergent:
+        logger.debug("_triage_table: si not convergent -> retour Paragraph(…)")
         return Paragraph(
             "Aucun segment touche par plusieurs categories de constats a la fois "
             "-- pas de faisceau de preuves a signaler ici, voir la table de constats "
@@ -172,6 +184,7 @@ def _triage_table(ranked, styles, top_n=10):
             ]
         )
     )
+    logger.debug("_triage_table: retour t={}", summarize(t, "t"))
     return t
 
 
@@ -182,6 +195,7 @@ def _health_badge(ranked, styles):
     pour la formule et la note de conception (notamment sur ce que le
     score signifie quand `ranked` vient d'un diff plutot que d'un run
     simple)."""
+    logger.debug("_health_badge: ranked={} styles={}", summarize(ranked, "ranked"), summarize(styles, "styles"))
     score = health_score(ranked)
     label = health_label(score)
     style = ParagraphStyle(
@@ -192,6 +206,7 @@ def _health_badge(ranked, styles):
         textColor=HEALTH_BADGE_COLORS[label],
         spaceAfter=6,
     )
+    logger.debug("_health_badge: retour Paragraph(…)")
     return Paragraph(f"Score de sante : {score}/100 -- {HEALTH_LABELS[label]}", style)
 
 
@@ -234,6 +249,7 @@ def _grid_table(data, col_widths, highlight=None):
         style.append(("TEXTCOLOR", (0, row), (0, row), color))
         style.append(("FONTNAME", (0, row), (0, row), "Helvetica-Bold"))
     t.setStyle(TableStyle(style))
+    logger.debug("_grid_table: retour t={}", summarize(t, "t"))
     return t
 
 
@@ -244,7 +260,14 @@ def _expert_event_table(events, styles, top_n=EXPERT_TABLE_TOP_N):
     causalite n'a pas reconnu de pattern pour cet evenement (voir
     netcross_core.causality : seuls les rule_id participant a un pattern
     recoivent cause/impact)."""
+    logger.debug(
+        "_expert_event_table: events={} styles={} top_n={}",
+        summarize(events, "events"),
+        summarize(styles, "styles"),
+        summarize(top_n, "top_n"),
+    )
     if not events:
+        logger.debug("_expert_event_table: si not events -> retour Paragraph(…)")
         return Paragraph("Aucun evenement d'expertise.", styles["Normal"])
     data = [["Gravite", "Categorie", "Segment", "Constat", "Cause probable / impact"]]
     shown = events[:top_n]
@@ -262,13 +285,21 @@ def _expert_event_table(events, styles, top_n=EXPERT_TABLE_TOP_N):
     highlight = [
         (i, SEVERITY_COLORS[ev.severity]) for i, ev in enumerate(shown, start=1) if ev.severity in SEVERITY_COLORS
     ]
+    logger.debug("_expert_event_table: retour _grid_table(…)")
     return _grid_table(data, [1.9 * cm, 2.3 * cm, 2.6 * cm, 5.2 * cm, 4.3 * cm], highlight)
 
 
 def _diagnosis_table(diagnoses, styles, top_n=EXPERT_TABLE_TOP_N):
     """diagnoses : liste de Diagnosis -- un par segment, cause/impact
     derives des ExpertEvent deja enrichis (netcross_core.causality)."""
+    logger.debug(
+        "_diagnosis_table: diagnoses={} styles={} top_n={}",
+        summarize(diagnoses, "diagnoses"),
+        summarize(styles, "styles"),
+        summarize(top_n, "top_n"),
+    )
     if not diagnoses:
+        logger.debug("_diagnosis_table: si not diagnoses -> retour Paragraph(…)")
         return Paragraph("Aucun diagnostic par segment.", styles["Normal"])
     data = [["Segment", "Evenements", "Cause probable", "Impact"]]
     data.extend(
@@ -280,6 +311,7 @@ def _diagnosis_table(diagnoses, styles, top_n=EXPERT_TABLE_TOP_N):
         ]
         for d in diagnoses[:top_n]
     )
+    logger.debug("_diagnosis_table: retour _grid_table(…)")
     return _grid_table(data, [3.4 * cm, 1.9 * cm, 5.5 * cm, 5.5 * cm])
 
 
@@ -288,7 +320,14 @@ def _compliance_table(results, styles, top_n=EXPERT_TABLE_TOP_N):
     Les ecarts d'abord (VIOLATION, puis DEVIATION) : meme intention que le
     triage "par ou commencer", l'operateur doit voir ce qui ne passe pas
     sans derouler la table entiere."""
+    logger.debug(
+        "_compliance_table: results={} styles={} top_n={}",
+        summarize(results, "results"),
+        summarize(styles, "styles"),
+        summarize(top_n, "top_n"),
+    )
     if not results:
+        logger.debug("_compliance_table: si not results -> retour Paragraph(…)")
         return Paragraph("Aucun referentiel evalue.", styles["Normal"])
     order = ["VIOLATION", "DEVIATION", "CONFORME", "INDETERMINE"]
     ranked = sorted(
@@ -320,6 +359,7 @@ def _compliance_table(results, styles, top_n=EXPERT_TABLE_TOP_N):
     highlight = [
         (i, COMPLIANCE_COLORS[res.status]) for i, res in enumerate(shown, start=1) if res.status in COMPLIANCE_COLORS
     ]
+    logger.debug("_compliance_table: retour _grid_table(…)")
     return _grid_table(data, [2.1 * cm, 4.3 * cm, 5.2 * cm, 5.4 * cm], highlight)
 
 
@@ -328,12 +368,21 @@ def _flow_table(flows, styles, top_n=EXPERT_TABLE_TOP_N):
     de paquets decroissant, libelle en second critere pour un ordre stable
     d'une execution a l'autre -- meme regle que le rendu console
     (netcross_report.session_objects)."""
+    logger.debug(
+        "_flow_table: flows={} styles={} top_n={}",
+        summarize(flows, "flows"),
+        summarize(styles, "styles"),
+        summarize(top_n, "top_n"),
+    )
     if not flows:
+        logger.debug("_flow_table: si not flows -> retour Paragraph(…)")
         return Paragraph("Aucun flux correle.", styles["Normal"])
 
     def _label(flow):
         if flow.endpoints:
+            logger.debug("_flow_table._label: si flow.endpoints -> retour chaîne formatée")
             return f"{flow.endpoints[0]} <-> {flow.endpoints[1]}"
+        logger.debug("_flow_table._label: retour str(…)")
         return str(flow.key)
 
     ordered = sorted(flows, key=lambda f: (-sum(f.packet_count.values()), _label(f)))
@@ -347,6 +396,7 @@ def _flow_table(flows, styles, top_n=EXPERT_TABLE_TOP_N):
         ]
         for f in ordered[:top_n]
     )
+    logger.debug("_flow_table: retour _grid_table(…)")
     return _grid_table(data, [6.2 * cm, 4.6 * cm, 2.6 * cm, 2.9 * cm])
 
 
@@ -355,7 +405,9 @@ def _fmt_num(value, unit="", decimals=1):
     tiret et un "0.0" ne disent pas la meme chose : le premier signale une
     absence de mesure, le second une mesure nulle (voir SegmentMetrics)."""
     if value is None:
+        logger.debug("_fmt_num: si value is None -> retour '—'")
         return "\u2014"
+    logger.debug("_fmt_num: retour chaîne formatée")
     return f"{value:.{decimals}f}{unit}"
 
 
@@ -363,10 +415,13 @@ def _fmt_bps(value):
     """Debit en unite lisible (bit/s -> kbit/s -> Mbit/s -> Gbit/s), meme
     echelle decimale (1000) que les debits reseau usuels."""
     if value is None:
+        logger.debug("_fmt_bps: si value is None -> retour '—'")
         return "\u2014"
     for unit, factor in (("Gbit/s", 1e9), ("Mbit/s", 1e6), ("kbit/s", 1e3)):
         if value >= factor:
+            logger.debug("_fmt_bps: si value >= factor -> retour chaîne formatée")
             return f"{value / factor:.2f} {unit}"
+    logger.debug("_fmt_bps: retour chaîne formatée")
     return f"{value:.0f} bit/s"
 
 
@@ -379,7 +434,9 @@ def _path_table(metrics, styles):
     tableau
     garde l'ordre du chemin, qui est celui dans lequel on depanne, tout en
     designant sans ambiguite ou regarder d'abord."""
+    logger.debug("_path_table: metrics={} styles={}", summarize(metrics, "metrics"), summarize(styles, "styles"))
     if not metrics:
+        logger.debug("_path_table: si not metrics -> retour Paragraph(…)")
         return Paragraph(
             "Aucun segment exploitable : ni topologie deduite, ni couple de points fourni.",
             styles["Normal"],
@@ -402,6 +459,7 @@ def _path_table(metrics, styles):
                 Paragraph("\u2014" if seg.hops is None else str(seg.hops), styles["Cell"]),
             ]
         )
+    logger.debug("_path_table: retour _grid_table(…)")
     return _grid_table(data, [3.4 * cm, 3.8 * cm, 1.5 * cm, 2.3 * cm, 2.3 * cm, 2.3 * cm, 1.4 * cm])
 
 
@@ -420,7 +478,14 @@ def path_section_story(metrics, styles, chart_path=None):
     aucune section : pas de titre orphelin dans un rapport a un seul point
     de capture, meme convention que expert_section_story().
     """
+    logger.debug(
+        "path_section_story: metrics={} styles={} chart_path={}",
+        summarize(metrics, "metrics"),
+        summarize(styles, "styles"),
+        summarize(chart_path, "chart_path"),
+    )
     if not metrics:
+        logger.debug("path_section_story: si not metrics -> retour liste vide")
         return []
     story = [
         Paragraph("Chemin observe", styles["H1b"]),
@@ -439,6 +504,7 @@ def path_section_story(metrics, styles, chart_path=None):
     ]
     if chart_path:
         story += [Spacer(1, 0.3 * cm), Image(chart_path, width=15 * cm, height=8 * cm)]
+    logger.debug("path_section_story: retour story={}", summarize(story, "story"))
     return story
 
 
@@ -455,6 +521,7 @@ def _scaled_image(path, max_w, max_h):
     with PILImage.open(path) as im:
         img_w, img_h = im.size
     ratio = min(max_w / img_w, max_h / img_h)
+    logger.debug("_scaled_image: retour Image(…)")
     return Image(path, width=img_w * ratio, height=img_h * ratio)
 
 
@@ -464,6 +531,7 @@ def _sequence_table(view, styles):
     dessin donne la forme de l'echange, cette table donne les references
     verifiables (numero de trame, point, taille) qu'on reporte dans
     Wireshark."""
+    logger.debug("_sequence_table: view={} styles={}", summarize(view, "view"), summarize(styles, "styles"))
     data = [["Trame", "t (ms)", "Delta (ms)", "Source -> Destination", "Point", "Octets", "Detail"]]
     data.extend(
         [
@@ -477,6 +545,7 @@ def _sequence_table(view, styles):
         ]
         for step in view.steps
     )
+    logger.debug("_sequence_table: retour _grid_table(…)")
     return _grid_table(
         data,
         [1.5 * cm, 1.5 * cm, 1.7 * cm, 5.0 * cm, 2.6 * cm, 1.4 * cm, 3.3 * cm],
@@ -492,8 +561,15 @@ def sequence_section_story(views, styles, chart_paths=None):
     blanc). Liste vide de vues => aucune section, comme
     expert_section_story()/path_section_story().
     """
+    logger.debug(
+        "sequence_section_story: views={} styles={} chart_paths={}",
+        summarize(views, "views"),
+        summarize(styles, "styles"),
+        summarize(chart_paths, "chart_paths"),
+    )
     views = [v for v in (views or []) if v.steps]
     if not views:
+        logger.debug("sequence_section_story: si not views -> retour liste vide")
         return []
     chart_paths = list(chart_paths or [])
     story = [
@@ -527,6 +603,7 @@ def sequence_section_story(views, styles, chart_paths=None):
             story.append(Spacer(1, 0.3 * cm))
         story.append(_sequence_table(view, styles))
         story.append(Spacer(1, 0.4 * cm))
+    logger.debug("sequence_section_story: retour story={}", summarize(story, "story"))
     return story
 
 
@@ -542,7 +619,14 @@ def expert_section_story(session_objects, styles, top_n=EXPERT_TABLE_TOP_N):
     produire de PDF : les tests inspectent les Table/Paragraph renvoyes,
     la ou relire le PDF final imposerait d'en extraire le texte.
     """
+    logger.debug(
+        "expert_section_story: session_objects={} styles={} top_n={}",
+        summarize(session_objects, "session_objects"),
+        summarize(styles, "styles"),
+        summarize(top_n, "top_n"),
+    )
     if session_objects is None:
+        logger.debug("expert_section_story: si session_objects is None -> retour liste vide")
         return []
     story = [
         Paragraph("Expertise -- objets enrichis", styles["H1b"]),
@@ -582,6 +666,7 @@ def expert_section_story(session_objects, styles, top_n=EXPERT_TABLE_TOP_N):
             Paragraph("Expertise tshark (signaux bruts)", styles["H2b"]),
             _expert_event_table(session_objects.wireshark_expert_events, styles, top_n),
         ]
+    logger.debug("expert_section_story: retour story={}", summarize(story, "story"))
     return story
 
 
@@ -598,6 +683,7 @@ def _kv_table(rows, styles, col_widths=None):
             ]
         )
     )
+    logger.debug("_kv_table: retour t={}", summarize(t, "t"))
     return t
 
 
@@ -611,14 +697,24 @@ _SEVERITY_PDF_COLORS = {
 
 def _securite_cible(host, port) -> str:
     if not host:
+        logger.debug("_securite_cible: si not host -> retour '-'")
         return "-"
+    logger.debug("_securite_cible: retour f'(host):(port)' if port is not None else str(hos…")
     return f"{host}:{port}" if port is not None else str(host)
 
 
 def _securite_table_constats(items, styles, avec_cve: bool, message_vide: str):
     """Tableau d'un lot de constats de securite, ou le message explicite
     qu'il n'y en a pas -- jamais une section muette (issue #218)."""
+    logger.debug(
+        "_securite_table_constats: items={} styles={} avec_cve={} message_vide={}",
+        summarize(items, "items"),
+        summarize(styles, "styles"),
+        summarize(avec_cve, "avec_cve"),
+        summarize(message_vide, "message_vide"),
+    )
     if not items:
+        logger.debug("_securite_table_constats: si not items -> retour Paragraph(…)")
         return Paragraph(message_vide, styles["Normal"])
     entetes = ["Gravite"] + (["CVE", "CVSS"] if avec_cve else []) + ["Detail", "Service", "Cible", "Point"]
     data = [[Paragraph(f"<b>{h}</b>", styles["Cell"]) for h in entetes]]
@@ -649,6 +745,7 @@ def _securite_table_constats(items, styles, avec_cve: bool, message_vide: str):
         if avec_cve
         else [1.7 * cm, 8.4 * cm, 3.0 * cm, 2.9 * cm, 2.0 * cm]
     )
+    logger.debug("_securite_table_constats: retour _grid_table(…)")
     return _grid_table(data, largeurs, highlight=highlight)
 
 
@@ -656,9 +753,16 @@ def _securite_table_detecteurs(items, styles, message_vide: str):
     """Constats des detecteurs Netcross regroupes par detecteur (#347) :
     chaque detecteur ayant produit un constat a au moins une ligne, avec
     son total ; au plus MAX_ROWS_PER_DETECTOR exemples par detecteur."""
+    logger.debug(
+        "_securite_table_detecteurs: items={} styles={} message_vide={}",
+        summarize(items, "items"),
+        summarize(styles, "styles"),
+        summarize(message_vide, "message_vide"),
+    )
     from netcross_report.security_report import MAX_ROWS_PER_DETECTOR, group_by_detector
 
     if not items:
+        logger.debug("_securite_table_detecteurs: si not items -> retour Paragraph(…)")
         return Paragraph(message_vide, styles["Normal"])
     entetes = ["Gravite", "Detecteur", "Detail", "Cible", "Point"]
     data = [[Paragraph(f"<b>{h}</b>", styles["Cell"]) for h in entetes]]
@@ -689,6 +793,7 @@ def _securite_table_detecteurs(items, styles, message_vide: str):
                     Paragraph("", styles["Cell"]),
                 ]
             )
+    logger.debug("_securite_table_detecteurs: retour _grid_table(…)")
     return _grid_table(data, [1.7 * cm, 3.4 * cm, 7.0 * cm, 2.9 * cm, 2.0 * cm], highlight=highlight)
 
 
@@ -705,7 +810,13 @@ def security_section_story(security_report, styles):
     vides comprises, avec leur message d'absence -- c'est le manque qui a
     produit l'issue #259 : une donnee calculee, jamais rendue.
     """
+    logger.debug(
+        "security_section_story: security_report={} styles={}",
+        summarize(security_report, "security_report"),
+        summarize(styles, "styles"),
+    )
     if security_report is None:
+        logger.debug("security_section_story: si security_report is None -> retour liste vide")
         return []
     from netcross_report.security_report import SEVERITIES, is_expert_info, security_report_to_dict
 
@@ -816,6 +927,7 @@ def security_section_story(security_report, styles):
                 styles["Small"],
             )
         )
+    logger.debug("security_section_story: retour story={}", summarize(story, "story"))
     return story
 
 
@@ -866,6 +978,20 @@ def generate_pdf(
     (meme convention d'absence que tls_findings/quic_findings ci-dessus,
     et jamais de recalcul ici : ces objets sont construits par l'appelant).
     """
+    logger.debug(
+        "generate_pdf: r={} output_path={} title={} meta={} findings={} tls_findings={} "
+        "quic_findings={} session_objects={} sequence_views={} security_report={}",
+        summarize(r, "r"),
+        summarize(output_path, "output_path"),
+        summarize(title, "title"),
+        summarize(meta, "meta"),
+        summarize(findings, "findings"),
+        summarize(tls_findings, "tls_findings"),
+        summarize(quic_findings, "quic_findings"),
+        summarize(session_objects, "session_objects"),
+        summarize(sequence_views, "sequence_views"),
+        summarize(security_report, "security_report"),
+    )
     if findings is None:
         findings = build_findings(r)
     ranked = rank_segments(list(findings) + list(tls_findings or []) + list(quic_findings or []))
@@ -1148,6 +1274,7 @@ def generate_pdf(
         )
         doc.build(story)
 
+    logger.debug("generate_pdf: retour output_path={}", summarize(output_path, "output_path"))
     return output_path
 
 
@@ -1189,6 +1316,21 @@ def generate_diff_pdf(
     apporter de vraie semantique de diff en echange. Voir claude.md pour
     la discussion complete de ce choix.
     """
+    logger.debug(
+        "generate_diff_pdf: findings={} baseline={} current={} output_path={} title={} meta={} "
+        "tls_findings_baseline={} tls_findings_current={} quic_findings_baseline={} "
+        "quic_findings_current={}",
+        summarize(findings, "findings"),
+        summarize(baseline, "baseline"),
+        summarize(current, "current"),
+        summarize(output_path, "output_path"),
+        summarize(title, "title"),
+        summarize(meta, "meta"),
+        summarize(tls_findings_baseline, "tls_findings_baseline"),
+        summarize(tls_findings_current, "tls_findings_current"),
+        summarize(quic_findings_baseline, "quic_findings_baseline"),
+        summarize(quic_findings_current, "quic_findings_current"),
+    )
     ranked = rank_segments(findings)
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1295,4 +1437,5 @@ def generate_diff_pdf(
         )
         doc.build(story)
 
+    logger.debug("generate_diff_pdf: retour output_path={}", summarize(output_path, "output_path"))
     return output_path

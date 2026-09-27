@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from statistics import mean, pstdev
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -38,6 +38,7 @@ def _splt_sizes(flow: dict) -> list[float]:
         value = item[0] if isinstance(item, (list, tuple)) else item
         if isinstance(value, (int, float)):
             sizes.append(abs(float(value)))
+    logger.debug("_splt_sizes: retour sizes={}", summarize(sizes, "sizes"))
     return sizes
 
 
@@ -49,6 +50,7 @@ def _size_counts(flow: dict) -> dict[float, int]:
         except (TypeError, ValueError):  # noqa: PERF203 -- entree JSON externe, rare
             logger.exception("échec dans _size_counts")
             continue
+    logger.debug("_size_counts: retour counts={}", summarize(counts, "counts"))
     return counts
 
 
@@ -71,8 +73,10 @@ def flow_features(flow: dict) -> list[float]:
         sum(n for s, n in counts.items() if s < _SMALL) / total if total else 0.0,
         sum(n for s, n in counts.items() if s > _LARGE) / total if total else 0.0,
     ]
+    logger.debug("flow_features: retour liste")
     return [v if math.isfinite(v) else 0.0 for v in vector]
 
 
 def flow_key(flow: dict) -> str:
+    logger.debug("flow_key: retour chaîne formatée")
     return f"{flow.get('src', '?')} -> {flow.get('dst', '?')}"

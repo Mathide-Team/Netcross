@@ -1170,6 +1170,7 @@ classDiagram
         +add_debug_argument(parser) None
         +apply_debug_argument(args) None
         +get_logger(name)
+        +summarize(value, name) str
     }
 
     %% ===== netcross_core.lua_doc =====

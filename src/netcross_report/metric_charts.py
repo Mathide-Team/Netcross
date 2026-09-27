@@ -24,7 +24,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -93,12 +93,23 @@ class MetricSeries:
         les longueurs de timestamps/labels ne correspondent pas a
         values."""
         if not self.values:
+            logger.trace("MetricSeries.validate: refus, ValueError")
+            logger.debug("MetricSeries.validate: si not self.values -> levée ValueError")
             raise ValueError("MetricSeries.values ne doit pas etre vide")
         n = len(self.values)
         if self.timestamps is not None and len(self.timestamps) != n:
+            logger.trace("MetricSeries.validate: refus, ValueError")
+            logger.debug(
+                "MetricSeries.validate: si self.timestamps is not None and len(self.timestamps) != n -> levée ValueEr…"
+            )
             raise ValueError(f"timestamps ({len(self.timestamps)}) et values ({n}) doivent avoir la meme longueur")
         if self.labels is not None and len(self.labels) != n:
+            logger.trace("MetricSeries.validate: refus, ValueError")
+            logger.debug(
+                "MetricSeries.validate: si self.labels is not None and len(self.labels) != n -> levée ValueError"
+            )
             raise ValueError(f"labels ({len(self.labels)}) et values ({n}) doivent avoir la meme longueur")
+        logger.debug("MetricSeries.validate: fin")
 
 
 # --- Couche de rendu --------------------------------------------------------
@@ -110,7 +121,9 @@ def _x_values(series: MetricSeries) -> list[float]:
     """Abscisses pour les rendus ligne/aire/scatter : timestamps
     si fournis, sinon index numeriques."""
     if series.timestamps is not None:
+        logger.debug("_x_values: si series.timestamps is not None -> retour list(…)")
         return list(series.timestamps)
+    logger.debug("_x_values: retour liste")
     return [float(i) for i in range(len(series.values))]
 
 
@@ -141,6 +154,7 @@ def _decorate(ax, series: MetricSeries) -> None:
                 fontsize=7,
                 color=th.color,
             )
+    logger.debug("_decorate: fin")
 
 
 def _title(series: MetricSeries) -> str:
@@ -148,24 +162,30 @@ def _title(series: MetricSeries) -> str:
     if series.context:
         ctx = ", ".join(f"{k}={v}" for k, v in series.context.items())
         parts.append(ctx)
+    logger.debug("_title: retour ' -- '.join(…)")
     return " -- ".join(parts)
 
 
 def _ylabel(series: MetricSeries) -> str:
+    logger.debug("_ylabel: retour series.unit if series.unit else ''")
     return series.unit if series.unit else ""
 
 
 def _save(fig, path: str) -> str:
+    logger.debug("_save: fig={} path={}", summarize(fig, "fig"), summarize(path, "path"))
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
+    logger.debug("_save: retour path={}", summarize(path, "path"))
     return path
 
 
 def render_line(series: MetricSeries, path: str) -> str | None:
     """Trace une courbe lineaire. Retourne le chemin PNG ou None si
     la serie est vide."""
+    logger.debug("render_line: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
+        logger.debug("render_line: si not series.values -> retour None")
         return None
     series.validate()
     x = _x_values(series)
@@ -176,13 +196,16 @@ def render_line(series: MetricSeries, path: str) -> str | None:
     ax.set_ylabel(_ylabel(series))
     ax.grid(axis="y", linestyle=":", alpha=0.4)
     _decorate(ax, series)
+    logger.debug("render_line: retour _save(…)")
     return _save(fig, path)
 
 
 def render_area(series: MetricSeries, path: str) -> str | None:
     """Trace une aire remplie sous la courbe. Retourne le chemin PNG
     ou None si la serie est vide."""
+    logger.debug("render_area: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
+        logger.debug("render_area: si not series.values -> retour None")
         return None
     series.validate()
     x = _x_values(series)
@@ -194,13 +217,16 @@ def render_area(series: MetricSeries, path: str) -> str | None:
     ax.set_ylabel(_ylabel(series))
     ax.grid(axis="y", linestyle=":", alpha=0.4)
     _decorate(ax, series)
+    logger.debug("render_area: retour _save(…)")
     return _save(fig, path)
 
 
 def render_bars(series: MetricSeries, path: str) -> str | None:
     """Trace un diagramme en barres. Utilise labels si fournis, sinon
     des index. Retourne le chemin PNG ou None si la serie est vide."""
+    logger.debug("render_bars: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
+        logger.debug("render_bars: si not series.values -> retour None")
         return None
     series.validate()
     x = list(range(len(series.values)))
@@ -213,6 +239,7 @@ def render_bars(series: MetricSeries, path: str) -> str | None:
     ax.set_ylabel(_ylabel(series))
     ax.grid(axis="y", linestyle=":", alpha=0.4)
     _decorate(ax, series)
+    logger.debug("render_bars: retour _save(…)")
     return _save(fig, path)
 
 
@@ -220,7 +247,9 @@ def render_histogram(series: MetricSeries, path: str) -> str | None:
     """Trace un histogramme (distribution) des valeurs. Ignore
     timestamps et labels. Retourne le chemin PNG ou None si la serie
     est vide ou contient moins de 2 valeurs distinctes."""
+    logger.debug("render_histogram: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
+        logger.debug("render_histogram: si not series.values -> retour None")
         return None
     series.validate()
     fig, ax = plt.subplots(figsize=(9, 3.2))
@@ -232,13 +261,16 @@ def render_histogram(series: MetricSeries, path: str) -> str | None:
         ax.set_xlabel(series.unit)
     ax.grid(axis="y", linestyle=":", alpha=0.4)
     _decorate(ax, series)
+    logger.debug("render_histogram: retour _save(…)")
     return _save(fig, path)
 
 
 def render_scatter(series: MetricSeries, path: str) -> str | None:
     """Trace un nuage de points. Utilise timestamps si fournis, sinon
     des index. Retourne le chemin PNG ou None si la serie est vide."""
+    logger.debug("render_scatter: series={} path={}", summarize(series, "series"), summarize(path, "path"))
     if not series.values:
+        logger.debug("render_scatter: si not series.values -> retour None")
         return None
     series.validate()
     x = _x_values(series)
@@ -249,6 +281,7 @@ def render_scatter(series: MetricSeries, path: str) -> str | None:
     ax.set_ylabel(_ylabel(series))
     ax.grid(axis="y", linestyle=":", alpha=0.4)
     _decorate(ax, series)
+    logger.debug("render_scatter: retour _save(…)")
     return _save(fig, path)
 
 
@@ -272,7 +305,15 @@ def render_metric_chart(
 
     Leve ValueError si ``kind`` n'est pas un type de graphique reconnu.
     """
+    logger.debug(
+        "render_metric_chart: series={} path={} kind={}",
+        summarize(series, "series"),
+        summarize(path, "path"),
+        summarize(kind, "kind"),
+    )
     renderer = _RENDERERS.get(kind)
     if renderer is None:
+        logger.debug("render_metric_chart: refus, ValueError")
         raise ValueError(f"Type de graphique inconnu : {kind!r}. Types reconnus : {', '.join(sorted(_RENDERERS))}")
+    logger.debug("render_metric_chart: retour renderer(…)")
     return renderer(series, path)

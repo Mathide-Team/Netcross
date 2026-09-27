@@ -164,7 +164,7 @@ oubli.
 from dataclasses import dataclass, field
 
 from netcross_core.expert_model import EvidenceLink, ExpertEvent, PacketEvidence
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 SEVERITY_ORDER = {"anomalie": 0, "a_surveiller": 1, "info": 2}
@@ -189,6 +189,7 @@ class Finding:
 
 
 def _pct(n, d):
+    logger.debug("_pct: retour n / d * 100.0 if d else 0.0")
     return (n / d * 100.0) if d else 0.0
 
 
@@ -211,11 +212,13 @@ def _evidence(point: str, texts, frames: list[int | None] | None = None) -> list
     produire puisque les deux listes sont toujours appendees ensemble,
     meme index, cote analysis.py)."""
     if not frames:
+        logger.debug("_evidence: si not frames -> retour liste")
         return [EvidenceLink(point, t) for t in texts]
     links = []
     for t, fn in zip(texts, frames):
         packet = PacketEvidence(point, fn) if fn is not None else None
         links.append(EvidenceLink(point, t, packet=packet))
+    logger.debug("_evidence: retour links={}", summarize(links, "links"))
     return links
 
 
@@ -245,6 +248,7 @@ def _http_error_evidence(examples: list[str], status_class: int, frames: list[in
             texts.append(ex)
             if frames is not None and i < len(frames):
                 filtered_frames.append(frames[i])
+    logger.debug("_http_error_evidence: retour tuple de 2")
     return texts, filtered_frames
 
 
@@ -958,4 +962,5 @@ def build_findings(r) -> list[Finding]:
             )
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f.severity, 9), f.category, f.segment))
+    logger.debug("build_findings: retour findings={}", summarize(findings, "findings"))
     return findings

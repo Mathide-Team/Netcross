@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -68,6 +68,7 @@ LEGACY_VENDORS: dict[tuple[str, str], tuple[str, ...]] = {
 
 def vendor_candidates(vendor: str, product: str) -> tuple[str, ...]:
     """Vendeur actuel puis vendeurs historiques du couple (vendor, product)."""
+    logger.debug("vendor_candidates: retour tuple de 2")
     return (vendor, *LEGACY_VENDORS.get((vendor, product), ()))
 
 
@@ -94,11 +95,13 @@ class ParsedBanner:
 
     @property
     def cpe23(self) -> str:
+        logger.debug("ParsedBanner.cpe23: retour build_cpe23(…)")
         return build_cpe23(self.vendor, self.product, self.version)
 
 
 def build_cpe23(vendor: str, product: str, version: str) -> str:
     """Construit un identifiant CPE 2.3 (partie applicative 'a')."""
+    logger.debug("build_cpe23: retour chaîne formatée")
     return f"cpe:2.3:a:{vendor}:{product}:{version}:*:*:*:*:*:*:*"
 
 
@@ -115,31 +118,38 @@ def parse_banner(banner: str) -> ParsedBanner | None:
     for token in banner.split():
         parsed = _parse_token(token)
         if parsed is not None:
+            logger.debug("parse_banner: si parsed is not None -> retour parsed={}", summarize(parsed, "parsed"))
             return parsed
     logger.trace("parse_banner: aucun produit reconnu")
+    logger.debug("parse_banner: retour None")
     return None
 
 
 def parse_all_banners(banner: str) -> list[ParsedBanner]:
     """Comme parse_banner(), mais renvoie tous les tokens reconnus (pas seulement le premier)."""
+    logger.debug("parse_all_banners: banner={}", summarize(banner, "banner"))
     parsed = []
     for token in banner.split():
         result = _parse_token(token)
         if result is not None:
             parsed.append(result)
+    logger.debug("parse_all_banners: {} token(s) reconnu(s) dans '{}'", len(parsed), banner)
     return parsed
 
 
 def _parse_token(token: str) -> ParsedBanner | None:
     match = _BANNER_RE.match(token.strip().strip("()"))
     if match is None:
+        logger.debug("_parse_token: si match is None -> retour None")
         return None
     name, version = match.group(1), match.group(2)
     key = name.lower()
     aliases = PRODUCT_ALIASES.get(key)
     if aliases is None:
+        logger.debug("_parse_token: si aliases is None -> retour None")
         return None
     vendor, product = aliases
+    logger.debug("_parse_token: retour ParsedBanner(…)")
     return ParsedBanner(raw=token, product_key=key, vendor=vendor, product=product, version=version)
 
 
@@ -152,6 +162,7 @@ def _version_key(version: str) -> tuple:
     deux versions alternent chiffres/lettres a des positions differentes
     (rare mais pas exclu, ex: "1.1.1k" vs "1.1.1a").
     """
+    logger.debug("_version_key: retour tuple(…)")
     return tuple((0, int(g)) if g.isdigit() else (1, g.lower()) for g in re.findall(r"\d+|[A-Za-z]+", version))
 
 
@@ -159,7 +170,9 @@ def compare_versions(a: str, b: str) -> int:
     """-1 si a < b, 0 si a == b, 1 si a > b (comparaison lexicographique par groupe, voir _version_key)."""
     ka, kb = _version_key(a), _version_key(b)
     if ka == kb:
+        logger.debug("compare_versions: si ka == kb -> retour 0")
         return 0
+    logger.debug("compare_versions: retour -1 if ka < kb else 1")
     return -1 if ka < kb else 1
 
 
@@ -185,13 +198,21 @@ def version_in_range(
 
     if not has_range:
         if exact is None or exact == "*":
+            logger.debug("version_in_range: produit entier concerne (pas de borne)")
             return True
-        return compare_versions(version, exact) == 0
+        result = compare_versions(version, exact) == 0
+        logger.debug("version_in_range: {} {}= {} -> {}", version, "=" if result else "!", exact, result)
+        return result
 
     if start_including is not None and compare_versions(version, start_including) < 0:
+        logger.debug("version_in_range: {} < start_including {} -> False", version, start_including)
         return False
     if start_excluding is not None and compare_versions(version, start_excluding) <= 0:
+        logger.debug("version_in_range: {} <= start_excluding {} -> False", version, start_excluding)
         return False
     if end_including is not None and compare_versions(version, end_including) > 0:
+        logger.debug("version_in_range: {} > end_including {} -> False", version, end_including)
         return False
-    return not (end_excluding is not None and compare_versions(version, end_excluding) >= 0)
+    result = not (end_excluding is not None and compare_versions(version, end_excluding) >= 0)
+    logger.debug("version_in_range: {} dans le range -> {}", version, result)
+    return result

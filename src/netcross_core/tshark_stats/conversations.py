@@ -83,4 +83,5 @@ def parse_conversations(text: str, protocol: str = "tcp") -> list[ConversationSt
                 **attrs,  # type: ignore[arg-type]
             )
         )
+    logger.debug("parse_conversations: {} conversation(s) {}", len(out), protocol)
     return out

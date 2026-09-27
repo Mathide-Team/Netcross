@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.tshark_stats.models import ApplicationStat
 from netcross_core.tshark_stats.parse_utils import (
     is_filter_line,
@@ -26,6 +26,11 @@ _LABELED_RE = re.compile(r"^\s*(.+?)\s{2,}(\d[\d,]*)\s*$")
 
 def parse_dns_stat(text: str, application: str = "dns") -> list[ApplicationStat]:
     """Convertit la sortie ``tshark -z dns,tree`` en ApplicationStat."""
+    logger.debug(
+        "parse_dns_stat: text={} application={}",
+        summarize(text, "text"),
+        summarize(application, "application"),
+    )
     metrics: dict[str, float] = {}
     raw: dict[str, str] = {}
     for line in text.splitlines():
@@ -41,7 +46,9 @@ def parse_dns_stat(text: str, application: str = "dns") -> list[ApplicationStat]
         metrics[label] = count
         raw[label] = m.group(2)
     if not metrics:
+        logger.debug("parse_dns_stat: aucune métrique DNS trouvée")
         return []
+    logger.debug("parse_dns_stat: {} métrique(s) DNS", len(metrics))
     return [
         ApplicationStat(
             application=application,

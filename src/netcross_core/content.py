@@ -74,6 +74,7 @@ def extract_http_objects(
     a partir des segments TCP.
     """
     if privacy_mode not in {"metadata", "forensic"}:
+        logger.trace("extract_http_objects: refus, ValueError")
         raise ValueError("privacy_mode doit etre 'metadata' ou 'forensic'")
 
     pending: dict[tuple, deque[Pkt]] = defaultdict(deque)
@@ -121,8 +122,15 @@ def extract_http_objects(
             )
         )
         if max_objects is not None and len(objects) >= max_objects:
+            logger.debug("extract_http_objects: limite max_objects atteinte ({})", max_objects)
             break
 
+    logger.debug(
+        "extract_http_objects: {} objet(s) HTTP (mode={}, requêtes en attente: {})",
+        len(objects),
+        privacy_mode,
+        sum(len(q) for q in pending.values()),
+    )
     return objects
 
 

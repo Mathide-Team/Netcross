@@ -40,6 +40,7 @@ def run_tshark_stat(
     une ``subprocess.TimeoutExpired`` / ``CalledProcessError`` sinon.
     """
     cmd = [tshark_bin, "-q", "-r", str(capture_path), "-z", z_arg, *extra_args]
+    logger.debug("run_tshark_stat: {} -z {}", capture_path, z_arg)
     try:
         completed = subprocess.run(
             cmd,
@@ -49,7 +50,7 @@ def run_tshark_stat(
             check=False,
         )
     except FileNotFoundError as exc:
-        logger.exception(f"échec dans run_tshark_stat: {exc}")
+        logger.exception("échec dans run_tshark_stat: {}", exc)
         raise TsharkUnavailableError(
             f"tshark introuvable sur le chemin ({tshark_bin!r}) -- installez "
             "Wireshark/tshark pour utiliser les statistiques -z"
@@ -57,5 +58,8 @@ def run_tshark_stat(
     # tshark retourne un code non nul sur pcap illisible ou option inconnue ;
     # on garde la sortie stdout quand elle contient le tableau attendu.
     if completed.returncode != 0 and not completed.stdout.strip():
+        logger.debug("run_tshark_stat: code de retour {} (aucune sortie)", completed.returncode)
         raise subprocess.CalledProcessError(completed.returncode, cmd, completed.stdout, completed.stderr)
+    if completed.returncode != 0:
+        logger.debug("run_tshark_stat: code de retour {} (sortie partielle conservée)", completed.returncode)
     return completed.stdout

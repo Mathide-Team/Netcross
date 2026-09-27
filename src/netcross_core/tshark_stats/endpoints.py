@@ -12,7 +12,7 @@ Toutes les colonnes brutes conservees dans ``raw_fields``.
 
 from __future__ import annotations
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.tshark_stats.models import EndpointStat
 from netcross_core.tshark_stats.parse_utils import (
     data_rows,
@@ -39,6 +39,7 @@ _COL_ORDER = (
 
 def parse_endpoints(text: str, protocol: str = "tcp") -> list[EndpointStat]:
     """Convertit la sortie ``tshark -z endpoints,<proto>`` en EndpointStat."""
+    logger.debug("parse_endpoints: text={} protocol={}", summarize(text, "text"), summarize(protocol, "protocol"))
     headers = reconstruct_headers(text)
     out: list[EndpointStat] = []
     for line in data_rows(text):
@@ -62,4 +63,5 @@ def parse_endpoints(text: str, protocol: str = "tcp") -> list[EndpointStat]:
                 **attrs,  # type: ignore[arg-type]
             )
         )
+    logger.debug("parse_endpoints: {} endpoint(s) {}", len(out), protocol)
     return out

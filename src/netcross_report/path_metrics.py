@@ -41,7 +41,7 @@ import statistics
 from dataclasses import dataclass
 
 from netcross_core.baseline_profile import build_baseline_profile
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -82,6 +82,7 @@ class SegmentMetrics:
         """Libelle du segment, identique a celui des Finding
         (`f"{a} -> {b}"`) : le lecteur doit pouvoir rapprocher une ligne de
         ce tableau d'un constat du triage sans traduction mentale."""
+        logger.debug("SegmentMetrics.label: retour chaîne formatée")
         return f"{self.upstream} -> {self.downstream}"
 
     @property
@@ -90,6 +91,7 @@ class SegmentMetrics:
         segment non mesure est affiche quand meme (son absence de donnees
         est une information), mais il ne participe pas au classement des
         degradations."""
+        logger.debug("SegmentMetrics.measured: retour self.samples > 0 or self.loss_count > 0 or bool(s…")
         return self.samples > 0 or self.loss_count > 0 or bool(self.dscp_changes or self.frag_new)
 
 
@@ -103,8 +105,10 @@ def _topological_points(report) -> list[str]:
     -- l'appelant retombe alors sur l'ordre de `report.pairs`, qui est
     toujours defini.
     """
+    logger.debug("_topological_points: report={}", summarize(report, "report"))
     edges = list(getattr(report, "topology_edges", None) or [])
     if not edges:
+        logger.debug("_topological_points: si not edges -> retour liste vide")
         return []
     successors: dict[str, list[str]] = {}
     in_degree: dict[str, int] = {}
@@ -123,8 +127,10 @@ def _topological_points(report) -> list[str]:
                 ready.append(nxt)
         ready.sort()
     if len(ordered) != len(in_degree):
+        logger.debug("_topological_points: si len(ordered) != len(in_degree) -> retour liste vide")
         return []  # cycle : on ne pretend pas connaitre l'ordre du chemin
     ordered.extend(p for p in report.points if p not in in_degree)
+    logger.debug("_topological_points: retour ordered={}", summarize(ordered, "ordered"))
     return ordered
 
 
@@ -133,12 +139,15 @@ def _ordered_pairs(report) -> list[tuple[str, str]]:
     deduit quand c'est possible. `report.pairs` reste la source de verite
     des segments EXISTANTS : la topologie ne sert qu'a les trier, jamais a
     en ajouter ou en retirer."""
+    logger.debug("_ordered_pairs: report={}", summarize(report, "report"))
     pairs = list(report.pairs)
     order = _topological_points(report)
     if not order:
+        logger.debug("_ordered_pairs: si not order -> retour pairs={}", summarize(pairs, "pairs"))
         return pairs
     rank = {point: i for i, point in enumerate(order)}
     fallback = len(rank)
+    logger.debug("_ordered_pairs: retour sorted(…)")
     return sorted(pairs, key=lambda ab: (rank.get(ab[0], fallback), rank.get(ab[1], fallback)))
 
 
@@ -148,8 +157,10 @@ def _throughput_bps(report, point) -> float | None:
     aucune tranche (option de debit non calculee sur ce run)."""
     buckets = (report.throughput or {}).get(point) or {}
     if not buckets:
+        logger.debug("_throughput_bps: si not buckets -> retour None")
         return None
     duration = max(len(buckets), 1) * (report.bucket_seconds or 1.0)
+    logger.debug("_throughput_bps: retour sum(buckets.values()) * 8.0 / duration")
     return sum(buckets.values()) * 8.0 / duration
 
 
@@ -157,6 +168,7 @@ def build_path_metrics(report) -> list[SegmentMetrics]:
     """Une entree par segment de `report.pairs`, ordonnee le long du chemin
     observe. Pure fonction de regroupement : aucune capture relue, aucun
     seuil applique."""
+    logger.debug("build_path_metrics: report={}", summarize(report, "report"))
     metrics = []
     for a, b in _ordered_pairs(report):
         delays = list(report.latency.get((a, b), []) or [])
@@ -182,6 +194,7 @@ def build_path_metrics(report) -> list[SegmentMetrics]:
             seg.hops = int(statistics.median(hop_deltas))
         seg.hop_outliers = report.hop_delta_outliers.get((a, b), 0)
         metrics.append(seg)
+    logger.debug("build_path_metrics: retour metrics={}", summarize(metrics, "metrics"))
     return metrics
 
 
@@ -198,6 +211,7 @@ def rank_path_segments(metrics) -> list[SegmentMetrics]:
     les classer les mettrait a egalite avec des segments sains alors qu'on
     ne sait rien d'eux.
     """
+    logger.debug("rank_path_segments: metrics={}", summarize(metrics, "metrics"))
     return sorted(
         (seg for seg in metrics if seg.measured),
         key=lambda seg: (
@@ -213,10 +227,13 @@ def degradation_summary(metrics) -> str:
     """Phrase de tete de section : ou la qualite se degrade-t-elle ?
     Descriptive et chiffree, jamais prescriptive -- les recommandations
     restent du ressort des Finding/ExpertEvent."""
+    logger.debug("degradation_summary: metrics={}", summarize(metrics, "metrics"))
     ranked = rank_path_segments(metrics)
     if not metrics:
+        logger.debug('degradation_summary: si not metrics -> retour "Aucun segment exploitable : la topolog…')
         return "Aucun segment exploitable : la topologie n'a pas pu etre deduite de ces captures."
     if not ranked:
+        logger.debug("degradation_summary: si not ranked -> retour 'Aucune metrique de qualite mesurable s…")
         return (
             "Aucune metrique de qualite mesurable sur les segments observes "
             "(ni delai, ni perte, ni remarquage) -- horloges non synchronisees "
@@ -232,4 +249,5 @@ def degradation_summary(metrics) -> str:
         details.append(f"gigue {pire.jitter_ms:.1f} ms")
     if not details:
         details.append("aucune metrique chiffree")
+    logger.debug("degradation_summary: retour f'Segment le plus degrade : (pire.label) -- ' + '…")
     return f"Segment le plus degrade : {pire.label} -- " + ", ".join(details) + "."

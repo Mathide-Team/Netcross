@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.tshark_stats.conversations import parse_conversations
 from netcross_core.tshark_stats.dns import parse_dns_stat
 from netcross_core.tshark_stats.endpoints import parse_endpoints
@@ -67,21 +67,30 @@ __all__ = [
 def collect_conversations(capture_path: str | Path, protocol: str = "tcp") -> list[ConversationStat]:
     """Lance ``tshark -z conv,<proto>`` sur la capture et parse le resultat."""
     text = run_tshark_stat(capture_path, f"conv,{protocol}")
-    return parse_conversations(text, protocol=protocol)
+    result = parse_conversations(text, protocol=protocol)
+    logger.debug("collect_conversations: {} conversation(s) {}", len(result), protocol)
+    return result
 
 
 def collect_endpoints(capture_path: str | Path, protocol: str = "tcp") -> list[EndpointStat]:
     text = run_tshark_stat(capture_path, f"endpoints,{protocol}")
-    return parse_endpoints(text, protocol=protocol)
+    result = parse_endpoints(text, protocol=protocol)
+    logger.debug("collect_endpoints: {} endpoint(s) {}", len(result), protocol)
+    return result
 
 
 def collect_protocol_hierarchy(
     capture_path: str | Path,
 ) -> list[ProtocolHierarchyStat]:
+    logger.debug("collect_protocol_hierarchy: capture_path={}", summarize(capture_path, "capture_path"))
     text = run_tshark_stat(capture_path, "io,phs")
-    return parse_protocol_hierarchy(text)
+    result = parse_protocol_hierarchy(text)
+    logger.debug("collect_protocol_hierarchy: {} protocole(s)", len(result))
+    return result
 
 
 def collect_io_stat(capture_path: str | Path, interval: float = 1.0, name: str = "io_stat") -> MetricSeries:
     text = run_tshark_stat(capture_path, f"io,stat,{interval}")
-    return parse_io_stat(text, name=name)
+    result = parse_io_stat(text, name=name)
+    logger.debug("collect_io_stat: {} point(s) de mesure", len(result.points))
+    return result

@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 
 from netcross_core.application.models import ApplicationTransaction
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -23,6 +23,7 @@ def _dns_key(pkt: Pkt) -> tuple[str, str, str, int | None, int | None, str | int
     Inclure query_name réduit les collisions d'ID réutilisés ; inclure
     endpoints évite de confondre deux clients avec le même txn_id.
     """
+    logger.debug("_dns_key: retour tuple de 6")
     return (pkt.point, pkt.src, pkt.dst, pkt.sport, pkt.dport, pkt.dns_txn_id or 0)
 
 
@@ -88,6 +89,7 @@ def build_dns_transactions(
             transactions.append(txn)
 
     transactions.sort(key=lambda t: t.request_ts or 0.0)
+    logger.debug("build_dns_transactions: retour transactions={}", summarize(transactions, "transactions"))
     return transactions
 
 
@@ -99,6 +101,7 @@ def _build_dns_transaction(
     total_ms = (response.ts - request.ts) * 1000.0 if response.ts and request.ts else None
     query_name = request.dns_qry_name or response.dns_qry_name or ""
 
+    logger.debug("_build_dns_transaction: retour ApplicationTransaction(…)")
     return ApplicationTransaction(
         protocol="DNS",
         point=request.point,

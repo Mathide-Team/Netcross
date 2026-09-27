@@ -38,7 +38,7 @@ from netcross_ai.outbox import (
     queue_pack,
     submission,
 )
-from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -46,15 +46,18 @@ EXIT_OFFLINE = 3
 
 
 def _print_pack(summary: dict) -> None:
+    logger.debug("_print_pack: summary={}", summarize(summary, "summary"))
     labels = ", ".join(f"{k}={v}" for k, v in summary["labels"].items()) or "-"
     print(f"Paquet {summary['name']} (cree le {summary['created']})")
     if summary["description"]:
         print(f"  {summary['description']}")
     print(f"  baseline : {summary['baseline_vectors']} flux ({summary['baseline_label'] or 'sans libelle'})")
     print(f"  exemples etiquetes : {summary['training_samples']} ({labels})")
+    logger.debug("_print_pack: fin")
 
 
 def _cmd_export(args) -> int:
+    logger.debug("_cmd_export: args={}", summarize(args, "args"))
     baseline = Baseline.load(args.baseline) if args.baseline else None
     training = load_training_set(args.training) if args.training else None
     pack = build_pack(
@@ -69,20 +72,24 @@ def _cmd_export(args) -> int:
     _print_pack(pack.summary())
     if args.queue:
         print(f"Mis en file : {queue_pack(args.output, args.outbox)}")
+    logger.debug("_cmd_export: retour 0")
     return 0
 
 
 def _cmd_inspect(args) -> int:
+    logger.debug("_cmd_inspect: args={}", summarize(args, "args"))
     pack = read_pack(args.pack)
     if args.json:
         print(json.dumps(pack.summary(), ensure_ascii=False, indent=1))
     else:
         print("Archive verifiee (contenu attendu, empreintes SHA-256, schemas).")
         _print_pack(pack.summary())
+    logger.debug("_cmd_inspect: retour 0")
     return 0
 
 
 def _cmd_import(args) -> int:
+    logger.debug("_cmd_import: args={}", summarize(args, "args"))
     result = import_pack(args.pack, baseline_path=args.baseline, training_path=args.training)
     _print_pack(result["pack"])
     if "baseline" in result:
@@ -91,14 +98,18 @@ def _cmd_import(args) -> int:
         print(f"Jeu enrichi : {result['training']['path']} ({result['training']['samples']} exemples)")
     if "baseline" not in result and "training" not in result:
         print("Rien a importer pour les fichiers demandes (le paquet ne contient pas ce type de modele).")
+    logger.debug("_cmd_import: retour 0")
     return 0
 
 
 def _cmd_outbox(args) -> int:
     if args.action == "add":
         if not args.target:
+            logger.trace("_cmd_outbox: refus, ModelPackError")
+            logger.debug("_cmd_outbox: si not args.target -> levée ModelPackError")
             raise ModelPackError("outbox add : chemin du paquet ZIP attendu")
         print(f"Mis en file : {queue_pack(args.target, args.outbox)}")
+        logger.debug("_cmd_outbox: si args.action == 'add' -> retour 0")
         return 0
     if args.action == "list":
         packs = pending(args.outbox)
@@ -106,19 +117,28 @@ def _cmd_outbox(args) -> int:
             print(f"Boite d'envoi vide ({args.outbox}).")
         for pack in packs:
             _print_pack(pack.summary())
+        logger.debug("_cmd_outbox: si args.action == 'list' -> retour 0")
         return 0
     if args.action == "done":
         if not args.target:
+            logger.trace("_cmd_outbox: refus, ModelPackError")
+            logger.debug("_cmd_outbox: si not args.target -> levée ModelPackError")
             raise ModelPackError("outbox done : nom du paquet attendu")
         print(f"Marque comme envoye : {mark_sent(args.target, args.outbox)}")
+        logger.debug("_cmd_outbox: si args.action == 'done' -> retour 0")
         return 0
     # send
     names = [args.target] if args.target else [p.name for p in pending(args.outbox)]
     if not names:
         print(f"Boite d'envoi vide ({args.outbox}).")
+        logger.debug("_cmd_outbox: si not names -> retour 0")
         return 0
     if not args.skip_check and not is_online():
         print(f"Hors connexion : {len(names)} paquet(s) en attente dans {args.outbox}, a soumettre plus tard.")
+        logger.debug(
+            "_cmd_outbox: si not args.skip_check and (not is_online()) -> retour EXIT_OFFLINE={}",
+            summarize(EXIT_OFFLINE, "EXIT_OFFLINE"),
+        )
         return EXIT_OFFLINE
     for name in names:
         sub = submission(name, args.outbox, args.repo)
@@ -129,10 +149,12 @@ def _cmd_outbox(args) -> int:
         if args.open:
             webbrowser.open(sub.url)
     print(f"\nUne fois le ticket cree : outbox done NOM (range le paquet dans {Path(args.outbox) / 'envoyes'}).")
+    logger.debug("_cmd_outbox: retour 0")
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
+    logger.debug("build_parser()")
     parser = argparse.ArgumentParser(
         prog="netcross_ai_models_cli", description="Paquets de modeles IA partageables (issue #271)"
     )
@@ -168,6 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
     box.add_argument("--open", action="store_true", help="ouvrir le formulaire de ticket dans le navigateur")
     box.add_argument("--skip-check", action="store_true", help="ne pas tester la connectivite avant send")
     box.set_defaults(func=_cmd_outbox)
+    logger.debug("build_parser: retour parser={}", summarize(parser, "parser"))
     return parser
 
 
@@ -177,10 +200,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     apply_debug_argument(args)
     try:
+        logger.debug("main: retour int(…)")
         return int(args.func(args))
     except (ModelPackError, BaselineError, TrainingSetError, OSError) as exc:
         logger.exception(f"échec dans main: {exc}")
         print(f"Erreur : {exc}", file=sys.stderr)
+        logger.debug("main: except (ModelPackError, BaselineError, Trainin… -> retour 1")
         return 1
 
 

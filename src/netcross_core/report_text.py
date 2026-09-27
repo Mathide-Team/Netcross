@@ -9,7 +9,7 @@ import statistics
 from collections import Counter, defaultdict
 
 from netcross_core.forensic import annotations_by_tag
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import (
     SEQ_GAP_CAPTURE_DROP,
     SEQ_GAP_INDETERMINATE,
@@ -58,12 +58,15 @@ def _linktype_lisible(code) -> str:
     utilisateur remonte une encapsulation exotique.
     """
     if code is None:
+        logger.debug("_linktype_lisible: si code is None -> retour '?'")
         return "?"
     nom = _DLT_NAMES.get(code)
+    logger.debug("_linktype_lisible: retour f'(code) ((nom))' if nom else str(code)")
     return f"{code} ({nom})" if nom else str(code)
 
 
 def print_report(r: Report):
+    logger.debug("print_report: r={}", summarize(r, "r"))
     print("=" * 70)
     print("ANALYSE CROISEE DE CAPTURES")
     print("=" * 70)
@@ -900,6 +903,7 @@ def print_report(r: Report):
             print(f"  ... {len(extracted) - 50} fichier(s) supplementaire(s) non affiche(s)")
     else:
         print("  aucun fichier extrait")
+    logger.debug("print_report: fin")
 
 
 # Nombre maximal de trous detailles par point dans le rapport texte (les
@@ -916,6 +920,7 @@ _SEQ_GAP_LABELS = {
 def print_sequence_gaps(r: Report):
     """Detail de la section "Integrite de capture" : trous de sequence TCP par
     point, avec leur cause (capture / reseau / indeterminee)."""
+    logger.debug("print_sequence_gaps: r={}", summarize(r, "r"))
     print(
         "  (octets jamais vus a ce point alors que des octets posterieurs l'ont ete, sans retransmission ulterieure ;"
     )
@@ -941,6 +946,7 @@ def print_sequence_gaps(r: Report):
             )
         if len(gaps) > _MAX_SEQ_GAP_EXAMPLES:
             print(f"      ... et {len(gaps) - _MAX_SEQ_GAP_EXAMPLES} autre(s) trou(s)")
+    logger.debug("print_sequence_gaps: fin")
 
 
 def print_annotations(annotations: list[PacketAnnotation]):
@@ -954,9 +960,11 @@ def print_annotations(annotations: list[PacketAnnotation]):
     de la passer ici, symetrique de `write_detail_csv` ci-dessous qui
     prend `flows`/`points` directement plutot que de deduire un chemin
     de capture."""
+    logger.debug("print_annotations: annotations={}", summarize(annotations, "annotations"))
     print("\n-- Annotations (etiquettes et signets sur paquets) --")
     if not annotations:
         print("  aucune annotation (pas de sidecar, ou sidecar vide)")
+        logger.debug("print_annotations: si not annotations -> retour")
         return
     by_tag = annotations_by_tag(annotations)
     for tag in sorted(by_tag):
@@ -964,6 +972,7 @@ def print_annotations(annotations: list[PacketAnnotation]):
         for ann in sorted(by_tag[tag], key=lambda a: a.frame_number):
             suffix = f" -- {ann.comment}" if ann.comment else ""
             print(f"    trame #{ann.frame_number}{suffix}")
+    logger.debug("print_annotations: fin")
 
 
 def write_detail_csv(path, flows, points, names=None):
@@ -971,9 +980,19 @@ def write_detail_csv(path, flows, points, names=None):
     ``netcross_core.naming.NameTable``) est fourni, les colonnes src/dst
     affichent les noms logiques resolus a la place des adresses brutes."""
 
+    logger.debug(
+        "write_detail_csv: path={} flows={} points={} names={}",
+        summarize(path, "path"),
+        summarize(flows, "flows"),
+        summarize(points, "points"),
+        summarize(names, "names"),
+    )
+
     def _label(addr) -> str:
         if names is None:
+            logger.debug("write_detail_csv._label: si names is None -> retour str(…)")
             return str(addr)
+        logger.debug("write_detail_csv._label: retour names.display(str(addr)) if addr is not None else…")
         return names.display(str(addr)) if addr is not None else ""
 
     with open(path, "w", newline="") as f:
@@ -995,3 +1014,4 @@ def write_detail_csv(path, flows, points, names=None):
             row.extend(per_point[p][0].dscp if p in per_point else "" for p in points)
             row.extend(per_point[p][0].ttl if p in per_point else "" for p in points)
             w.writerow(row)
+    logger.debug("write_detail_csv: fin")

@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from netcross_core.discovery.os_detect import OsGuess, guess_os_from_ttl, refine_with_tcp_options
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import ROLE_SERVER, Pkt
 
 logger = get_logger(__name__)
@@ -82,6 +82,7 @@ class HostAsset:
     def sorted_ports(self) -> list[ExposedService]:
         """Ports exposes, tries (port, transport) -- ordre stable pour
         l'affichage et les exports (voir to_records)."""
+        logger.debug("HostAsset.sorted_ports: retour liste")
         return [self.ports[key] for key in sorted(self.ports)]
 
 
@@ -101,6 +102,7 @@ class AssetInventory:
     def sorted_hosts(self) -> list[HostAsset]:
         """Hotes tries par IP -- ordre stable pour l'affichage et les
         exports (voir to_records)."""
+        logger.debug("AssetInventory.sorted_hosts: retour liste")
         return [self.hosts[ip] for ip in sorted(self.hosts)]
 
     def to_records(self) -> list[dict]:
@@ -111,6 +113,7 @@ class AssetInventory:
         couches : netcross_core n'importe jamais netcross_report).
         Sert de base a une integration SIEM (critere d'acceptation de
         l'issue #151)."""
+        logger.debug("AssetInventory.to_records()")
         records = []
         for host in self.sorted_hosts():
             os_guess = host.os_guess
@@ -139,6 +142,7 @@ class AssetInventory:
                     "is_new": host.ip in self.new_hosts,
                 }
             )
+        logger.debug("AssetInventory.to_records: retour records={}", summarize(records, "records"))
         return records
 
 
@@ -156,11 +160,17 @@ def load_baseline_hosts(path: str | Path) -> set[str]:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         logger.exception("échec dans load_baseline_hosts")
+        logger.debug("load_baseline_hosts: except (OSError, json.JSONDecodeError) -> retour set(…)")
         return set()
     if isinstance(data, list):
+        logger.debug("load_baseline_hosts: si isinstance(data, list) -> retour ensemble")
         return {str(ip) for ip in data}
     if isinstance(data, dict) and isinstance(data.get("hosts"), list):
+        logger.debug(
+            "load_baseline_hosts: si isinstance(data, dict) and isinstance(data.get('hosts'), li… -> retour ensemble"
+        )
         return {str(ip) for ip in data["hosts"]}
+    logger.debug("load_baseline_hosts: retour set(…)")
     return set()
 
 
@@ -169,6 +179,7 @@ def _get_or_create(hosts: dict[str, HostAsset], ip: str) -> HostAsset:
     if host is None:
         host = HostAsset(ip=ip)
         hosts[ip] = host
+    logger.debug("_get_or_create: retour host={}", summarize(host, "host"))
     return host
 
 
@@ -181,6 +192,7 @@ def _touch(host: HostAsset, pkt: Pkt) -> None:
     host.points.add(pkt.point)
     if pkt.vlan_id is not None:
         host.vlan_ids.add(pkt.vlan_id)
+    logger.debug("_touch: fin")
 
 
 def _record_banner_service(host: HostAsset, pkt: Pkt) -> None:
@@ -189,9 +201,11 @@ def _record_banner_service(host: HostAsset, pkt: Pkt) -> None:
     porte -- le logiciel annonce tourne sur pkt.src, sur le port par
     lequel il vient de repondre."""
     if not pkt.service_banners:
+        logger.debug("_record_banner_service: si not pkt.service_banners -> retour")
         return
     target_port = pkt.sport if pkt.sport is not None else pkt.dport
     if target_port is None:
+        logger.debug("_record_banner_service: si target_port is None -> retour")
         return
     transport = PROTO_TCP if pkt.proto == "TCP" else PROTO_UDP
     key = (target_port, transport)
@@ -206,6 +220,7 @@ def _record_banner_service(host: HostAsset, pkt: Pkt) -> None:
         elif existing.service is None:
             existing.service = banner.service
             existing.version = banner.version
+    logger.debug("_record_banner_service: fin")
 
 
 def build_asset_inventory(all_packets: list[Pkt], baseline_hosts: set[str] | None = None) -> AssetInventory:
@@ -227,6 +242,11 @@ def build_asset_inventory(all_packets: list[Pkt], baseline_hosts: set[str] | Non
     classique d'une baseline mal initialisee qui noierait l'analyste
     sous de faux positifs des le premier lancement).
     """
+    logger.debug(
+        "build_asset_inventory: all_packets={} baseline_hosts={}",
+        summarize(all_packets, "all_packets"),
+        summarize(baseline_hosts, "baseline_hosts"),
+    )
     hosts: dict[str, HostAsset] = {}
     ttl_samples: dict[str, list[int]] = {}
     handshake_samples: dict[str, Pkt] = {}
@@ -295,4 +315,5 @@ def build_asset_inventory(all_packets: list[Pkt], baseline_hosts: set[str] | Non
     baseline = baseline_hosts or set()
     new_hosts = tuple(sorted(ip for ip in hosts if baseline and ip not in baseline))
 
+    logger.debug("build_asset_inventory: retour AssetInventory(…)")
     return AssetInventory(hosts=hosts, new_hosts=new_hosts, baseline_size=len(baseline))

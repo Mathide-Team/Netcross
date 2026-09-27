@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.tshark_stats.models import MetricPoint, MetricSeries
 from netcross_core.tshark_stats.parse_utils import (
     is_filter_line,
@@ -38,6 +38,7 @@ def parse_io_stat(text: str, name: str = "io_stat") -> MetricSeries:
     ``value_1``... Retourne une serie vide si aucun intervalle n'est
     trouve.
     """
+    logger.debug("parse_io_stat: text={} name={}", summarize(text, "text"), summarize(name, "name"))
     headers = reconstruct_headers(text)
     # En-tete des colonnes de valeurs (hors colonne "time").
     value_headers = [h for h in headers if h and "time" not in h]
@@ -70,4 +71,5 @@ def parse_io_stat(text: str, name: str = "io_stat") -> MetricSeries:
             key = value_headers[i] if i < len(value_headers) else f"value_{i}"
             values[key] = parsed
         points.append(MetricPoint(start=start, end=end, values=values))
+    logger.debug("parse_io_stat: {} point(s) de mesure", len(points))
     return MetricSeries(name=name, points=tuple(points))
