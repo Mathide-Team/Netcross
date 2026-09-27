@@ -101,6 +101,7 @@ ALERT_DESCRIPTIONS = {
 
 
 def _tls_version_str(major: int, minor: int) -> str:
+    logger.debug("_tls_version_str: retour TLS_VERSIONS.get(…)")
     return TLS_VERSIONS.get((major, minor), f"0x{major:02x}{minor:02x}")
 
 
@@ -127,10 +128,12 @@ def _flow_id(src: str, sport: int, dst: str, dport: int) -> str:
     """Identifiant de flux independant du sens (client->serveur ou
     serveur->client voient le meme flux avec src/dst inverses)."""
     a, b = f"{src}:{sport}", f"{dst}:{dport}"
+    logger.debug("_flow_id: retour ' <-> '.join(…)")
     return " <-> ".join(sorted((a, b)))
 
 
 def _read_u16(b: bytes, i: int) -> int | None:
+    logger.debug("_read_u16: retour int.from_bytes(b[i:i + 2], 'big') if i + 2 <= len…")
     return int.from_bytes(b[i : i + 2], "big") if i + 2 <= len(b) else None
 
 
@@ -143,24 +146,29 @@ def parse_client_hello(body: bytes) -> dict:
     """
     if len(body) < 34:
         logger.trace("parse_client_hello: corps trop court ({} octets), ignore", len(body))
+        logger.debug("parse_client_hello: si len(body) < 34 -> retour dictionnaire vide")
         return {}
     version = _tls_version_str(body[0], body[1])
     i = 34  # client_version(2) + random(32)
     if i >= len(body):
+        logger.debug("parse_client_hello: si i >= len(body) -> retour dictionnaire")
         return {"tls_version": version}
     session_id_len = body[i]
     i += 1 + session_id_len
     cs_len = _read_u16(body, i)
     if cs_len is None:
+        logger.debug("parse_client_hello: si cs_len is None -> retour dictionnaire")
         return {"tls_version": version}
     i += 2 + cs_len
     if i >= len(body):
+        logger.debug("parse_client_hello: si i >= len(body) -> retour dictionnaire")
         return {"tls_version": version}
     comp_len = body[i]
     i += 1 + comp_len
     ext_total_len = _read_u16(body, i)
     if ext_total_len is None:
         logger.trace("parse_client_hello: ClientHello sans extensions, SNI inconnu")
+        logger.debug("parse_client_hello: si ext_total_len is None -> retour dictionnaire")
         return {"tls_version": version}
     i += 2
     ext_end = min(i + ext_total_len, len(body))
@@ -176,6 +184,7 @@ def parse_client_hello(body: bytes) -> dict:
             if name_len is not None:
                 sni = ext_body[5 : 5 + name_len].decode(errors="replace")
         i += 4 + ext_len
+    logger.debug("parse_client_hello: retour dictionnaire")
     return {"tls_version": version, "sni": sni}
 
 
@@ -183,6 +192,7 @@ def parse_server_hello(body: bytes) -> dict:
     """Extrait la version TLS negociee et le cipher suite choisi."""
     if len(body) < 35:
         logger.trace("parse_server_hello: corps trop court ({} octets), ignore", len(body))
+        logger.debug("parse_server_hello: si len(body) < 35 -> retour dictionnaire vide")
         return {}
     version = _tls_version_str(body[0], body[1])
     i = 34
@@ -190,16 +200,20 @@ def parse_server_hello(body: bytes) -> dict:
     i += 1 + session_id_len
     cipher = _read_u16(body, i)
     if cipher is None:
+        logger.debug("parse_server_hello: si cipher is None -> retour dictionnaire")
         return {"tls_version": version}
+    logger.debug("parse_server_hello: retour dictionnaire")
     return {"tls_version": version, "cipher": f"0x{cipher:04x}"}
 
 
 def parse_alert(body: bytes) -> dict:
     if len(body) < 2:
         logger.trace("parse_alert: alerte tronquee ({} octet(s))", len(body))
+        logger.debug("parse_alert: si len(body) < 2 -> retour dictionnaire vide")
         return {}
     level = ALERT_LEVELS.get(body[0], f"unknown({body[0]})")
     desc = ALERT_DESCRIPTIONS.get(body[1], f"unknown({body[1]})")
+    logger.debug("parse_alert: retour dictionnaire")
     return {"level": level, "description": desc}
 
 
@@ -225,6 +239,7 @@ def _iter_tls_records(
             logger.trace("_iter_tls_records: record de {} octets tronque a {}", length, len(body))
             break  # le reste est dans un segment suivant, pas de reassemblage ici
         i = body_end
+    logger.debug("_iter_tls_records: fin")
 
 
 def _iter_handshake_messages(body: bytes) -> Iterator[tuple[int, bytes, bool]]:
@@ -244,9 +259,11 @@ def _iter_handshake_messages(body: bytes) -> Iterator[tuple[int, bytes, bool]]:
             break
         yield htype, body[msg_start:msg_end], False
         i = msg_end
+    logger.debug("_iter_handshake_messages: fin")
 
 
 def _looks_like_tls(payload: bytes) -> bool:
+    logger.debug("_looks_like_tls: retour len(payload) >= 5 and payload[0] in TLS_CONTENT_T…")
     return len(payload) >= 5 and payload[0] in TLS_CONTENT_TYPES and payload[1] == 3
 
 
@@ -364,13 +381,18 @@ class HandshakeStatus:
     @property
     def verdict(self) -> str:
         if self.fatal_alert:
+            logger.debug("HandshakeStatus.verdict: si self.fatal_alert -> retour chaîne formatée")
             return f"alert_fatal:{self.fatal_alert}"
         if self.application_data_seen:
+            logger.debug("HandshakeStatus.verdict: si self.application_data_seen -> retour 'complete'")
             return "complete"
         if self.server_hello_seen:
+            logger.debug("HandshakeStatus.verdict: si self.server_hello_seen -> retour 'server_hello_no_data'")
             return "server_hello_no_data"
         if self.client_hello_seen:
+            logger.debug("HandshakeStatus.verdict: si self.client_hello_seen -> retour 'client_hello_no_reply'")
             return "client_hello_no_reply"
+        logger.debug("HandshakeStatus.verdict: retour 'no_handshake_seen'")
         return "no_handshake_seen"
 
 
@@ -523,6 +545,8 @@ def print_tls_diagnostics(findings: list[TlsFinding]) -> None:
             "\nAucun trafic TLS detecte (ou aucune capture ne contenait de segment "
             "reconnaissable comme TLS -- QUIC/HTTP3 et le TLS en tunnel ne sont pas couverts)."
         )
+        logger.debug("print_tls_diagnostics: si not findings -> retour")
         return
     for f in findings:
         print(f"  [{f.severity:12s}] {f.segment:20s} : {f.message}")
+    logger.debug("print_tls_diagnostics: fin")
