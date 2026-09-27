@@ -53,10 +53,13 @@ def _quality(mos_values: list[float]) -> str:
         return "unknown"
     mos = sum(mos_values) / len(mos_values)
     if mos < 3.0:
-        return "poor"
-    if mos < 3.6:
-        return "fair"
-    return "good"
+        result = "poor"
+    elif mos < 3.6:
+        result = "fair"
+    else:
+        result = "good"
+    logger.debug("_quality: MOS moyen={} -> {}", round(mos, 2), result)
+    return result
 
 
 def build_calls(all_packets, rtp_streams: list[dict]) -> tuple[list[Call], dict[str, int]]:
@@ -197,4 +200,10 @@ def build_calls(all_packets, rtp_streams: list[dict]) -> tuple[list[Call], dict[
             )
 
     distribution = Counter(call.quality for call in calls)
+    logger.debug(
+        "build_calls: {} appel(s), {} flux RTP rattaché(s), {} ambigu(s)",
+        len(calls),
+        attached,
+        ambiguous,
+    )
     return calls, dict(distribution)
