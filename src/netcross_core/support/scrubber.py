@@ -240,6 +240,7 @@ class TextScrubber:
 
     def __init__(self) -> None:
         # valeur reelle -> pseudonyme
+        logger.debug("TextScrubber.__init__()")
         self._map: dict[str, str] = {}
         # valeur reelle -> categorie (pour l'export du mapping)
         self._kind: dict[str, str] = {}

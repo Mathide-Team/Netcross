@@ -20,7 +20,7 @@ from pathlib import Path
 
 from netcross_ai.features import FEATURE_NAMES, flow_features, flow_key
 from netcross_ai.optional import require_ml
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 TRAINING_SCHEMA = "netcross.ai.training/1"
@@ -34,6 +34,7 @@ class TrainingSetError(ValueError):
 
 def export_training_set(flows: list[dict], path: str | Path) -> int:
     """Ecrit les flux pre-etiquetes (classification FLOW-4) a relire/corriger."""
+    logger.debug("export_training_set: flows={} path={}", summarize(flows, "flows"), summarize(path, "path"))
     samples = [{"flow": f, "label": f.get("classification") or "normal"} for f in flows]
     data = {"schema": TRAINING_SCHEMA, "labels_suggeres": list(SUGGESTED_LABELS), "samples": samples}
     Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -96,9 +97,11 @@ class FlowPrediction:
 
 class FlowClassifier:
     def __init__(self, samples: list[tuple[dict | list[float], str]]):
+        logger.debug("FlowClassifier.__init__: samples={}", summarize(samples, "samples"))
         require_ml("La classification de flux")
         labels = Counter(label for _f, label in samples)
         if len(samples) < MIN_SAMPLES or len(labels) < 2:
+            logger.debug("FlowClassifier.__init__: refus, TrainingSetError")
             raise TrainingSetError(
                 f"jeu d'entrainement insuffisant : {len(samples)} exemple(s), {len(labels)} classe(s) "
                 f"({MIN_SAMPLES} exemples et 2 classes minimum)."

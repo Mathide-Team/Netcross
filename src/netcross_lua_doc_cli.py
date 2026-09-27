@@ -192,6 +192,7 @@ def _json_resultats(conn: sqlite3.Connection, terme: str, res: list[ResultatRech
 
 
 def build_parser() -> argparse.ArgumentParser:
+    logger.debug("build_parser()")
     parser = argparse.ArgumentParser(
         prog="netcross-lua-doc",
         description="Documentation hors ligne de l'API Lua Wireshark (issue #388).",

@@ -54,6 +54,7 @@ def queue_pack(pack_path: str | Path, outbox: str | Path = DEFAULT_OUTBOX) -> Pa
     box.mkdir(parents=True, exist_ok=True)
     target = box / f"{pack.name}.zip"
     if target.exists():
+        logger.trace("queue_pack: refus, ModelPackError")
         raise ModelPackError(f"un paquet {pack.name} attend deja dans {box} (le renommer ou le soumettre d'abord)")
     shutil.copyfile(pack_path, target)
     return target
@@ -77,6 +78,7 @@ def _try_read(path: Path) -> ModelPack | None:
 def _archive(name: str, outbox: str | Path) -> Path:
     path = Path(outbox) / f"{check_name(name)}.zip"
     if not path.is_file():
+        logger.trace("_archive: refus, ModelPackError")
         raise ModelPackError(f"aucun paquet {name} en attente dans {outbox}")
     return path
 

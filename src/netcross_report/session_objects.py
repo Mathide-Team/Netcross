@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from netcross_core.causality import correlate_diagnosis_causes, correlate_event_causes
 from netcross_core.compliance import evaluate_compliance
 from netcross_core.correlate import build_conversations, build_flows
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.wireshark_expert import build_wireshark_expert_events
 from netcross_report.expert_events import build_diagnoses, build_expert_events
 
@@ -280,5 +280,6 @@ def format_session_objects(objs, top_n=DEFAULT_TOP_N) -> list[str]:
 def print_session_objects(objs, top_n=DEFAULT_TOP_N) -> None:
     """Ecrit `format_session_objects()` sur stdout -- pendant de
     `netcross_core.report_text.print_report()` pour les objets enrichis."""
+    logger.debug("print_session_objects: objs={} top_n={}", summarize(objs, "objs"), summarize(top_n, "top_n"))
     for line in format_session_objects(objs, top_n):
         print(line)

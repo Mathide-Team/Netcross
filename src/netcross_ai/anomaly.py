@@ -58,11 +58,14 @@ class Baseline:
     def from_dict(cls, data: object, source: str = "baseline") -> Baseline:
         """Valide un document ``netcross.ai.baseline/1`` deja decode."""
         if not isinstance(data, dict) or data.get("schema") != BASELINE_SCHEMA:
+            logger.trace("Baseline.from_dict: refus, BaselineError")
             raise BaselineError(f"{source} n'est pas une baseline {BASELINE_SCHEMA}.")
         if data.get("features") != list(FEATURE_NAMES):
+            logger.trace("Baseline.from_dict: refus, BaselineError")
             raise BaselineError(f"{source} : caracteristiques differentes de cette version, regenerer la baseline.")
         vectors = data.get("vectors")
         if not isinstance(vectors, list) or not all(is_feature_vector(v) for v in vectors):
+            logger.trace("Baseline.from_dict: refus, BaselineError")
             raise BaselineError(f"{source} : vecteurs invalides.")
         return cls(
             [[float(x) for x in v] for v in vectors], str(data.get("label", "")), str(data.get("created_at", ""))
@@ -109,6 +112,7 @@ def detect_anomalies(baseline: Baseline, flows: list[dict], contamination: float
     """Score chaque flux ; les plus atypiques en premier."""
     require_ml("La detection d'anomalies")
     if len(baseline.vectors) < MIN_BASELINE_FLOWS:
+        logger.trace("detect_anomalies: refus, BaselineError")
         raise BaselineError(
             f"baseline trop petite ({len(baseline.vectors)} flux, {MIN_BASELINE_FLOWS} minimum) : "
             "l'enrichir avec d'autres captures de trafic normal."

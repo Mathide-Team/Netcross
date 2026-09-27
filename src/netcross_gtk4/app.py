@@ -66,7 +66,7 @@ from netcross_core import (  # noqa: E402
 from netcross_core.baseline_diff import write_diff_csv  # noqa: E402
 from netcross_core.bpf_filters import PREDEFINED_BPF_FILTERS, available_bpf_filters, upsert_bpf_filter  # noqa: E402
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates  # noqa: E402
-from netcross_core.logging_config import DEBUG_FLAG, enable_debug, get_logger, is_debug_enabled  # noqa: E402
+from netcross_core.logging_config import DEBUG_FLAG, enable_debug, get_logger, is_debug_enabled, summarize  # noqa: E402
 from netcross_gtk4 import capture_list, row_labels  # noqa: E402
 from netcross_gtk4.annotations_panel import AnnotationsPanel  # noqa: E402
 from netcross_gtk4.bpf_panel import (  # noqa: E402
@@ -116,6 +116,7 @@ logger = get_logger(__name__)
 def _visible_scroller(vexpand=True):
     """ScrolledWindow avec scrollbar classique toujours visible (pas d'overlay
     qui disparait au survol) -- pour que le defilement reste decouvrable."""
+    logger.debug("_visible_scroller: vexpand={}", summarize(vexpand, "vexpand"))
     scroller = Gtk.ScrolledWindow()
     scroller.set_vexpand(vexpand)
     scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -2653,12 +2654,18 @@ def display_available() -> bool:
     DISPLAY ni WAYLAND_DISPLAY, cf. tests/gtk4_display.py) : le critere fiable
     est l'existence d'un ``Gdk.Display`` par defaut.
     """
+    logger.debug("display_available()")
     return bool(Gtk.init_check()) and Gdk.Display.get_default() is not None
 
 
 def display_unavailable_message(environ=None, euid=None) -> str:
     """Message affiche quand GTK4 ne peut pas ouvrir d'affichage (#468) :
     cause probable et alternatives, plutot qu'une trace Gtk-CRITICAL."""
+    logger.debug(
+        "display_unavailable_message: environ={} euid={}",
+        summarize(environ, "environ"),
+        summarize(euid, "euid"),
+    )
     env = os.environ if environ is None else environ
     if euid is None:
         euid = os.geteuid() if hasattr(os, "geteuid") else -1

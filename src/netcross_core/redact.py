@@ -71,7 +71,7 @@ import csv
 import ipaddress
 import re
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -230,6 +230,11 @@ def write_redaction_map_csv(redactor: AddressRedactor, path: str) -> None:
     permet de retrouver plus tard a quelle adresse reelle correspond un
     pseudonyme mentionne par un tiers (ex: un support vendeur qui cite
     192.0.2.4 dans sa reponse)."""
+    logger.debug(
+        "write_redaction_map_csv: redactor={} path={}",
+        summarize(redactor, "redactor"),
+        summarize(path, "path"),
+    )
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(["adresse_reelle", "pseudonyme", "type"])

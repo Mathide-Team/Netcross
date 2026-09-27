@@ -66,16 +66,19 @@ def parse_netflow_v5_packet(data: bytes, exporter: str) -> list[FlowRecord]:
     FlowRecord silencieusement corrompus).
     """
     if len(data) < _HEADER.size:
+        logger.trace("parse_netflow_v5_packet: refus, NetflowV5Error")
         raise NetflowV5Error(f"datagramme trop court pour un en-tete NetFlow v5 : {len(data)} octets")
 
     version, count, sys_uptime, unix_secs, unix_nsecs, flow_sequence, engine_type, engine_id, sampling = (
         _HEADER.unpack_from(data, 0)
     )
     if version != NETFLOW_V5_VERSION:
+        logger.trace("parse_netflow_v5_packet: refus, NetflowV5Error")
         raise NetflowV5Error(f"version NetFlow inattendue : {version} (attendu {NETFLOW_V5_VERSION})")
 
     expected_size = _HEADER.size + count * _RECORD.size
     if len(data) < expected_size:
+        logger.trace("parse_netflow_v5_packet: refus, NetflowV5Error")
         raise NetflowV5Error(
             f"datagramme tronque : {len(data)} octets recus, {expected_size} attendus pour {count} enregistrements"
         )
@@ -162,6 +165,7 @@ def iter_netflow_v5_file(path: str, exporter: str | None = None) -> Iterator[Flo
         count = struct.unpack_from("!H", remaining, 2)[0]
         packet_size = _HEADER.size + count * _RECORD.size
         if len(remaining) < packet_size:
+            logger.trace("iter_netflow_v5_file: refus, NetflowV5Error")
             raise NetflowV5Error(
                 f"{path}: datagramme tronque en fin de fichier (offset {offset}, "
                 f"{len(remaining)} octets restants, {packet_size} attendus)"

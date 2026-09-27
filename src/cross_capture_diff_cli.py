@@ -90,7 +90,7 @@ from netcross_core import (
     write_redaction_map_csv,
 )
 from netcross_core.baseline_diff import diff_reports, print_diff_report, write_diff_csv
-from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
 from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
 from pcap_parser.remote import CaptureSourceError, parse_source, split_live_target
 
@@ -107,6 +107,11 @@ def _parse_capture_args(raw_list, flag_name):
     continu, a lister dans l'ordre chronologique -- aucun tri automatique.
     S'applique aussi bien a --baseline qu'a --current (jamais a
     --live-current, qui n'a pas de fichiers)."""
+    logger.debug(
+        "_parse_capture_args: raw_list={} flag_name={}",
+        summarize(raw_list, "raw_list"),
+        summarize(flag_name, "flag_name"),
+    )
     captures = []
     for c in raw_list:
         if "=" not in c:
@@ -229,6 +234,7 @@ def _parse_live_spec(spec):
 def _check_single_stdin(points):
     """Une seule source pipe://- (entree standard) par execution : deux
     lecteurs se partageraient les octets du meme flux pcap."""
+    logger.debug("_check_single_stdin: points={}", summarize(points, "points"))
     stdin_labels = [label for label, iface, _bpf in points if parse_source(iface).uses_stdin]
     if len(stdin_labels) > 1:
         print(
@@ -317,6 +323,12 @@ def _run_live_captures(live_specs, duration):
 
 
 def _analyse_packets(all_packets, points_order, args):
+    logger.debug(
+        "_analyse_packets: all_packets={} points_order={} args={}",
+        summarize(all_packets, "all_packets"),
+        summarize(points_order, "points_order"),
+        summarize(args, "args"),
+    )
     flows = correlate(all_packets, args.nat_tolerant, args.nat_window_ms)
     return analyse(
         flows,
@@ -334,6 +346,14 @@ def _run_scenario(name, captures, points_order, args, redactor=None):
     (Session 37) pour permettre a l'appelant de construire Flow/
     Conversation (netcross_core.correlate.build_flows/build_conversations)
     sur le scenario COURANT sans reanalyser les fichiers."""
+    logger.debug(
+        "_run_scenario: name={} captures={} points_order={} args={} redactor={}",
+        summarize(name, "name"),
+        summarize(captures, "captures"),
+        summarize(points_order, "points_order"),
+        summarize(args, "args"),
+        summarize(redactor, "redactor"),
+    )
     all_packets = _load_packets(name, captures, args.parallel, args.parallel_workers)
     if redactor is not None:
         # meme objet redactor pour baseline ET courant (voir main()) : une

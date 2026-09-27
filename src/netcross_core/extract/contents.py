@@ -25,7 +25,7 @@ from pathlib import Path
 
 from netcross_core.extract.carver import detect_file_type
 from netcross_core.extract.media import KINDS, RtpStream, StreamQuality, analyse_stream, collect_streams, export_stream
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -78,11 +78,13 @@ class ContentExtraction:
 
 def parse_kinds(spec: str | None) -> tuple[str, ...]:
     """``audio,video`` -> ('audio', 'video') ; ValueError sur un type inconnu."""
+    logger.debug("parse_kinds: spec={}", summarize(spec, "spec"))
     if not spec:
         return KINDS
     kinds = tuple(dict.fromkeys(k.strip() for k in spec.split(",") if k.strip()))
     unknown = [k for k in kinds if k not in KINDS]
     if unknown or not kinds:
+        logger.debug("parse_kinds: refus, ValueError")
         raise ValueError(f"type(s) inconnu(s) : {', '.join(unknown) or spec!r} (attendu : {', '.join(KINDS)})")
     return kinds
 
@@ -90,8 +92,10 @@ def parse_kinds(spec: str | None) -> tuple[str, ...]:
 def prepare_out_dir(path: str) -> Path:
     """Cree le repertoire de sortie (0700). Refuse un repertoire non vide :
     melanger deux extractions rendrait le manifeste trompeur."""
+    logger.debug("prepare_out_dir: path={}", summarize(path, "path"))
     out = Path(path)
     if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        logger.debug("prepare_out_dir: refus, ValueError")
         raise ValueError(f"{path} existe deja et n'est pas un repertoire vide")
     out.mkdir(mode=0o700, parents=True, exist_ok=True)
     out.chmod(0o700)
@@ -107,6 +111,12 @@ def _sha256(path: Path) -> str:
 
 
 def inventory_documents(point: str, protocol: str, directory: Path) -> list[ExtractedDocument]:
+    logger.debug(
+        "inventory_documents: point={} protocol={} directory={}",
+        summarize(point, "point"),
+        summarize(protocol, "protocol"),
+        summarize(directory, "directory"),
+    )
     docs = []
     for p in sorted(directory.iterdir()) if directory.is_dir() else []:
         if not p.is_file():
@@ -163,6 +173,11 @@ def _safe(label: str) -> str:
 
 def datagrams_from_raw(label: str, raw_packets: Iterable) -> Iterable[tuple]:
     """Adapte des ``pcap_parser.RawPacket`` au format de collect_streams."""
+    logger.debug(
+        "datagrams_from_raw: label={} raw_packets={}",
+        summarize(label, "label"),
+        summarize(raw_packets, "raw_packets"),
+    )
     for raw in raw_packets:
         # TCP : seulement pour le SDP d'un SIP sur TCP (le RTP, lui, est sur UDP)
         if raw.payload and (raw.proto == "UDP" or (raw.proto == "TCP" and b"a=rtpmap:" in raw.payload)):
@@ -215,6 +230,7 @@ def run_extraction(
 
 
 def write_manifest(result: ContentExtraction, out: Path) -> None:
+    logger.debug("write_manifest: result={} out={}", summarize(result, "result"), summarize(out, "out"))
     manifest = out / "manifest.json"
     manifest.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     readme = out / "LISEZ-MOI.txt"
@@ -229,6 +245,7 @@ def write_manifest(result: ContentExtraction, out: Path) -> None:
 
 def format_extraction(result: ContentExtraction) -> list[str]:
     """Lignes de sortie texte (CLI)."""
+    logger.debug("format_extraction: result={}", summarize(result, "result"))
     lines = []
     if not result.media:
         lines.append("Aucun flux RTP audio/video identifie.")

@@ -9,7 +9,7 @@ from typing import Any
 from netcross_ai.anomaly import Baseline, detect_anomalies
 from netcross_ai.flow_classifier import FlowClassifier, export_training_set, load_training_set
 from netcross_ai.report_writer import write_summary
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -30,6 +30,12 @@ class AIOptions:
 def run_ai(report: Any, flows: list[dict], options: AIOptions) -> dict:
     """Execute les usages demandes ; leve AIUnavailableError, BaselineError,
     TrainingSetError ou WriterConfigError sur une demande impossible."""
+    logger.debug(
+        "run_ai: report={} flows={} options={}",
+        summarize(report, "report"),
+        summarize(flows, "flows"),
+        summarize(options, "options"),
+    )
     result: dict = {"schema": AI_SCHEMA, "flows": len(flows)}
     if options.baseline_save:
         new = Baseline.from_flows(flows, options.baseline_label)
@@ -57,6 +63,7 @@ def run_ai(report: Any, flows: list[dict], options: AIOptions) -> dict:
 
 
 def format_ai(result: dict, top: int = 10) -> str:
+    logger.debug("format_ai: result={} top={}", summarize(result, "result"), summarize(top, "top"))
     lines = ["", "=" * 70, "MODULE IA LOCAL (issue #146)", "=" * 70]
     if "baseline_saved" in result:
         b = result["baseline_saved"]
