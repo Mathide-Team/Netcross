@@ -146,6 +146,7 @@ def run_analysis_pipeline(
         # d'exploits lisent la charge utile brute des fichiers, jamais les
         # paquets anonymises -- le rapport melangerait adresses reelles et
         # pseudonymes
+        logger.debug("run_analysis_pipeline: si options.security and options.redact -> levée ValueError")
         raise ValueError("le rapport de securite n'est pas disponible avec l'anonymisation des adresses")
 
     def _log(msg: str) -> None:
@@ -156,6 +157,7 @@ def run_analysis_pipeline(
             on_progress(msg)
         else:
             logger.debug("étape: {}", msg)
+        logger.debug("run_analysis_pipeline._log: fin")
 
     points_order = None if options.auto_topology else [label for label, _ in captures]
 
@@ -297,6 +299,7 @@ def run_analysis_pipeline(
     text = buf.getvalue()
     _log("Analyse terminée.")
 
+    logger.debug("run_analysis_pipeline: retour AnalysisResult(…)")
     return AnalysisResult(
         mode="single",
         report=report,
