@@ -95,6 +95,7 @@ def checksum_is_bad(status_value: Any) -> bool | None:
     par defaut, un statut inconnu n'est ni l'un ni l'autre."""
     code = hex_or_dec_to_int(status_value)
     if code == 0:
+        logger.trace("checksum_is_bad: checksum invalide signale par tshark")
         return True
     if code == 1:
         return False
@@ -136,6 +137,8 @@ def as_bool(value: Any) -> bool:
     if value is None:
         return False
     if isinstance(value, str):
+        # tshark 4.x rend un booleen JSON natif : une chaine signale un autre format
+        logger.trace("as_bool: booleen rendu en chaine {!r}", value)
         return value.strip().lower() not in ("", "0", "false")
     return bool(value)
 
@@ -215,6 +218,8 @@ def expert_flag_names(layer: dict | None) -> tuple[str, ...]:
     for c in candidates:
         if isinstance(c, dict):
             names.update(k for k in c if k not in _META_KEYS)
+    if names:
+        logger.trace("expert_flag_names: {} condition(s) d'expertise : {}", len(names), sorted(names))
     return tuple(sorted(names))
 
 
@@ -280,9 +285,10 @@ def _expert_label(raw: Any, table: dict[int, str]) -> str | None:
     if raw is None:
         return None
     code = hex_or_dec_to_int(raw)
-    if code is None:
+    if code is None or code not in table:
+        logger.trace("_expert_label: code d'expertise non reconnu {!r}, valeur brute conservee", raw)
         return str(raw)
-    return table.get(code, str(raw))
+    return table[code]
 
 
 def expert_flag_details(layer: dict | None) -> tuple[tuple[str, str | None, str | None, str | None], ...]:
@@ -326,6 +332,8 @@ def expert_flag_details(layer: dict | None) -> tuple[tuple[str, str | None, str 
         for name in c:
             if name not in _META_KEYS:
                 details.add((name, severity, group, message))
+    if details:
+        logger.trace("expert_flag_details: {} signal(aux) d'expertise detaille(s)", len(details))
     return tuple(sorted(details, key=lambda d: (d[0], d[1] or "", d[2] or "", d[3] or "")))
 
 

@@ -112,6 +112,9 @@ def _capwap_tags(layers: dict) -> list:
     if "fortinet_capwap" in layers and tags:
         tags.append("CAPWAP(Fortinet)")
 
+    if tags:
+        # seuls les paquets CAPWAP arrivent ici avec des etiquettes
+        logger.trace("_capwap_tags: {}", tags)
     return tags
 
 
