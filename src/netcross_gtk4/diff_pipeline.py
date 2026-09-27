@@ -29,6 +29,9 @@ class DiffOptions:
     bucket_ms: float = 1000.0
     rtp_rate: int = 8000
     nat_tolerant: bool = False
+    # Issue #330 (écart 3) : voir AnalysisOptions
+    nat_window_ms: float = 200.0
+    idle_timeout_seconds: float | None = None
     parallel: bool = True
     auto_topology: bool = True
     loss_min_pp: float = 5.0
@@ -92,7 +95,7 @@ def run_diff_pipeline(
     baseline_packets = load_packets(baseline_captures, options.parallel, on_progress)
     if redactor is not None:
         redactor.redact(baseline_packets)
-    baseline_flows = correlate(baseline_packets, options.nat_tolerant, 200)
+    baseline_flows = correlate(baseline_packets, options.nat_tolerant, options.nat_window_ms)
     baseline_report = analyse(
         baseline_flows,
         points_order,
@@ -100,6 +103,7 @@ def run_diff_pipeline(
         options.bucket_ms / 1000.0,
         options.nat_tolerant,
         options.rtp_rate,
+        idle_timeout_seconds=options.idle_timeout_seconds,
     )
 
     # 2. Courant
@@ -109,7 +113,7 @@ def run_diff_pipeline(
     if redactor is not None:
         redactor.redact(current_packets)
         _log(f"{len(redactor)} adresse(s) anonymisée(s) (IP/MAC) -- baseline et courant.")
-    current_flows = correlate(current_packets, options.nat_tolerant, 200)
+    current_flows = correlate(current_packets, options.nat_tolerant, options.nat_window_ms)
     current_report = analyse(
         current_flows,
         points_order_current,
@@ -117,6 +121,7 @@ def run_diff_pipeline(
         options.bucket_ms / 1000.0,
         options.nat_tolerant,
         options.rtp_rate,
+        idle_timeout_seconds=options.idle_timeout_seconds,
     )
 
     # 3. Comparaison

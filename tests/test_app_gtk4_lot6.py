@@ -350,7 +350,7 @@ def test_on_csv_path_chosen_mode_single_appelle_write_detail_csv(window, monkeyp
     monkeypatch.setattr(
         app_module,
         "write_detail_csv",
-        lambda path, flows, points: appels.append((path, flows, points)),
+        lambda path, flows, points, names=None: appels.append((path, flows, points)),
     )
     window.last_mode = "single"
     window.last_flows = ["flow-1"]
@@ -395,7 +395,7 @@ def test_on_csv_path_chosen_annulation_n_ecrit_rien(window, monkeypatch):
 
 
 def test_on_csv_path_chosen_erreur_ecriture_affiche_le_message(window, monkeypatch, tmp_path):
-    def _echec(*_args):
+    def _echec(*_args, **_kwargs):
         raise OSError("disque plein")
 
     monkeypatch.setattr(app_module, "write_detail_csv", _echec)

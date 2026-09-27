@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (107 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 16 cases à cocher, 12 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 16 cases à cocher, 14 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 8 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -43,14 +43,14 @@ actif, non réglable.
 | Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | non |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
-| Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : CLI et API) | `nat_tolerant`, `nat_window_ms` |
+| Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : les trois surfaces, « Fenêtre NAT (ms) » dans la GUI) | `nat_tolerant`, `nat_window_ms` |
 | Doublons inter-captures | oui (« Détecter... », « Exclure... », seuil) | `--detect-duplicates`, `--exclude-duplicates`, `--duplicate-threshold-ms` | non |
 | Lecture parallèle | oui (« Lecture parallele des captures ») | `--parallel`, `--parallel-workers` (nombre : CLI seule) | non |
 | Fenêtre temporelle du débit | oui | `--bucket-ms` | non |
 | Cadence RTP | oui | `--rtp-clock-rate` | non |
-| Seuil de coupure NAT/pare-feu silencieuse | non | `--idle-timeout-seconds` | non |
+| Seuil de coupure NAT/pare-feu silencieuse | oui (« Coupure silencieuse (s) », 0 = défaut 60 s) | `--idle-timeout-seconds` | non |
 | Limiter ou échantillonner les paquets | non | `--max-packets`, `--sample` | non |
-| Noms logiques des hôtes | non | `--names` | non |
+| Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | non |
 | Plages TEST-NET traitées comme externes | non | `--test-net-external` | non |
 | Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` (table de correspondance : CLI seule) | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) |
 
@@ -235,9 +235,10 @@ Classés par impact pour un utilisateur :
    `nat_window_ms`, `tls`, `quic` et `redact` sur les deux routes `POST`,
    avec les mêmes incompatibilités que la CLI. Le triage n'est pas une
    option : il est toujours dans `GET /analyses/{analysis_id}/report`.
-3. **GUI : réglages d'analyse absents.** `--idle-timeout-seconds`,
-   `--nat-window-ms` et `--names` changent le résultat sans pouvoir être
-   réglés dans la GUI.
+3. ~~**GUI : réglages d'analyse absents.**~~ : traité, « Fenêtre NAT (ms) »
+   (réglable avec la corrélation tolérante au NAT), « Coupure silencieuse
+   (s) » et « Table des noms... », valables en analyse simple, en
+   comparaison et en capture en direct.
 4. **GUI : triage des écarts en mode comparaison**, disponible en CLI
    (`--triage` de la CLI de comparaison).
 5. Le reste (manipulation de captures, notifications, plugins, IA, SIEM,

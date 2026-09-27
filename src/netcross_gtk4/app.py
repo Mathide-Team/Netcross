@@ -840,6 +840,46 @@ class MainWindow(Gtk.ApplicationWindow):
         self.nat_check = Gtk.CheckButton(label="Correlation tolérante au NAT")
         options.attach(self.nat_check, 0, 1, 2, 1)
 
+        # Issue #330 (écart 3) : réglages fins de la CLI (--nat-window-ms,
+        # --idle-timeout-seconds), mêmes défauts.
+        options.attach(Gtk.Label(label="Fenêtre NAT (ms):", halign=Gtk.Align.START), 0, 6, 1, 1)
+        self.nat_window_spin = Gtk.SpinButton.new_with_range(1, 60000, 10)
+        self.nat_window_spin.set_value(200)
+        self.nat_window_spin.set_tooltip_text(
+            "Écart maximal entre deux observations d'un même paquet traduit par un NAT "
+            "(--nat-window-ms). Utilisé seulement avec la corrélation tolérante au NAT."
+        )
+        self.nat_window_spin.set_sensitive(False)
+        self.nat_check.connect("toggled", self._on_nat_toggled)
+        options.attach(self.nat_window_spin, 1, 6, 1, 1)
+
+        options.attach(Gtk.Label(label="Coupure silencieuse (s):", halign=Gtk.Align.START), 2, 6, 1, 1)
+        self.idle_timeout_spin = Gtk.SpinButton.new_with_range(0, 86400, 1)
+        self.idle_timeout_spin.set_value(0)
+        self.idle_timeout_spin.set_tooltip_text(
+            "Silence minimal entre deux paquets au point amont pour signaler une coupure "
+            "NAT/pare-feu silencieuse (--idle-timeout-seconds). 0 = défaut (60 s)."
+        )
+        options.attach(self.idle_timeout_spin, 3, 6, 1, 1)
+
+        # Issue #330 (écart 3) : table des noms logiques (--names), appliquée
+        # aux exports CSV détaillé et JSON comme dans la CLI.
+        self.names_table = None
+        names_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.names_btn = Gtk.Button(label="Table des noms...")
+        self.names_btn.set_tooltip_text(
+            "Fichier JSON ou YAML de noms logiques des hôtes (--names), repris dans les exports CSV détaillé et JSON."
+        )
+        self.names_btn.connect("clicked", self._on_names_clicked)
+        names_box.append(self.names_btn)
+        self.names_clear_btn = Gtk.Button(label="Retirer")
+        self.names_clear_btn.set_sensitive(False)
+        self.names_clear_btn.connect("clicked", self._on_names_clear_clicked)
+        names_box.append(self.names_clear_btn)
+        self.names_label = Gtk.Label(label="Aucune table des noms", halign=Gtk.Align.START)
+        names_box.append(self.names_label)
+        options.attach(names_box, 0, 7, 4, 1)
+
         self.detect_duplicates_check = Gtk.CheckButton(label="Détecter les doublons inter-captures")
         self.detect_duplicates_check.set_tooltip_text(
             "Marque comme doublons les mêmes payloads vus à des points différents dans la fenêtre temporelle choisie."
@@ -1012,6 +1052,74 @@ class MainWindow(Gtk.ApplicationWindow):
         self._update_run_sensitivity()
         self._update_run_button_label()
         logger.debug("MainWindow._on_live_toggled: fin")
+
+    def _on_nat_toggled(self, _btn):
+        """La fenêtre NAT ne sert qu'avec la corrélation tolérante au NAT
+        (même règle que --nat-window-ms) : réglable seulement dans ce cas."""
+        active = self.nat_check.get_active()
+        self.nat_window_spin.set_sensitive(active)
+        logger.debug("MainWindow._on_nat_toggled: fin (fenêtre NAT réglable={})", active)
+
+    def _on_names_clicked(self, _btn):
+        logger.debug("_on_names_clicked: ouverture du sélecteur de table des noms")
+        dialog = Gtk.FileDialog()
+        filt = Gtk.FileFilter()
+        for pattern in ("*.json", "*.yaml", "*.yml"):
+            filt.add_pattern(pattern)
+        filt.set_name("Table des noms (*.json, *.yaml, *.yml)")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filt)
+        dialog.set_filters(filters)
+        dialog.open(self, None, self._on_names_chosen)
+        logger.debug("MainWindow._on_names_clicked: fin")
+
+    def _on_names_chosen(self, dialog, result):
+        try:
+            gfile = dialog.open_finish(result)
+        except GLib.Error:
+            logger.exception("échec dans _on_names_chosen")
+            logger.debug("MainWindow._on_names_chosen: except GLib.Error -> retour")
+            return
+        self.load_names_table(gfile.get_path())
+        logger.debug("MainWindow._on_names_chosen: fin")
+
+    def load_names_table(self, path):
+        """Charge la table des noms (même format que --names). Exposée hors
+        du dialogue pour les tests ; une erreur laisse l'ancienne table et
+        s'affiche dans la barre de statut. Retourne True si chargée."""
+        from netcross_core.naming import NameTable
+
+        try:
+            table = NameTable.load(path)
+        except Exception as e:  # noqa: BLE001 -- callback GUI : erreur affichée plutôt que plantage
+            logger.exception(f"échec du chargement de la table des noms {path}: {e}")
+            self.status_label.set_text(f"Erreur table des noms : {e}")
+            logger.debug("MainWindow.load_names_table: except Exception -> retour False")
+            return False
+        self.names_table = table
+        self.names_label.set_text(f"{os.path.basename(path)} ({len(table)} entrée(s))")
+        self.names_clear_btn.set_sensitive(True)
+        logger.debug("MainWindow.load_names_table: retour True ({} entrée(s))", len(table))
+        return True
+
+    def _on_names_clear_clicked(self, _btn):
+        self.names_table = None
+        self.names_label.set_text("Aucune table des noms")
+        self.names_clear_btn.set_sensitive(False)
+        logger.debug("MainWindow._on_names_clear_clicked: fin")
+
+    def _fine_settings(self):
+        """Issue #330 (écart 3) : (nat_window_ms, idle_timeout_seconds) lus
+        dans l'onglet ; 0 s de coupure silencieuse = défaut du cœur (None)."""
+        nat_window_ms = float(self.nat_window_spin.get_value())
+        idle = float(self.idle_timeout_spin.get_value())
+        idle_timeout_seconds = idle if idle > 0 else None
+        logger.debug(
+            "MainWindow._fine_settings: retour nat_window_ms={} idle_timeout_seconds={}",
+            nat_window_ms,
+            idle_timeout_seconds,
+        )
+        return nat_window_ms, idle_timeout_seconds
 
     def _on_redact_toggled(self, _btn):
         """--redact n'est pas disponible avec TLS/QUIC (pipelines independants
@@ -1432,6 +1540,7 @@ class MainWindow(Gtk.ApplicationWindow):
         parallel = self.parallel_check.get_active()
         auto_topology = self.auto_topology_check.get_active()
         redact = self.redact_check.get_active()
+        nat_window_ms, idle_timeout_seconds = self._fine_settings()
 
         if redact and (
             self.tls_check.get_active()
@@ -1487,6 +1596,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     diff_tls,
                     diff_quic,
                 ),
+                kwargs={"nat_window_ms": nat_window_ms, "idle_timeout_seconds": idle_timeout_seconds},
                 daemon=True,
             ).start()
         else:
@@ -1522,6 +1632,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     exclude_duplicates,
                     duplicate_threshold_ms,
                 ),
+                kwargs={"nat_window_ms": nat_window_ms, "idle_timeout_seconds": idle_timeout_seconds},
                 daemon=True,
             ).start()
         logger.debug("MainWindow.on_run_analysis: fin")
@@ -1578,6 +1689,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self.detect_duplicates_check.get_active() or self.exclude_duplicates_check.get_active()
         )
         self._live_exclude_duplicates = self.exclude_duplicates_check.get_active()
+        self._live_nat_window_ms, self._live_idle_timeout_seconds = self._fine_settings()
         self._live_duplicate_threshold_ms = self.duplicate_threshold_spin.get_value()
 
         self._live_capturing = True
@@ -1693,7 +1805,12 @@ class MainWindow(Gtk.ApplicationWindow):
                 GLib.idle_add(self._log, f"  -> {sum(duplicate_counts.values())} paquet(s) dupliqué(s) détecté(s)")
 
             GLib.idle_add(self._log, "Correlation des flux entre points de capture...")
-            flows = correlate(all_packets, self._live_nat_tolerant, 200, self._live_exclude_duplicates)
+            flows = correlate(
+                all_packets,
+                self._live_nat_tolerant,
+                getattr(self, "_live_nat_window_ms", 200.0),
+                self._live_exclude_duplicates,
+            )
             GLib.idle_add(self._log, f"  -> {len(flows)} flux identifies")
 
             GLib.idle_add(
@@ -1707,6 +1824,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 self._live_bucket_ms / 1000.0,
                 self._live_nat_tolerant,
                 self._live_rtp_rate,
+                idle_timeout_seconds=getattr(self, "_live_idle_timeout_seconds", None),
                 exclude_duplicates=self._live_exclude_duplicates,
                 duplicate_counts=duplicate_counts,
             )
@@ -1817,6 +1935,8 @@ class MainWindow(Gtk.ApplicationWindow):
         detect_duplicates,
         exclude_duplicates,
         duplicate_threshold_ms,
+        nat_window_ms=200.0,
+        idle_timeout_seconds=None,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -1844,6 +1964,8 @@ class MainWindow(Gtk.ApplicationWindow):
             detect_duplicates=detect_duplicates,
             exclude_duplicates=exclude_duplicates,
             duplicate_threshold_ms=duplicate_threshold_ms,
+            nat_window_ms=nat_window_ms,
+            idle_timeout_seconds=idle_timeout_seconds,
         )
 
         def _on_progress(msg):
@@ -1887,6 +2009,8 @@ class MainWindow(Gtk.ApplicationWindow):
         redact,
         tls,
         quic,
+        nat_window_ms=200.0,
+        idle_timeout_seconds=None,
     ):
         logger.debug(
             "_run_diff_thread: {} capture(s) baseline, {} capture(s) courant",
@@ -1906,6 +2030,8 @@ class MainWindow(Gtk.ApplicationWindow):
             redact=redact,
             tls=tls,
             quic=quic,
+            nat_window_ms=nat_window_ms,
+            idle_timeout_seconds=idle_timeout_seconds,
         )
 
         def _on_progress(msg):
@@ -2097,7 +2223,7 @@ class MainWindow(Gtk.ApplicationWindow):
         logger.debug("_on_csv_path_chosen: mode={} path={}", self.last_mode, path)
         try:
             if self.last_mode == "single":
-                write_detail_csv(path, self.last_flows, self.last_report.points)
+                write_detail_csv(path, self.last_flows, self.last_report.points, names=self.names_table)
             else:
                 write_diff_csv(self.last_diff_findings, path)
         except Exception as e:  # noqa: BLE001 -- callback GUI (export CSV) : erreur affichee dans la barre de statut plutot que de faire planter l'appli.
@@ -2691,6 +2817,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     tls_findings=self.last_tls_findings,
                     quic_findings=self.last_quic_findings,
                     security_report=self.last_security_report,
+                    names=self.names_table,
                     **self._session_objects().json_kwargs(),
                 )
             else:
