@@ -457,6 +457,7 @@ def _conversation_key(key) -> tuple | None:
     chemin."""
     if len(key) != 6 or key[0] == "NAT":
         logger.trace("_conversation_key: clé NAT ou non standard, pas de conversation")
+        logger.debug("_conversation_key: si len(key) != 6 or key[0] == 'NAT' -> retour None")
         return None
     _proto, src, _sport, dst, _dport, _key_id = key
     logger.debug("_conversation_key: retour tuple(...)")

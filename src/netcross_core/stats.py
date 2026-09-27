@@ -92,11 +92,15 @@ class StatsQuery:
 
     def __post_init__(self):
         if self.group_by not in GROUP_BY:
+            logger.debug("StatsQuery.__post_init__: si self.group_by not in GROUP_BY -> levée ValueError")
             raise ValueError(f"group_by doit etre dans {GROUP_BY}, recu: {self.group_by!r}")
         if self.sort_by not in SORT_BY:
+            logger.debug("StatsQuery.__post_init__: si self.sort_by not in SORT_BY -> levée ValueError")
             raise ValueError(f"sort_by doit etre dans {SORT_BY}, recu: {self.sort_by!r}")
         if self.top_n is not None and self.top_n < 1:
+            logger.debug("StatsQuery.__post_init__: si self.top_n is not None and self.top_n < 1 -> levée ValueError")
             raise ValueError("top_n doit etre >= 1 ou None")
+        logger.debug("StatsQuery.__post_init__: fin")
 
 
 # -- Calculs -----------------------------------------------------------------

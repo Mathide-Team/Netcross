@@ -169,6 +169,7 @@ def load_baseline_from_db(
         conn.row_factory = sqlite3.Row
     except sqlite3.Error:
         logger.exception("échec dans load_baseline_from_db")
+        logger.debug("load_baseline_from_db: except sqlite3.Error -> retour None")
         return None
 
     try:
@@ -226,6 +227,7 @@ def load_all_baselines(
         conn.row_factory = sqlite3.Row
     except sqlite3.Error:
         logger.exception("échec dans load_all_baselines")
+        logger.debug("load_all_baselines: except sqlite3.Error -> retour liste vide")
         return []
 
     try:

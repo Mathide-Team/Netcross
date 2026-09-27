@@ -422,6 +422,7 @@ class ForensicSearchIndex:
             if value is None:
                 # chemin chaud (appele par document) : TRACE
                 logger.trace("_match_text: champ {!r} absent du document {}", q.field, doc.kind)
+                logger.debug("ForensicSearchIndex._match_text: si value is None -> retour tuple de 0")
                 return ()
             if not field_val:
                 # Presence seule du champ.
@@ -441,6 +442,7 @@ class ForensicSearchIndex:
             terms.append(field_val)
         if not terms:
             logger.trace("_match_text: aucun terme de recherche")
+            logger.debug("ForensicSearchIndex._match_text: si not terms -> retour tuple de 0")
             return ()
         blob = doc.text.lower()
         for term in terms:

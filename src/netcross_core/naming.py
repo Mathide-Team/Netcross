@@ -79,6 +79,7 @@ class NameTable:
         self._entries: list[NameEntry] = []
         for e in entries or ():
             self.add(e)
+        logger.debug("NameTable.__init__: fin")
 
     # -- Mutation ---------------------------------------------------------
 
@@ -87,15 +88,18 @@ class NameTable:
         adresse ou MAC."""
         if not entry.name:
             logger.trace("NameTable.add: refus, ValueError")
+            logger.debug("NameTable.add: si not entry.name -> levée ValueError")
             raise ValueError("NameEntry.name est requis")
         if entry.address is None and entry.mac is None:
             logger.trace("NameTable.add: refus, ValueError")
+            logger.debug("NameTable.add: si entry.address is None and entry.mac is None -> levée ValueError")
             raise ValueError("NameEntry doit avoir au moins une adresse ou une MAC")
         self._entries.append(entry)
         if entry.address is not None:
             self._by_address[entry.address] = entry
         if entry.mac is not None:
             self._by_mac[entry.mac.lower()] = entry
+        logger.debug("NameTable.add: fin")
 
     # -- Resolution -------------------------------------------------------
 
@@ -143,6 +147,7 @@ class NameTable:
         for i, item in enumerate(items):
             if "name" not in item or not item["name"]:
                 logger.trace("NameTable.from_list: refus, ValueError")
+                logger.debug("NameTable.from_list: si 'name' not in item or not item['name'] -> levée ValueError")
                 raise ValueError(f"entree #{i}: 'name' est requis")
             entries.append(
                 NameEntry(
@@ -165,6 +170,7 @@ class NameTable:
         p = Path(path)
         if not p.exists():
             logger.trace("NameTable.load: refus, FileNotFoundError")
+            logger.debug("NameTable.load: si not p.exists() -> levée FileNotFoundError")
             raise FileNotFoundError(f"table des noms introuvable: {path}")
         suffix = p.suffix.lower()
         text = p.read_text(encoding="utf-8")
@@ -180,6 +186,7 @@ class NameTable:
             data = data.get("entries", [])
         if not isinstance(data, list):
             logger.trace("NameTable.load: refus, ValueError")
+            logger.debug("NameTable.load: si not isinstance(data, list) -> levée ValueError")
             raise ValueError(f"la table des noms doit etre une liste, pas {type(data).__name__}")
         logger.debug("load: retour from_list(...)")
         return cls.from_list(data)
@@ -196,6 +203,7 @@ class NameTable:
                 json.dumps(items, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
+        logger.debug("NameTable.save: fin")
 
     # -- Divers -----------------------------------------------------------
 

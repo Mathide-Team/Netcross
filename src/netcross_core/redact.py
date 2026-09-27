@@ -134,6 +134,7 @@ def _ip_kind(value: str) -> str | None:
         return "ipv6" if ipaddress.ip_address(value).version == 6 else "ipv4"
     except ValueError:
         logger.exception("échec dans _ip_kind")
+        logger.debug("_ip_kind: except ValueError -> retour None")
         return None
 
 
@@ -152,6 +153,7 @@ class AddressRedactor:
     def __init__(self) -> None:
         self._map: dict[str, tuple[str, str]] = {}  # adresse reelle -> (pseudonyme, type)
         self._counters = {"ipv4": 0, "ipv6": 0, "mac": 0}
+        logger.debug("AddressRedactor.__init__: fin")
 
     def _pseudonym(self, addr: str, kind: str) -> str:
         entry = self._map.get(addr)
@@ -170,6 +172,7 @@ class AddressRedactor:
         RawPacket, voir docstring de module)."""
         for pk in packets:
             self._redact_one(pk)
+        logger.debug("AddressRedactor.redact: fin")
 
     def _redact_one(self, pk) -> None:
         if pk.proto == "STP":
@@ -201,6 +204,7 @@ class AddressRedactor:
             prio, _sep, mac = pk.stp_root_id.partition("/")
             if _is_mac(mac):
                 pk.stp_root_id = f"{prio}/{self._pseudonym(mac, 'mac')}"
+        logger.debug("AddressRedactor._redact_one: fin")
 
     def entries(self):
         """Tuples (adresse_reelle, pseudonyme, type), tries par type puis
@@ -253,3 +257,4 @@ def write_redaction_map_csv(redactor: AddressRedactor, path: str) -> None:
         writer.writerow(["adresse_reelle", "pseudonyme", "type"])
         for addr, pseudo, kind in redactor.entries():
             writer.writerow([addr, pseudo, kind])
+    logger.debug("write_redaction_map_csv: fin")

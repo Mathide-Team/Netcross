@@ -200,6 +200,7 @@ def _check_single_stdin(points):
             file=sys.stderr,
         )
         sys.exit(1)
+    logger.debug("_check_single_stdin: fin")
 
 
 def _parse_client_group_spec(spec):
@@ -274,6 +275,7 @@ def _write_json_output(path, payload, label) -> None:
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
     print(f"{label} ecrite(s) dans {path}")
+    logger.debug("_write_json_output: fin")
 
 
 def _collect_tshark_stats(captures) -> dict:
@@ -342,6 +344,7 @@ def _run_forensic_search(args, all_packets, flows) -> None:
         "results": [asdict(r) for r in results],
     }
     _write_json_output(args.forensic_search, payload, f"Recherche forensique ({len(results)} resultat(s))")
+    logger.debug("_run_forensic_search: fin")
 
 
 def _run_netflow(args) -> int:
@@ -479,6 +482,7 @@ def _run_merge(capture_specs, output_path, dedup):
         + (" (paquets identiques dedupliques)" if dedup else "")
         + "."
     )
+    logger.debug("_run_merge: fin")
 
 
 def _run_convert(capture_specs, output_path, fmt):
@@ -513,6 +517,7 @@ def _run_convert(capture_specs, output_path, fmt):
         print(f"--convert : {e}", file=sys.stderr)
         sys.exit(1)
     print(f"Converti {path_in} -> {output_path} (format: {fmt}).")
+    logger.debug("_run_convert: fin")
 
 
 def _run_export(capture_specs, output_path, bpf_filter, time_start, time_end, endpoints):
@@ -716,6 +721,7 @@ def _run_replay(capture_specs, interface, speed, loop):
         print(f"--replay : {e}", file=sys.stderr)
         sys.exit(1)
     print(f"{paths[0]} rejoue sur {interface} (speed={speed}, loop={loop}).")
+    logger.debug("_run_replay: fin")
 
 
 def _run_live_captures(live_specs, duration, reporter=None):
@@ -760,6 +766,7 @@ def _run_live_captures(live_specs, duration, reporter=None):
             if reporter is not None:
                 reporter.aggregator.set_status(label, "arrete")
         print(f"[{label}] capture arretee -- {count} paquet(s) au total.")
+        logger.debug("_run_live_captures._worker: fin")
 
     def _on_sigint(_signum, _frame):
         print(
@@ -767,6 +774,7 @@ def _run_live_captures(live_specs, duration, reporter=None):
             file=sys.stderr,
         )
         stop_event.set()
+        logger.debug("_run_live_captures._on_sigint: fin")
 
     def _on_duration_elapsed():
         print(
@@ -774,6 +782,7 @@ def _run_live_captures(live_specs, duration, reporter=None):
             file=sys.stderr,
         )
         stop_event.set()
+        logger.debug("_run_live_captures._on_duration_elapsed: fin")
 
     old_handler = signal.signal(signal.SIGINT, _on_sigint)
     for label, iface, bpf in points:
@@ -941,6 +950,7 @@ def _available_memory_bytes() -> int | None:
                         return int(parts[1]) * 1024
     except (OSError, ValueError):
         logger.exception("échec dans _available_memory_bytes")
+        logger.debug("_available_memory_bytes: except (OSError, ValueError) -> retour None")
         return None
     logger.debug("_available_memory_bytes: retour None")
     return None
@@ -1014,6 +1024,7 @@ def _check_memory_before_analysis(captures) -> None:
         warning = _memory_warning(label, file_size, info.packet_count)
         if warning:
             print(f"\nATTENTION memoire -- {warning}", file=sys.stderr)
+    logger.debug("_check_memory_before_analysis: fin")
 
 
 def _parse_sample_spec(spec: str) -> int:
@@ -1209,6 +1220,7 @@ def _run_content_extraction(captures, out_dir, kinds) -> None:
     result = run_extraction(captures, out_dir=out_dir, kinds=kinds if out_dir else ())
     for line in format_extraction(result):
         print(line)
+    logger.debug("_run_content_extraction: fin")
 
 
 def _check_live_report_args(args) -> None:
@@ -1232,6 +1244,7 @@ def _check_live_report_args(args) -> None:
     if os.path.exists(args.live_report) and not os.path.isdir(args.live_report):
         print(f"--live-report : {args.live_report} n'est pas un repertoire.", file=sys.stderr)
         sys.exit(1)
+    logger.debug("_check_live_report_args: fin")
 
 
 def _start_live_report(args):
@@ -1342,6 +1355,7 @@ def _run_ai(args, ai_options, report, all_packets) -> None:
         with open(args.ai_report, "w", encoding="utf-8") as fh:
             json.dump(result, fh, ensure_ascii=False, indent=2)
         print(f"\nResultats du module IA ecrits dans {args.ai_report}")
+    logger.debug("_run_ai: fin")
 
 
 def main():
@@ -3201,6 +3215,7 @@ def main():
         if args.support_map:
             write_support_map_csv(scrubber, args.support_map)
             print(f"  correspondance privee : {args.support_map} (a NE PAS transmettre avec le ticket)")
+    logger.debug("main: fin")
 
 
 if __name__ == "__main__":

@@ -126,6 +126,7 @@ def _save(fig, path):
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
+    logger.debug("_save: fin")
 
 
 def chart_throughput(r, path):

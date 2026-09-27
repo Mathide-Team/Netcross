@@ -94,14 +94,22 @@ class MetricSeries:
         values."""
         if not self.values:
             logger.trace("MetricSeries.validate: refus, ValueError")
+            logger.debug("MetricSeries.validate: si not self.values -> levée ValueError")
             raise ValueError("MetricSeries.values ne doit pas etre vide")
         n = len(self.values)
         if self.timestamps is not None and len(self.timestamps) != n:
             logger.trace("MetricSeries.validate: refus, ValueError")
+            logger.debug(
+                "MetricSeries.validate: si self.timestamps is not None and len(self.timestamps) != n -> levée ValueEr…"
+            )
             raise ValueError(f"timestamps ({len(self.timestamps)}) et values ({n}) doivent avoir la meme longueur")
         if self.labels is not None and len(self.labels) != n:
             logger.trace("MetricSeries.validate: refus, ValueError")
+            logger.debug(
+                "MetricSeries.validate: si self.labels is not None and len(self.labels) != n -> levée ValueError"
+            )
             raise ValueError(f"labels ({len(self.labels)}) et values ({n}) doivent avoir la meme longueur")
+        logger.debug("MetricSeries.validate: fin")
 
 
 # --- Couche de rendu --------------------------------------------------------
@@ -146,6 +154,7 @@ def _decorate(ax, series: MetricSeries) -> None:
                 fontsize=7,
                 color=th.color,
             )
+    logger.debug("_decorate: fin")
 
 
 def _title(series: MetricSeries) -> str:

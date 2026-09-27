@@ -289,6 +289,7 @@ def _opt_int(value) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         logger.exception("échec dans _opt_int")
+        logger.debug("_opt_int: except (TypeError, ValueError) -> retour None")
         return None
 
 
@@ -298,6 +299,7 @@ def _opt_float(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         logger.exception("échec dans _opt_float")
+        logger.debug("_opt_float: except (TypeError, ValueError) -> retour None")
         return None
 
 
@@ -334,6 +336,7 @@ def _to_item(raw) -> SecurityItem | None:
     (pas un dict) plutot que de faire echouer tout le rapport."""
     if not isinstance(raw, dict):
         logger.trace("_to_item: entree de type {} ignoree (dict attendu)", type(raw).__name__)
+        logger.debug("_to_item: si not isinstance(raw, dict) -> retour None")
         return None
     cvss = _opt_float(raw.get("cvss"))
     plugin = _opt_str(raw.get("plugin"))
@@ -738,6 +741,7 @@ def print_security_report(sr: SecurityReport) -> None:
     """Ecrit `format_security_report()` sur stdout."""
     for line in format_security_report(sr):
         print(line)
+    logger.debug("print_security_report: fin")
 
 
 # -- serialisation (socle commun aux sorties JSON, HTML et PDF) -------------

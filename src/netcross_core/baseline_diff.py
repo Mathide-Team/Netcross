@@ -204,6 +204,7 @@ def _compare_rate(
             evidence=evidence or [],
         )
     )
+    logger.debug("_compare_rate: fin")
 
 
 def _compare_count(
@@ -260,6 +261,7 @@ def _compare_count(
             evidence=evidence or [],
         )
     )
+    logger.debug("_compare_count: fin")
 
 
 def _compare_latency(
@@ -322,6 +324,7 @@ def _compare_latency(
             sample_size=len(after),
         )
     )
+    logger.debug("_compare_latency: fin")
 
 
 def diff_reports(
@@ -972,6 +975,7 @@ def print_diff_report(findings: list[DiffFinding]) -> None:
             }[f.severity]
             print(f"\n{title}")
         print(f"  [{f.category:14s}] {f.segment:20s} : {f.message}")
+    logger.debug("print_diff_report: fin")
 
 
 def write_diff_csv(findings: list[DiffFinding], path: str) -> None:
@@ -990,3 +994,4 @@ def write_diff_csv(findings: list[DiffFinding], path: str) -> None:
                     "" if f.after is None else f.after,
                 ]
             )
+    logger.debug("write_diff_csv: fin")

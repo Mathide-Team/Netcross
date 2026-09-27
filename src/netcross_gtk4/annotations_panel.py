@@ -76,6 +76,7 @@ class AnnotationsPanel(Gtk.Box):
             form.append(widget)
         self.append(form)
         self._set_form_sensitive(False)
+        logger.debug("AnnotationsPanel.__init__: fin")
 
     # -- etat ---------------------------------------------------------------
 
@@ -94,6 +95,7 @@ class AnnotationsPanel(Gtk.Box):
         self._set_form_sensitive(bool(self._point_labels))
         self._status(None)
         self.refresh()
+        logger.debug("AnnotationsPanel.load: fin")
 
     def clear(self) -> None:
         """Analyse sans fichiers (capture en direct, diff) : rien a annoter."""
@@ -104,11 +106,13 @@ class AnnotationsPanel(Gtk.Box):
         self._set_form_sensitive(False)
         self._status("Annotations disponibles pour une analyse de fichiers de capture.")
         self.refresh()
+        logger.debug("AnnotationsPanel.clear: fin")
 
     def _set_form_sensitive(self, sensitive: bool) -> None:
         logger.debug("_set_form_sensitive: {}", sensitive)
         for widget in (self.point_drop, self.frame_entry, self.tag_entry, self.comment_entry, self.add_btn):
             widget.set_sensitive(sensitive)
+        logger.debug("AnnotationsPanel._set_form_sensitive: fin")
 
     def _status(self, message: str | None) -> None:
         errors = list(self.store.errors.values()) if self.store else []
@@ -117,6 +121,7 @@ class AnnotationsPanel(Gtk.Box):
             lines = ["Clic droit sur une annotation pour l'etendre ou la supprimer."]
         logger.debug("_status: {} ligne(s)", len(lines))
         self.status_label.set_text("\n".join(lines))
+        logger.debug("AnnotationsPanel._status: fin")
 
     # -- actions -------------------------------------------------------------
 
@@ -138,6 +143,7 @@ class AnnotationsPanel(Gtk.Box):
         self.tag_entry.set_text("")
         self.comment_entry.set_text("")
         (self.tag_entry if frame_number is not None else self.frame_entry).grab_focus()
+        logger.debug("AnnotationsPanel.prefill: fin")
 
     def submit(self) -> bool:
         """Valide le formulaire ; True si l'annotation est enregistree."""
@@ -177,6 +183,7 @@ class AnnotationsPanel(Gtk.Box):
         self.selected_tags &= set(self.store.tags())
         self._status(None)
         self.refresh()
+        logger.debug("AnnotationsPanel.remove: fin")
 
     def toggle_tag(self, tag: str, active: bool) -> None:
         logger.debug("toggle_tag: {} actif={}", tag, active)
@@ -185,12 +192,14 @@ class AnnotationsPanel(Gtk.Box):
         else:
             self.selected_tags.discard(tag)
         self._refresh_rows()
+        logger.debug("AnnotationsPanel.toggle_tag: fin")
 
     # -- rendu ---------------------------------------------------------------
 
     def refresh(self) -> None:
         self._refresh_tags()
         self._refresh_rows()
+        logger.debug("AnnotationsPanel.refresh: fin")
 
     def _refresh_tags(self) -> None:
         while (child := self.tags_box.get_first_child()) is not None:
@@ -203,6 +212,7 @@ class AnnotationsPanel(Gtk.Box):
             check = Gtk.CheckButton(label=tag, active=tag in self.selected_tags)
             check.connect("toggled", lambda b, t=tag: self.toggle_tag(t, b.get_active()))
             self.tags_box.append(check)
+        logger.debug("AnnotationsPanel._refresh_tags: fin")
 
     def visible_rows(self):
         logger.debug("visible_rows: retour conditionnel")
@@ -220,6 +230,7 @@ class AnnotationsPanel(Gtk.Box):
             row.annotation = (point, ann.frame_number, ann.tag)
             row.set_child(Gtk.Label(label=f"{point} {format_annotation_row(ann)}", halign=Gtk.Align.START, wrap=True))
             self.list_box.append(row)
+        logger.debug("AnnotationsPanel._refresh_rows: fin")
 
     # -- menu contextuel -----------------------------------------------------
 
@@ -261,3 +272,4 @@ class AnnotationsPanel(Gtk.Box):
         popover.set_pointing_to(rect)
         popover.connect("closed", lambda p: p.unparent())
         popover.popup()
+        logger.debug("AnnotationsPanel._on_right_click: fin")

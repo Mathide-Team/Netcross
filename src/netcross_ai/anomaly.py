@@ -56,19 +56,27 @@ class Baseline:
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), ensure_ascii=False), encoding="utf-8")
+        logger.debug("Baseline.save: fin")
 
     @classmethod
     def from_dict(cls, data: object, source: str = "baseline") -> Baseline:
         """Valide un document ``netcross.ai.baseline/1`` deja decode."""
         if not isinstance(data, dict) or data.get("schema") != BASELINE_SCHEMA:
             logger.trace("Baseline.from_dict: refus, BaselineError")
+            logger.debug(
+                "Baseline.from_dict: si not isinstance(data, dict) or data.get('schema') != BASELIN… -> levée Baselin…"
+            )
             raise BaselineError(f"{source} n'est pas une baseline {BASELINE_SCHEMA}.")
         if data.get("features") != list(FEATURE_NAMES):
             logger.trace("Baseline.from_dict: refus, BaselineError")
+            logger.debug("Baseline.from_dict: si data.get('features') != list(FEATURE_NAMES) -> levée BaselineError")
             raise BaselineError(f"{source} : caracteristiques differentes de cette version, regenerer la baseline.")
         vectors = data.get("vectors")
         if not isinstance(vectors, list) or not all(is_feature_vector(v) for v in vectors):
             logger.trace("Baseline.from_dict: refus, BaselineError")
+            logger.debug(
+                "Baseline.from_dict: si not isinstance(vectors, list) or not all((is_feature_vector… -> levée Baselin…"
+            )
             raise BaselineError(f"{source} : vecteurs invalides.")
         logger.debug("from_dict: retour cls(...)")
         return cls(
@@ -120,6 +128,7 @@ def detect_anomalies(baseline: Baseline, flows: list[dict], contamination: float
     require_ml("La detection d'anomalies")
     if len(baseline.vectors) < MIN_BASELINE_FLOWS:
         logger.trace("detect_anomalies: refus, BaselineError")
+        logger.debug("detect_anomalies: si len(baseline.vectors) < MIN_BASELINE_FLOWS -> levée BaselineError")
         raise BaselineError(
             f"baseline trop petite ({len(baseline.vectors)} flux, {MIN_BASELINE_FLOWS} minimum) : "
             "l'enrichir avec d'autres captures de trafic normal."

@@ -45,7 +45,7 @@ from dataclasses import dataclass
 
 from netcross_core.correlate import flow_key
 from netcross_core.expert_model import ExpertEvent, Flow, PacketEvidence
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import (
     SEQ_GAP_CAPTURE_DROP,
     SEQ_GAP_INDETERMINATE,
@@ -258,6 +258,7 @@ class ForensicIndex:
                     seen_keys.add(fk)
 
         logger.trace("event_to_flows: {} flux lie(s)", len(flows))
+        logger.debug("ForensicIndex.event_to_flows: retour flows={}", summarize(flows, "flows"))
         return flows
 
     # -- Evenement → paquets -----------------------------------------------
@@ -296,6 +297,7 @@ class ForensicIndex:
                             seen.add(key)
 
         logger.trace("event_to_packets: {} paquet(s) de preuve", len(pkts))
+        logger.debug("ForensicIndex.event_to_packets: retour pkts={}", summarize(pkts, "pkts"))
         return pkts
 
     # -- Paquet → flow ------------------------------------------------------
@@ -347,6 +349,7 @@ class ForensicIndex:
         for point in flow.points:
             result.extend(per_point.get(point, []))
         logger.trace("flow_to_packets: {} paquet(s) sur {} point(s)", len(result), len(flow.points))
+        logger.debug("ForensicIndex.flow_to_packets: retour result={}", summarize(result, "result"))
         return result
 
 
@@ -540,6 +543,7 @@ def _track_stream(ordered: list[Pkt]) -> list[_OpenGap]:
             gap.epoch_end_ts = ts
         finished.extend(open_gaps)
         open_gaps.clear()
+        logger.debug("_track_stream.close_epoch: fin")
 
     for pk in ordered:
         if pk.tcp_len is None or pk.seq is None:

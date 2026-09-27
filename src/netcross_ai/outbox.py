@@ -55,6 +55,7 @@ def queue_pack(pack_path: str | Path, outbox: str | Path = DEFAULT_OUTBOX) -> Pa
     target = box / f"{pack.name}.zip"
     if target.exists():
         logger.trace("queue_pack: refus, ModelPackError")
+        logger.debug("queue_pack: si target.exists() -> levée ModelPackError")
         raise ModelPackError(f"un paquet {pack.name} attend deja dans {box} (le renommer ou le soumettre d'abord)")
     shutil.copyfile(pack_path, target)
     logger.debug("queue_pack: retour target")
@@ -75,6 +76,7 @@ def _try_read(path: Path) -> ModelPack | None:
         return read_pack(path)
     except ModelPackError:
         logger.exception("erreur: ModelPackError")
+        logger.debug("_try_read: except ModelPackError -> retour None")
         return None
 
 
@@ -82,6 +84,7 @@ def _archive(name: str, outbox: str | Path) -> Path:
     path = Path(outbox) / f"{check_name(name)}.zip"
     if not path.is_file():
         logger.trace("_archive: refus, ModelPackError")
+        logger.debug("_archive: si not path.is_file() -> levée ModelPackError")
         raise ModelPackError(f"aucun paquet {name} en attente dans {outbox}")
     logger.debug("_archive: retour path")
     return path
@@ -121,4 +124,5 @@ def is_online(host: str = "github.com", port: int = 443, timeout: float = 3.0) -
             return True
     except OSError:
         logger.exception("erreur: OSError")
+        logger.debug("is_online: except OSError -> retour False")
         return False

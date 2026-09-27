@@ -320,3 +320,4 @@ def print_session_objects(objs, top_n=DEFAULT_TOP_N) -> None:
     logger.debug("print_session_objects: objs={} top_n={}", summarize(objs, "objs"), summarize(top_n, "top_n"))
     for line in format_session_objects(objs, top_n):
         print(line)
+    logger.debug("print_session_objects: fin")

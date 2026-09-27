@@ -142,6 +142,7 @@ def load_cached_inventory(output: str, label: str, path: str) -> CaptureInventor
         return CaptureInventory.from_dict(data["inventory"])
     except (OSError, ValueError, KeyError, TypeError):
         logger.exception("échec dans load_cached_inventory")
+        logger.debug("load_cached_inventory: except (OSError, ValueError, KeyError, TypeErr… -> retour None")
         return None
 
 
@@ -151,6 +152,7 @@ def save_cached_inventory(output: str, inv: CaptureInventory) -> None:
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     with open(cache, "w", encoding="utf-8") as fh:
         json.dump({"fingerprint": _fingerprint(inv.path), "inventory": inv.to_dict()}, fh)
+    logger.debug("save_cached_inventory: fin")
 
 
 def collect_inventories(paths, labels, output, jobs=1, skip_existing=False) -> list[CaptureInventory]:
@@ -383,6 +385,7 @@ def main(argv=None):
     print(f"\nIndex du lot ecrit dans {index_path}")
     if plan.failures or errors:
         sys.exit(2)
+    logger.debug("main: fin")
 
 
 if __name__ == "__main__":

@@ -136,6 +136,7 @@ def _recommendations(report: Any, ai: dict | None) -> list[str]:
         if text not in seen:
             seen.add(text)
             recs.append(text)
+        logger.debug("_recommendations.add: fin")
 
     findings = sorted(getattr(report, "security_findings", []) or [], key=lambda f: SEVERITY_ORDER.index(_sev(f)))
     for f in findings:
@@ -217,6 +218,9 @@ def check_local_endpoint(url: str) -> None:
     parsed = urlparse(url)
     host = parsed.hostname or ""
     if parsed.scheme not in ("http", "https") or not host:
+        logger.debug(
+            "check_local_endpoint: si parsed.scheme not in ('http', 'https') or not host -> levée WriterConfigError"
+        )
         raise WriterConfigError(f"point d'acces invalide : {url!r}.")
     try:
         local = host == "localhost" or ipaddress.ip_address(host).is_loopback
@@ -224,10 +228,12 @@ def check_local_endpoint(url: str) -> None:
         logger.exception("échec dans check_local_endpoint")
         local = False
     if not local:
+        logger.debug("check_local_endpoint: si not local -> levée WriterConfigError")
         raise WriterConfigError(
             f"point d'acces {host} refuse : le modele doit tourner sur cette machine "
             "(127.0.0.1, ::1 ou localhost) -- aucune donnee de capture n'est envoyee a l'exterieur."
         )
+    logger.debug("check_local_endpoint: fin")
 
 
 def build_prompt(facts: dict) -> str:

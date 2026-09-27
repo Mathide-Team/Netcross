@@ -87,6 +87,7 @@ class AnalysesStore:
         if self._db_path:
             self._init_db()
             self._load()
+        logger.debug("AnalysesStore.__init__: fin")
 
     @property
     def persistent(self) -> bool:
@@ -109,19 +110,23 @@ class AnalysesStore:
     def complete(self, analysis_id: str, document: dict, summary: dict) -> None:
         """Passe l'analyse en ``completed`` avec son document et son résumé."""
         self._update(analysis_id, status=COMPLETED, document=document, summary=summary, error=None)
+        logger.debug("AnalysesStore.complete: fin")
 
     def fail(self, analysis_id: str, error: str) -> None:
         """Passe l'analyse en ``failed`` ; ``error`` est rendu au client."""
         self._update(analysis_id, status=FAILED, error=error)
+        logger.debug("AnalysesStore.fail: fin")
 
     def _update(self, analysis_id: str, **changes: Any) -> None:
         with self._lock:
             entry = self._store.get(analysis_id)
             if entry is None:
                 logger.warning("analyse {} inconnue, mise a jour ignoree", analysis_id)
+                logger.debug("AnalysesStore._update: si entry is None -> retour")
                 return
             entry.update(changes)
             self._persist(analysis_id, entry)
+        logger.debug("AnalysesStore._update: fin")
 
     # -- lecture -----------------------------------------------------------
 
@@ -147,6 +152,7 @@ class AnalysesStore:
         """Vide la mémoire (tests) ; la base SQLite n'est pas touchée."""
         with self._lock:
             self._store.clear()
+        logger.debug("AnalysesStore.clear: fin")
 
     # -- SQLite ------------------------------------------------------------
 
@@ -165,6 +171,7 @@ class AnalysesStore:
             for nom, definition in _COLONNES.items():
                 if nom not in existantes:
                     conn.execute(f"ALTER TABLE analyses ADD COLUMN {nom} {definition}")
+        logger.debug("AnalysesStore._init_db: fin")
 
     def _load(self) -> None:
         interrompues = []
@@ -190,6 +197,7 @@ class AnalysesStore:
         for analysis_id in interrompues:
             self._persist(analysis_id, self._store[analysis_id])
         logger.info("{} analyse(s) rechargee(s) depuis {}", len(rows), self._db_path)
+        logger.debug("AnalysesStore._load: fin")
 
     def _persist(self, analysis_id: str, entry: dict) -> None:
         """Écrit l'entrée si la persistance est active (appelé sous verrou)."""
@@ -214,6 +222,7 @@ class AnalysesStore:
                     entry["error"],
                 ),
             )
+        logger.debug("AnalysesStore._persist: fin")
 
 
 # Singleton global partagé entre les endpoints.

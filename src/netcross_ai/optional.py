@@ -27,3 +27,4 @@ def require_ml(feature: str) -> None:
     if not ml_available():
         logger.debug("require_ml: refus, AIUnavailableError")
         raise AIUnavailableError(f"{feature} necessite scikit-learn : {INSTALL_HINT}.")
+    logger.debug("require_ml: fin")

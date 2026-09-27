@@ -109,6 +109,7 @@ def _sha256(data: bytes) -> str:
 
 def check_name(name: str) -> str:
     if not _NAME_RE.match(name):
+        logger.debug("check_name: si not _NAME_RE.match(name) -> levée ModelPackError")
         raise ModelPackError(f"nom de paquet invalide : {name!r} (minuscules, chiffres, '-' et '_', 64 caracteres max)")
     logger.debug("check_name: retour name")
     return name
@@ -157,12 +158,14 @@ def build_pack(
     """
     if not consent:
         logger.trace("build_pack: refus, ModelPackError")
+        logger.debug("build_pack: si not consent -> levée ModelPackError")
         raise ModelPackError(
             "export refuse sans consentement explicite (--consent) : le paquet est destine a etre partage."
         )
     check_name(name)
     if baseline is None and not training:
         logger.trace("build_pack: refus, ModelPackError")
+        logger.debug("build_pack: si baseline is None and (not training) -> levée ModelPackError")
         raise ModelPackError("rien a exporter : fournir une baseline et/ou un jeu d'entrainement.")
     scrubber = TextScrubber()
     rng = random.Random(seed)
@@ -178,6 +181,7 @@ def build_pack(
         label = label.strip().lower()
         if not _LABEL_RE.match(label):
             logger.trace("build_pack: refus, ModelPackError")
+            logger.debug("build_pack: si not _LABEL_RE.match(label) -> levée ModelPackError")
             raise ModelPackError(f"etiquette invalide : {label!r} (ex. normal, tunnel, c2, exfiltration)")
         pack.training.append((sample_vector(sample), label))
     pack.training = [([_round(x) for x in v], label) for v, label in pack.training]
@@ -213,6 +217,7 @@ def _read_entries(path: Path) -> dict[str, bytes]:
         logger.exception(f"échec dans _read_entries: {exc}")
         raise ModelPackError(f"paquet illisible ({path}) : {exc}") from exc
     if size > MAX_PACK_BYTES:
+        logger.debug("_read_entries: si size > MAX_PACK_BYTES -> levée ModelPackError")
         raise ModelPackError(f"{path} : archive trop volumineuse ({size} octets)")
     try:
         with zipfile.ZipFile(path) as zf:
@@ -220,16 +225,20 @@ def _read_entries(path: Path) -> dict[str, bytes]:
             names = [i.filename for i in infos]
             unexpected = sorted(set(names) - set(_ALLOWED))
             if unexpected or len(names) != len(set(names)):
+                logger.debug("_read_entries: si unexpected or len(names) != len(set(names)) -> levée ModelPackError")
                 raise ModelPackError(f"{path} : contenu inattendu ({', '.join(unexpected) or 'doublons'})")
             if MANIFEST not in names:
+                logger.debug("_read_entries: si MANIFEST not in names -> levée ModelPackError")
                 raise ModelPackError(f"{path} : manifest.json absent, ce n'est pas un paquet de modele")
             entries = {}
             for info in infos:
                 if info.file_size > MAX_ENTRY_BYTES:
+                    logger.debug("_read_entries: si info.file_size > MAX_ENTRY_BYTES -> levée ModelPackError")
                     raise ModelPackError(f"{path} : {info.filename} trop volumineux")
                 with zf.open(info) as fh:
                     data = fh.read(MAX_ENTRY_BYTES + 1)
                 if len(data) > MAX_ENTRY_BYTES:
+                    logger.debug("_read_entries: si len(data) > MAX_ENTRY_BYTES -> levée ModelPackError")
                     raise ModelPackError(f"{path} : {info.filename} trop volumineux")
                 entries[info.filename] = data
             logger.debug("_read_entries: retour entries")
@@ -254,14 +263,22 @@ def read_pack(path: str | Path) -> ModelPack:
     entries = _read_entries(p)
     manifest = _json(entries, MANIFEST, p)
     if not isinstance(manifest, dict) or manifest.get("schema") != PACK_SCHEMA:
+        logger.debug(
+            "read_pack: si not isinstance(manifest, dict) or manifest.get('schema') !=… -> levée ModelPackError"
+        )
         raise ModelPackError(f"{p} : manifeste {PACK_SCHEMA} attendu")
     if manifest.get("features") != list(FEATURE_NAMES):
+        logger.debug("read_pack: si manifest.get('features') != list(FEATURE_NAMES) -> levée ModelPackError")
         raise ModelPackError(f"{p} : caracteristiques d'une autre version de Netcross, paquet a regenerer")
     declared = manifest.get("files")
     if not isinstance(declared, dict) or set(declared) != set(entries) - {MANIFEST}:
+        logger.debug(
+            "read_pack: si not isinstance(declared, dict) or set(declared) != set(entr… -> levée ModelPackError"
+        )
         raise ModelPackError(f"{p} : liste de fichiers du manifeste incoherente")
     for n, digest in declared.items():
         if _sha256(entries[n]) != digest:
+            logger.debug("read_pack: si _sha256(entries[n]) != digest -> levée ModelPackError")
             raise ModelPackError(f"{p} : empreinte SHA-256 de {n} incorrecte (archive alteree)")
     pack = ModelPack(
         name=check_name(str(manifest.get("name", ""))),
@@ -281,13 +298,20 @@ def read_pack(path: str | Path) -> ModelPack:
             or doc.get("schema") != TRAINING_SCHEMA
             or not isinstance(doc.get("samples"), list)
         ):
+            logger.debug(
+                "read_pack: si not isinstance(doc, dict) or doc.get('schema') != TRAINING_… -> levée ModelPackError"
+            )
             raise ModelPackError(f"{p} : {TRAINING_FILE} invalide")
         for i, item in enumerate(doc["samples"]):
             label = item.get("label") if isinstance(item, dict) else None
             if not (isinstance(label, str) and _LABEL_RE.match(label) and is_feature_vector(item.get("features"))):
+                logger.debug(
+                    "read_pack: si not (isinstance(label, str) and _LABEL_RE.match(label) and … -> levée ModelPackErr…"
+                )
                 raise ModelPackError(f"{p} : exemple {i} invalide (vecteur + etiquette attendus, aucun flux brut)")
             pack.training.append(([float(x) for x in item["features"]], label))
     if pack.baseline is None and not pack.training:
+        logger.debug("read_pack: si pack.baseline is None and (not pack.training) -> levée ModelPackError")
         raise ModelPackError(f"{p} : paquet vide")
     logger.debug("read_pack: retour pack")
     return pack
@@ -300,6 +324,7 @@ def import_pack(
     ajoutes) et/ou jeu d'entrainement (exemples ``features`` ajoutes). Les
     fichiers locaux sont crees s'ils n'existent pas."""
     if baseline_path is None and training_path is None:
+        logger.debug("import_pack: si baseline_path is None and training_path is None -> levée ModelPackError")
         raise ModelPackError("preciser la baseline et/ou le jeu d'entrainement local a enrichir")
     pack = read_pack(path)
     result: dict = {"pack": pack.summary()}
@@ -318,6 +343,9 @@ def import_pack(
                 logger.exception(f"échec dans import_pack: {exc}")
                 raise ModelPackError(f"jeu local illisible ({target}) : {exc}") from exc
             if not isinstance(doc, dict) or doc.get("schema") != TRAINING_SCHEMA:
+                logger.debug(
+                    "import_pack: si not isinstance(doc, dict) or doc.get('schema') != TRAINING_… -> levée ModelPackE…"
+                )
                 raise ModelPackError(f"{target} n'est pas un jeu {TRAINING_SCHEMA}")
         doc.setdefault("samples", []).extend({"features": v, "label": lb} for v, lb in pack.training)
         buf = io.StringIO()

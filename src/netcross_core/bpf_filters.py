@@ -122,6 +122,7 @@ def save_bpf_filters(filters: Iterable[BPFFilter], path: str | Path | None = Non
     except BaseException:
         logger.exception("erreur: BaseException")
         tmp.unlink(missing_ok=True)
+        logger.debug("save_bpf_filters: except BaseException -> relance de l'exception en cours")
         raise
     logger.debug("save_bpf_filters: retour target")
     return target
@@ -130,17 +131,20 @@ def save_bpf_filters(filters: Iterable[BPFFilter], path: str | Path | None = Non
 def _filter_from_item(item: object, index: int) -> BPFFilter:
     if not isinstance(item, dict):
         logger.trace("_filter_from_item: refus, ValueError")
+        logger.debug("_filter_from_item: si not isinstance(item, dict) -> levée ValueError")
         raise ValueError(f"entree #{index}: objet JSON attendu, pas {type(item).__name__}")
     for key in ("name", "expression"):
         value = item.get(key)
         if not isinstance(value, str) or not value.strip():
             logger.trace("_filter_from_item: refus, ValueError")
+            logger.debug("_filter_from_item: si not isinstance(value, str) or not value.strip() -> levée ValueError")
             raise ValueError(f"entree #{index}: '{key}' est requis (chaine non vide)")
     description = item.get("description")
     if description is None:
         description = ""
     if not isinstance(description, str):
         logger.trace("_filter_from_item: refus, ValueError")
+        logger.debug("_filter_from_item: si not isinstance(description, str) -> levée ValueError")
         raise ValueError(f"entree #{index}: 'description' doit etre une chaine")
     logger.debug("_filter_from_item: retour BPFFilter(...)")
     return BPFFilter(item["name"].strip(), item["expression"].strip(), description.strip())
@@ -172,9 +176,11 @@ def load_bpf_filters(path: str | Path | None = None) -> list[BPFFilter]:
         raise ValueError(f"filtres BPF: fichier illisible {source}: {exc}") from exc
     if isinstance(data, dict):
         if "filters" not in data:
+            logger.debug("load_bpf_filters: si 'filters' not in data -> levée ValueError")
             raise ValueError(f"filtres BPF: cle 'filters' absente dans {source}")
         data = data["filters"]
     if not isinstance(data, list):
+        logger.debug("load_bpf_filters: si not isinstance(data, list) -> levée ValueError")
         raise ValueError(f"filtres BPF: une liste est attendue dans {source}, pas {type(data).__name__}")
     by_name: dict[str, BPFFilter] = {}
     for index, item in enumerate(data):
@@ -206,6 +212,7 @@ def upsert_bpf_filter(new: BPFFilter, path: str | Path | None = None) -> list[BP
     key = _name_key(clean.name)
     if key in _PREDEFINED_KEYS:
         logger.trace("upsert_bpf_filter: refus, ValueError")
+        logger.debug("upsert_bpf_filter: si key in _PREDEFINED_KEYS -> levée ValueError")
         raise ValueError(f"le nom '{clean.name}' est reserve au catalogue predefini : choisir un autre nom")
     saved = load_bpf_filters(path)
     for index, existing in enumerate(saved):

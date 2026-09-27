@@ -246,6 +246,7 @@ def _check_single_stdin(points):
             file=sys.stderr,
         )
         sys.exit(1)
+    logger.debug("_check_single_stdin: fin")
 
 
 def _run_live_captures(live_specs, duration):
@@ -280,6 +281,7 @@ def _run_live_captures(live_specs, duration):
             logger.exception(f"échec dans _worker: {e}")
             print(f"[courant/{label}] ERREUR : {e}", file=sys.stderr)
         print(f"[courant/{label}] capture arretee -- {count} paquet(s) au total.")
+        logger.debug("_run_live_captures._worker: fin")
 
     def _on_sigint(_signum, _frame):
         print(
@@ -287,6 +289,7 @@ def _run_live_captures(live_specs, duration):
             file=sys.stderr,
         )
         stop_event.set()
+        logger.debug("_run_live_captures._on_sigint: fin")
 
     def _on_duration_elapsed():
         print(
@@ -294,6 +297,7 @@ def _run_live_captures(live_specs, duration):
             file=sys.stderr,
         )
         stop_event.set()
+        logger.debug("_run_live_captures._on_duration_elapsed: fin")
 
     old_handler = signal.signal(signal.SIGINT, _on_sigint)
     for label, iface, bpf in points:
@@ -819,6 +823,7 @@ def main():
 
     if any(f.severity == "regression" for f in findings):
         sys.exit(1)  # code de sortie non nul : exploitable en CI/script pour detecter une regression
+    logger.debug("main: fin")
 
 
 if __name__ == "__main__":

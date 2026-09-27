@@ -148,11 +148,13 @@ def _verifier_completude() -> None:
     if declares != set(RunOutcome.CHAMPS_ETAT):
         manquants = declares - set(RunOutcome.CHAMPS_ETAT)
         surnumeraires = set(RunOutcome.CHAMPS_ETAT) - declares
+        logger.debug("_verifier_completude: si declares != set(RunOutcome.CHAMPS_ETAT) -> levée AssertionError")
         raise AssertionError(
             "RunOutcome.CHAMPS_ETAT desynchronise des champs du dataclass "
             f"-- absents de CHAMPS_ETAT : {sorted(manquants)} ; "
             f"inconnus du dataclass : {sorted(surnumeraires)}"
         )
+    logger.debug("_verifier_completude: fin")
 
 
 _verifier_completude()

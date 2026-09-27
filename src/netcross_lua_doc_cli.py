@@ -239,6 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _emit(lignes: list[str]) -> None:
     print("\n".join(lignes).rstrip())
+    logger.debug("_emit: fin")
 
 
 def main(argv: list[str] | None = None) -> int:

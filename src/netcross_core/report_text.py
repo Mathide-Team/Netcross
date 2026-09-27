@@ -903,6 +903,7 @@ def print_report(r: Report):
             print(f"  ... {len(extracted) - 50} fichier(s) supplementaire(s) non affiche(s)")
     else:
         print("  aucun fichier extrait")
+    logger.debug("print_report: fin")
 
 
 # Nombre maximal de trous detailles par point dans le rapport texte (les
@@ -945,6 +946,7 @@ def print_sequence_gaps(r: Report):
             )
         if len(gaps) > _MAX_SEQ_GAP_EXAMPLES:
             print(f"      ... et {len(gaps) - _MAX_SEQ_GAP_EXAMPLES} autre(s) trou(s)")
+    logger.debug("print_sequence_gaps: fin")
 
 
 def print_annotations(annotations: list[PacketAnnotation]):
@@ -970,6 +972,7 @@ def print_annotations(annotations: list[PacketAnnotation]):
         for ann in sorted(by_tag[tag], key=lambda a: a.frame_number):
             suffix = f" -- {ann.comment}" if ann.comment else ""
             print(f"    trame #{ann.frame_number}{suffix}")
+    logger.debug("print_annotations: fin")
 
 
 def write_detail_csv(path, flows, points, names=None):
@@ -1011,3 +1014,4 @@ def write_detail_csv(path, flows, points, names=None):
             row.extend(per_point[p][0].dscp if p in per_point else "" for p in points)
             row.extend(per_point[p][0].ttl if p in per_point else "" for p in points)
             w.writerow(row)
+    logger.debug("write_detail_csv: fin")

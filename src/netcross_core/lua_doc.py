@@ -270,6 +270,7 @@ def _insert_methode(conn: sqlite3.Connection, classe_id: int, cls_name: str, m: 
         _FTS_INSERT,
         (cls_name, m.get("nom", ""), m.get("signature", ""), m.get("description", ""), genre, methode_id),
     )
+    logger.debug("_insert_methode: fin")
 
 
 def load_json(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, int]:
@@ -335,6 +336,7 @@ def load_json(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, int]:
         counts["attributs"],
         meta["version_wireshark"],
     )
+    logger.debug("load_json: retour counts={}", summarize(counts, "counts"))
     return counts
 
 

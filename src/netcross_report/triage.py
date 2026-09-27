@@ -222,6 +222,7 @@ def print_triage(ranked: list[SegmentScore], top_n: int = 5) -> None:
             f"\n... {len(ranked) - top_n} autre(s) segment(s) avec un score plus faible "
             f"(non affiches, voir la liste complete des findings pour le detail)"
         )
+    logger.debug("print_triage: fin")
 
 
 # -- Score de sante synthetique (0-100) --

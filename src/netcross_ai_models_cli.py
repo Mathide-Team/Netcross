@@ -53,6 +53,7 @@ def _print_pack(summary: dict) -> None:
         print(f"  {summary['description']}")
     print(f"  baseline : {summary['baseline_vectors']} flux ({summary['baseline_label'] or 'sans libelle'})")
     print(f"  exemples etiquetes : {summary['training_samples']} ({labels})")
+    logger.debug("_print_pack: fin")
 
 
 def _cmd_export(args) -> int:
@@ -105,6 +106,7 @@ def _cmd_outbox(args) -> int:
     if args.action == "add":
         if not args.target:
             logger.trace("_cmd_outbox: refus, ModelPackError")
+            logger.debug("_cmd_outbox: si not args.target -> levée ModelPackError")
             raise ModelPackError("outbox add : chemin du paquet ZIP attendu")
         print(f"Mis en file : {queue_pack(args.target, args.outbox)}")
         logger.debug("_cmd_outbox: retour 0")
@@ -120,6 +122,7 @@ def _cmd_outbox(args) -> int:
     if args.action == "done":
         if not args.target:
             logger.trace("_cmd_outbox: refus, ModelPackError")
+            logger.debug("_cmd_outbox: si not args.target -> levée ModelPackError")
             raise ModelPackError("outbox done : nom du paquet attendu")
         print(f"Marque comme envoye : {mark_sent(args.target, args.outbox)}")
         logger.debug("_cmd_outbox: retour 0")

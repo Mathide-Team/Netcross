@@ -72,6 +72,7 @@ def add_annotation(
     fonction avec le texte saisi par l'analyste, qui peut etre vide."""
     tag = tag.strip()
     if not tag:
+        logger.debug("add_annotation: si not tag -> levée ValueError")
         raise ValueError("le tag d'une annotation ne peut pas etre vide")
     logger.debug("add_annotation: trame={} tag={}", frame_number, tag)
     return [*annotations, PacketAnnotation(frame_number=frame_number, tag=tag, comment=comment, color=color)]
@@ -106,6 +107,7 @@ def parse_frame_number(text: str) -> int:
         logger.debug("parse_frame_number: saisie invalide {!r}", text)
         raise ValueError(f"numero de trame invalide : {text!r}") from None
     if number < 1:
+        logger.debug("parse_frame_number: si number < 1 -> levée ValueError")
         raise ValueError("le numero de trame commence a 1")
     logger.debug("parse_frame_number: retour number")
     return number
@@ -145,6 +147,7 @@ class AnnotationStore:
             # JSON valide mais pas une liste d'annotations
             self.errors[label] = f"{annotations_sidecar_path(path)} illisible : {exc}"
             logger.warning(f"annotations {label} : {self.errors[label]}")
+        logger.debug("AnnotationStore._load_one: fin")
 
     def labels(self) -> list[str]:
         logger.debug("labels: retour liste")
@@ -160,10 +163,12 @@ class AnnotationStore:
                 logger.debug("_path: retour path")
                 return path
         logger.trace("AnnotationStore._path: refus, KeyError")
+        logger.debug("AnnotationStore._path: levée KeyError")
         raise KeyError(f"point inconnu : {label}")
 
     def _save(self, label: str, annotations: list[PacketAnnotation]) -> None:
         if label in self.errors:
+            logger.debug("AnnotationStore._save: si label in self.errors -> levée ValueError")
             raise ValueError(f"point {label} en lecture seule : {self.errors[label]}")
         write_annotations(self._path(label), annotations)  # OSError remonte : l'appelant l'affiche
         self.by_label[label] = annotations
@@ -181,10 +186,12 @@ class AnnotationStore:
             comment.strip(),
         )
         self._save(label, updated)
+        logger.debug("AnnotationStore.add: fin")
 
     def remove(self, label: str, frame_number: int, tag: str) -> None:
         logger.debug("AnnotationStore.remove: point={} trame={} tag={}", label, frame_number, tag)
         self._save(label, remove_annotation(self.by_label.get(label, []), frame_number, tag))
+        logger.debug("AnnotationStore.remove: fin")
 
     def tags(self) -> list[str]:
         logger.debug("tags: retour available_tags(...)")

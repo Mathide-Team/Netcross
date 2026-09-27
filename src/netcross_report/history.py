@@ -144,6 +144,7 @@ def _executer_schema(conn, db_path) -> None:
     except sqlite3.DatabaseError as exc:
         logger.exception(f"échec dans _executer_schema: {exc}")
         raise HistoryDatabaseError(_message_base_invalide(db_path, exc)) from exc
+    logger.debug("_executer_schema: fin")
 
 
 def _connect(db_path) -> sqlite3.Connection:
@@ -390,3 +391,4 @@ def print_history(entries: list[HistoryEntry]) -> None:
             f"   score de sante : {e.health_score}/100 ({HEALTH_LABELS[e.health_label]})  --  "
             f"{e.total_findings} constat(s) ({counts_txt})"
         )
+    logger.debug("print_history: fin")

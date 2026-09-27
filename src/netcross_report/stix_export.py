@@ -149,6 +149,7 @@ class _Builder:
         self.identity = identity_object()
         self.objects: dict[str, dict[str, Any]] = {self.identity["id"]: self.identity}
         self.skipped: dict[str, int] = {}
+        logger.debug("_Builder.__init__: fin")
 
     def add(self, obj: dict[str, Any]) -> str:
         self.objects.setdefault(obj["id"], obj)
@@ -157,6 +158,7 @@ class _Builder:
 
     def skip(self, reason: str) -> None:
         self.skipped[reason] = self.skipped.get(reason, 0) + 1
+        logger.debug("_Builder.skip: fin")
 
     def sdo(self, stix_type: str, content: dict[str, Any], *, confidence: int | None = None) -> dict[str, Any]:
         obj: dict[str, Any] = {
@@ -180,6 +182,7 @@ class _Builder:
             addr = ipaddress.ip_address(str(value))
         except ValueError:
             logger.exception("échec dans ip")
+            logger.debug("_Builder.ip: except ValueError -> retour None")
             return None
         stix_type = "ipv4-addr" if addr.version == 4 else "ipv6-addr"
         props = {"value": str(addr)}
@@ -244,6 +247,7 @@ def _add_services(b: _Builder, fingerprints: Iterable[Mapping[str, Any]]) -> Non
             b.skip("service sans nom")
             continue
         b.observed(_service_refs(b, fp), fp.get("point"))
+    logger.debug("_add_services: fin")
 
 
 def _add_cve(b: _Builder, f: Mapping[str, Any]) -> None:
@@ -269,6 +273,7 @@ def _add_cve(b: _Builder, f: Mapping[str, Any]) -> None:
     software_ref = b.software(f["service"], f.get("version"))
     rel = {"relationship_type": "has", "source_ref": software_ref, "target_ref": vuln_ref}
     b.add(b.sdo("relationship", rel, confidence=CONFIDENCE_CVE_BY_VERSION))
+    logger.debug("_add_cve: fin")
 
 
 def exploit_pattern(f: Mapping[str, Any]) -> str | None:
@@ -317,6 +322,7 @@ def _add_exploit(b: _Builder, f: Mapping[str, Any]) -> None:
         content["x_netcross_point"] = str(f["point"])
     severity = str(f.get("severity") or "faible").lower()
     b.add(b.sdo("indicator", content, confidence=CONFIDENCE_EXPLOIT.get(severity, _DEFAULT_EXPLOIT_CONFIDENCE)))
+    logger.debug("_add_exploit: fin")
 
 
 def _add_anomaly(b: _Builder, f: Mapping[str, Any], orphan_notes: list[dict[str, Any]]) -> None:
@@ -339,6 +345,7 @@ def _add_anomaly(b: _Builder, f: Mapping[str, Any], orphan_notes: list[dict[str,
             refs.append(traffic_ref)
     observed_ref = b.observed(refs, f.get("point"))
     b.add(b.sdo("note", {**content, "object_refs": [observed_ref]}, confidence=CONFIDENCE_OBSERVATION))
+    logger.debug("_add_anomaly: fin")
 
 
 def to_stix_bundle(

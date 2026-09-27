@@ -174,6 +174,7 @@ def _parse_long_header(payload: bytes) -> dict | None:
     version = int.from_bytes(payload[1:5], "big")
     if version != QUIC_V1:
         logger.trace("_parse_long_header: version QUIC 0x{:08x} non geree, paquet ignore", version)
+        logger.debug("_parse_long_header: si version != QUIC_V1 -> retour None")
         return None  # seule la v1 (RFC 9001) est geree -- voir limites en tete de fichier
 
     i = 5
@@ -214,6 +215,9 @@ def _parse_long_header(payload: bytes) -> dict | None:
 
     if pn_offset + remaining_len > len(payload) or remaining_len < 4:
         logger.trace("_parse_long_header: longueur annoncee {} incoherente ({} octets)", remaining_len, len(payload))
+        logger.debug(
+            "_parse_long_header: si pn_offset + remaining_len > len(payload) or remaining_len <… -> retour None"
+        )
         return None  # incoherent : pas assez de place pour PN(<=4)+charge utile+tag(16)
 
     logger.debug("_parse_long_header: retour dict")
@@ -233,6 +237,7 @@ def _remove_header_protection(payload: bytearray, pn_offset: int, hp_key: bytes)
     sample_start = pn_offset + 4
     if sample_start + 16 > len(payload):
         logger.trace("_remove_header_protection: echantillon hors du paquet ({} octets)", len(payload))
+        logger.debug("_remove_header_protection: si sample_start + 16 > len(payload) -> retour None")
         return None
     sample = bytes(payload[sample_start : sample_start + 16])
     encryptor = Cipher(algorithms.AES(hp_key), modes.ECB()).encryptor()
@@ -286,6 +291,7 @@ def _decrypt_initial(payload: bytes, client_secret: bytes, header_info: dict) ->
     except InvalidTag:
         # resultat normal (voir docstring), a chaque paquet : TRACE, sans traceback
         logger.trace("_decrypt_initial: tag AEAD invalide, paquet {} non dechiffrable", packet_number)
+        logger.debug("_decrypt_initial: except InvalidTag -> retour None")
         return None
 
 
@@ -317,12 +323,14 @@ def _extract_client_hello_from_crypto(plaintext: bytes) -> bytes | None:
                 return None
             if offset != 0:
                 logger.trace("_extract_client_hello_from_crypto: CRYPTO a l'offset {}, ClientHello fragmente", offset)
+                logger.debug("_extract_client_hello_from_crypto: si offset != 0 -> retour None")
                 return None  # ClientHello fragmente sur plusieurs paquets : hors perimetre
             logger.debug("_extract_client_hello_from_crypto: retour element")
             return plaintext[i : i + length]
         # autre type de frame (ACK, etc.) : pas de parseur generique pour
         # sauter son corps proprement, on s'arrete la plutot que deviner
         logger.trace("_extract_client_hello_from_crypto: trame 0x{:02x} avant CRYPTO, arret", frame_type)
+        logger.debug("_extract_client_hello_from_crypto: boucle tant que i < len(plaintext) -> retour None")
         return None
     logger.debug("_extract_client_hello_from_crypto: retour None")
     return None
@@ -336,6 +344,7 @@ def _parse_tls_handshake_from_crypto(crypto_data: bytes) -> dict | None:
     body = crypto_data[4 : 4 + body_len]
     if len(body) < body_len:
         logger.trace("_parse_tls_handshake_from_crypto: ClientHello incomplet ({}/{} octets)", len(body), body_len)
+        logger.debug("_parse_tls_handshake_from_crypto: si len(body) < body_len -> retour None")
         return None  # ClientHello incomplet dans ce paquet (fragmente) : hors perimetre
     logger.debug("_parse_tls_handshake_from_crypto: retour parse_client_hello(...)")
     return parse_client_hello(body)
@@ -504,3 +513,4 @@ def print_quic_diagnostics(findings) -> None:
     }
     for f in findings:
         print(f"  [{sev_label.get(f.severity, f.severity):12s}] {f.segment:20s} : {f.message}")
+    logger.debug("print_quic_diagnostics: fin")

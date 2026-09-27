@@ -100,7 +100,11 @@ def _verify_api_key(api_key: str | None = Depends(_api_key_header)) -> None:
     """
     if _API_TOKEN and not (api_key and hmac.compare_digest(api_key.encode(), _API_TOKEN.encode())):
         logger.trace("_verify_api_key: refus, HTTPException")
+        logger.debug(
+            "_verify_api_key: si _API_TOKEN and (not (api_key and hmac.compare_digest(api_ke… -> levée HTTPException"
+        )
         raise HTTPException(status_code=401, detail="Jeton d'authentification invalide ou manquant")
+    logger.debug("_verify_api_key: fin")
 
 
 app = FastAPI(
@@ -125,9 +129,13 @@ async def _refuser_corps_trop_gros(request: Request, call_next):
     if request.method == "POST" and request.url.path.startswith("/captures"):
         longueur = request.headers.get("content-length", "")
         if longueur.isdigit() and int(longueur) > _MAX_UPLOAD_BYTES * _MAX_FILES + _MULTIPART_MARGIN:
+            logger.debug(
+                "_refuser_corps_trop_gros: si longueur.isdigit() and int(longueur) > _MAX_UPLOAD_BYTES * … -> retour…"
+            )
             return JSONResponse(
                 status_code=413, content={"detail": f"Requête trop volumineuse (max {_max_mb()} Mo par fichier)"}
             )
+    logger.debug("_refuser_corps_trop_gros: retour await call_next(request)")
     return await call_next(request)
 
 
@@ -148,12 +156,15 @@ async def _save_upload(file: UploadFile, label: str) -> str:
             while chunk := await file.read(_CHUNK_BYTES):
                 total += len(chunk)
                 if total > _MAX_UPLOAD_BYTES:
+                    logger.debug("_save_upload: si total > _MAX_UPLOAD_BYTES -> levée HTTPException")
                     raise HTTPException(status_code=413, detail=f"Fichier {label} trop volumineux (max {_max_mb()} Mo)")
                 tmp.write(chunk)
     except BaseException:
         logger.debug("_save_upload: échec pour {}, fichier temporaire {} supprimé", label, tmp.name)
         Path(tmp.name).unlink(missing_ok=True)
+        logger.debug("_save_upload: except BaseException -> relance de l'exception en cours")
         raise
+    logger.debug("_save_upload: retour tmp.name={}", summarize(tmp.name, "name"))
     return tmp.name
 
 
@@ -173,6 +184,7 @@ def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | N
             logger.warning("parsing de la capture {} impossible : {}", label, exc)
             raise AnalysisError(f"Erreur de parsing pour {label}: {exc}") from exc
         if not pkts:
+            logger.debug("_analyse_captures: si not pkts -> levée AnalysisError")
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
         all_packets.extend(pkts)
     try:
@@ -216,6 +228,7 @@ def _run_job(analysis_id: str, captures: list[tuple[str, str]], order_list: list
     finally:
         for _label, path in captures:
             Path(path).unlink(missing_ok=True)
+    logger.debug("_run_job: fin")
 
 
 async def _dispatch(
@@ -236,6 +249,7 @@ async def _dispatch(
     if not wait:
         _get_executor().submit(_run_job, analysis_id, captures, order_list, multi)
         accepted = AnalysisAccepted(analysis_id=analysis_id, status=PENDING, status_url=status_url)
+        logger.debug("_dispatch: si not wait -> retour JSONResponse(…)")
         return JSONResponse(status_code=202, content=accepted.model_dump(), headers={"Location": status_url})
     await run_in_threadpool(_run_job, analysis_id, captures, order_list, multi)
     entry = store.get(analysis_id)
@@ -245,6 +259,7 @@ async def _dispatch(
         raise HTTPException(status_code=400, detail=entry["error"])
     model = MultiAnalysisSummary if multi else AnalysisSummary
     summary = model(analysis_id=analysis_id, status=COMPLETED, **entry["summary"])
+    logger.debug("_dispatch: retour JSONResponse(…)")
     return JSONResponse(status_code=201, content=summary.model_dump(), headers={"Location": f"/analyses/{analysis_id}"})
 
 
@@ -276,9 +291,11 @@ async def upload_capture(
     fin et retourne directement le résumé (201).
     """
     if not file.filename:
+        logger.debug("upload_capture: si not file.filename -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Nom de fichier manquant")
     path = await _save_upload(file, label)
     metadata = {"filename": file.filename, "label": label}
+    logger.debug("upload_capture: retour await _dispatch([(label, path)], metadata, None, …")
     return await _dispatch([(label, path)], metadata, None, multi=False, wait=wait)
 
 
@@ -393,8 +410,10 @@ async def upload_multi_capture(
     ou ``/status``) détaille les pertes et le délai de chaque segment.
     """
     if not files or len(files) < 2:
+        logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Au moins 2 fichiers sont requis pour l'analyse multi-points")
     if len(files) > _MAX_FILES:
+        logger.debug("upload_multi_capture: si len(files) > _MAX_FILES -> levée HTTPException")
         raise HTTPException(status_code=400, detail=f"Au plus {_MAX_FILES} fichiers par requête")
     label_list = _parse_labels(labels, len(files))
     order_list = _parse_points_order(points_order, label_list)
@@ -403,15 +422,18 @@ async def upload_multi_capture(
     try:
         for file, label in zip(files, label_list, strict=True):
             if not file.filename:
+                logger.debug("upload_multi_capture: si not file.filename -> levée HTTPException")
                 raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
             captures.append((label, await _save_upload(file, label)))
     except BaseException:
         logger.debug("upload interrompu : {} fichier(s) temporaire(s) supprimé(s)", len(captures))
         for _label, path in captures:
             Path(path).unlink(missing_ok=True)
+        logger.debug("upload_multi_capture: except BaseException -> relance de l'exception en cours")
         raise
 
     metadata = {"files": [f.filename for f in files], "labels": label_list, "points_order": order_list}
+    logger.debug("upload_multi_capture: retour await _dispatch(captures, metadata, order_list, m…")
     return await _dispatch(captures, metadata, order_list, multi=True, wait=wait)
 
 
@@ -450,6 +472,7 @@ async def get_analysis(analysis_id: str, _auth: None = Depends(_verify_api_key))
     logger.debug("get_analysis(analysis_id={})", analysis_id)
     doc = dict(_completed_document(analysis_id))
     doc["_analysis_id"] = analysis_id
+    logger.debug("get_analysis: retour JSONResponse(…)")
     return JSONResponse(content=doc)
 
 
@@ -472,6 +495,7 @@ async def get_security_report(analysis_id: str, _auth: None = Depends(_verify_ap
         )
         for f in doc.get("security_findings", [])
     ]
+    logger.debug("get_security_report: retour SecurityReport(…)")
     return SecurityReport(
         analysis_id=analysis_id,
         findings=findings,
@@ -500,7 +524,9 @@ async def get_analysis_status(analysis_id: str, _auth: None = Depends(_verify_ap
     le résumé, segments compris en multi-points) ou ``failed`` (``error``)."""
     entry = store.get(analysis_id)
     if entry is None:
+        logger.debug("get_analysis_status: si entry is None -> levée HTTPException")
         raise HTTPException(status_code=404, detail=f"Analyse {analysis_id} introuvable")
+    logger.debug("get_analysis_status: retour AnalysisStatus(…)")
     return AnalysisStatus(
         analysis_id=analysis_id,
         status=entry["status"],

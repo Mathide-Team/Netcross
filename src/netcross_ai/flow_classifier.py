@@ -49,6 +49,9 @@ def load_training_set(path: str | Path) -> list[tuple[dict | list[float], str]]:
         logger.exception(f"échec dans load_training_set: {exc}")
         raise TrainingSetError(f"jeu d'entrainement illisible ({path}) : {exc}") from exc
     if not isinstance(data, dict) or data.get("schema") != TRAINING_SCHEMA:
+        logger.debug(
+            "load_training_set: si not isinstance(data, dict) or data.get('schema') != TRAININ… -> levée TrainingSetE…"
+        )
         raise TrainingSetError(f"{path} n'est pas un jeu {TRAINING_SCHEMA}.")
     samples: list[tuple[dict | list[float], str]] = []
     for i, item in enumerate(data.get("samples") or []):
@@ -57,6 +60,9 @@ def load_training_set(path: str | Path) -> list[tuple[dict | list[float], str]]:
         elif isinstance(item, dict) and item.get("label") and is_feature_vector(item.get("features")):
             samples.append(([float(x) for x in item["features"]], str(item["label"])))
         else:
+            logger.debug(
+                "load_training_set: sinon (isinstance(item, dict) and item.get('la…) -> levée TrainingSetError"
+            )
             raise TrainingSetError(
                 f"{path} : exemple {i} invalide (attendu {{'flow': {{...}}, 'label': '...'}} "
                 f"ou {{'features': [{len(FEATURE_NAMES)} nombres], 'label': '...'}})."
@@ -116,6 +122,7 @@ class FlowClassifier:
         self.labels = dict(labels)
         self._model = RandomForestClassifier(n_estimators=200, random_state=0, class_weight="balanced")
         self._model.fit([sample_vector(f) for f, _l in samples], [label for _f, label in samples])
+        logger.debug("FlowClassifier.__init__: fin")
 
     def predict(self, flows: list[dict]) -> list[FlowPrediction]:
         if not flows:
