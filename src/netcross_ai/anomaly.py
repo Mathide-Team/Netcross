@@ -17,7 +17,7 @@ from statistics import mean, pstdev
 from netcross_ai.features import FEATURE_NAMES, flow_features, flow_key
 from netcross_ai.flow_classifier import is_feature_vector
 from netcross_ai.optional import require_ml
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 BASELINE_SCHEMA = "netcross.ai.baseline/1"
@@ -37,12 +37,15 @@ class Baseline:
 
     @classmethod
     def from_flows(cls, flows: list[dict], label: str = "") -> Baseline:
+        logger.debug("Baseline.from_flows: retour cls(…)")
         return cls([flow_features(f) for f in flows], label)
 
     def merge(self, other: Baseline) -> Baseline:
+        logger.debug("Baseline.merge: retour Baseline(…)")
         return Baseline(self.vectors + other.vectors, self.label or other.label)
 
     def to_dict(self) -> dict:
+        logger.debug("Baseline.to_dict: retour dictionnaire")
         return {
             "schema": BASELINE_SCHEMA,
             "features": list(FEATURE_NAMES),
@@ -53,17 +56,29 @@ class Baseline:
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), ensure_ascii=False), encoding="utf-8")
+        logger.debug("Baseline.save: fin")
 
     @classmethod
     def from_dict(cls, data: object, source: str = "baseline") -> Baseline:
         """Valide un document ``netcross.ai.baseline/1`` deja decode."""
         if not isinstance(data, dict) or data.get("schema") != BASELINE_SCHEMA:
+            logger.trace("Baseline.from_dict: refus, BaselineError")
+            logger.debug(
+                "Baseline.from_dict: si not isinstance(data, dict) or data.get('schema') != BASELIN… -> levée Baselin…"
+            )
             raise BaselineError(f"{source} n'est pas une baseline {BASELINE_SCHEMA}.")
         if data.get("features") != list(FEATURE_NAMES):
+            logger.trace("Baseline.from_dict: refus, BaselineError")
+            logger.debug("Baseline.from_dict: si data.get('features') != list(FEATURE_NAMES) -> levée BaselineError")
             raise BaselineError(f"{source} : caracteristiques differentes de cette version, regenerer la baseline.")
         vectors = data.get("vectors")
         if not isinstance(vectors, list) or not all(is_feature_vector(v) for v in vectors):
+            logger.trace("Baseline.from_dict: refus, BaselineError")
+            logger.debug(
+                "Baseline.from_dict: si not isinstance(vectors, list) or not all((is_feature_vector… -> levée Baselin…"
+            )
             raise BaselineError(f"{source} : vecteurs invalides.")
+        logger.debug("Baseline.from_dict: retour cls(…)")
         return cls(
             [[float(x) for x in v] for v in vectors], str(data.get("label", "")), str(data.get("created_at", ""))
         )
@@ -75,6 +90,7 @@ class Baseline:
         except (OSError, json.JSONDecodeError) as exc:
             logger.exception(f"échec dans load: {exc}")
             raise BaselineError(f"baseline illisible ({path}) : {exc}") from exc
+        logger.debug("Baseline.load: retour cls.from_dict(…)")
         return cls.from_dict(data, str(path))
 
 
@@ -87,6 +103,7 @@ class FlowAnomaly:
     reasons: list[str]
 
     def to_dict(self) -> dict:
+        logger.debug("FlowAnomaly.to_dict: retour dictionnaire")
         return {
             "flow": self.flow,
             "score": self.score,
@@ -102,6 +119,7 @@ def _explain(vector: list[float], means: list[float], stds: list[float]) -> list
         z = (value - m) / s if s > 1e-9 else (0.0 if abs(value - m) < 1e-9 else float("inf"))
         if abs(z) >= _Z_EXPLAIN:
             out.append(f"{name} = {value:.3g} (baseline {m:.3g} +/- {s:.2g})")
+    logger.debug("_explain: retour out={}", summarize(out, "out"))
     return out
 
 
@@ -109,11 +127,14 @@ def detect_anomalies(baseline: Baseline, flows: list[dict], contamination: float
     """Score chaque flux ; les plus atypiques en premier."""
     require_ml("La detection d'anomalies")
     if len(baseline.vectors) < MIN_BASELINE_FLOWS:
+        logger.trace("detect_anomalies: refus, BaselineError")
+        logger.debug("detect_anomalies: si len(baseline.vectors) < MIN_BASELINE_FLOWS -> levée BaselineError")
         raise BaselineError(
             f"baseline trop petite ({len(baseline.vectors)} flux, {MIN_BASELINE_FLOWS} minimum) : "
             "l'enrichir avec d'autres captures de trafic normal."
         )
     if not flows:
+        logger.debug("detect_anomalies: si not flows -> retour liste vide")
         return []
     from sklearn.ensemble import IsolationForest
 
@@ -136,4 +157,5 @@ def detect_anomalies(baseline: Baseline, flows: list[dict], contamination: float
         )
         for f, v, r, flag in zip(flows, vectors, raw, flags)
     ]
+    logger.debug("detect_anomalies: retour sorted(…)")
     return sorted(results, key=lambda a: a.score, reverse=True)

@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 # Constantes CEF
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 
 logger = get_logger(__name__)
@@ -68,16 +68,19 @@ _SIGID_MAP = {
 
 def _cef_severity(severity: str) -> int:
     """Convertit une sévérité texte en entier CEF (0-10)."""
+    logger.debug("_cef_severity: retour _SEVERITY_MAP.get(…)")
     return _SEVERITY_MAP.get(severity.lower(), 5)
 
 
 def _cef_sigid(category: str) -> int:
     """Convertit une catégorie en Signature ID CEF."""
+    logger.debug("_cef_sigid: retour _SIGID_MAP.get(…)")
     return _SIGID_MAP.get(category, 999)
 
 
 def _escape_cef_field(value: str) -> str:
     """Échappe les caractères spéciaux CEF (pipe, backslash)."""
+    logger.debug("_escape_cef_field: retour value.replace('\\\\', '\\\\\\\\').replace(…)")
     return value.replace("\\", "\\\\").replace("|", "\\|")
 
 
@@ -103,6 +106,7 @@ def _to_siem_records(report: Report) -> list[SiemRecord]:
 
     L'horodatage est l'heure de l'export (les constats ne portent pas celle
     de leur paquet), lue une fois pour tout le lot."""
+    logger.debug("_to_siem_records: report={}", summarize(report, "report"))
     now_ms = int(_dt.datetime.now().timestamp() * 1000)
     records = []
     for finding in report.security_findings:
@@ -120,6 +124,7 @@ def _to_siem_records(report: Report) -> list[SiemRecord]:
                 finding=finding,
             )
         )
+    logger.debug("_to_siem_records: retour records={}", summarize(records, "records"))
     return records
 
 
@@ -133,11 +138,13 @@ def _format_extension(record: SiemRecord) -> str:
     if record.point:
         ext_parts.append(f"shost={_escape_cef_field(record.point)}")
     ext_parts.append(f"rt={record.timestamp_ms}")
+    logger.debug("_format_extension: retour ' '.join(…)")
     return " ".join(ext_parts)
 
 
 def to_cef(records: list[SiemRecord]) -> list[str]:
     """Met en forme des enregistrements en lignes CEF."""
+    logger.debug("to_cef: records={}", summarize(records, "records"))
     lines: list[str] = []
     for rec in records:
         name = _escape_cef_field(f"{rec.category}: {rec.detail}"[:255])
@@ -145,6 +152,7 @@ def to_cef(records: list[SiemRecord]) -> list[str]:
             f"CEF:0|{_DEVICE_VENDOR}|{_DEVICE_PRODUCT}|{_DEVICE_VERSION}|{rec.sig_id}|{name}|"
             f"{rec.severity_num}|{_format_extension(rec)}"
         )
+    logger.debug("to_cef: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
@@ -155,6 +163,7 @@ def export_cef(report: Report) -> list[str]:
     etre ecrit ligne par ligne dans un fichier ``.cef`` ou envoye
     directement a un SIEM via syslog.
     """
+    logger.debug("export_cef: report={}", summarize(report, "report"))
     return to_cef(_to_siem_records(report))
 
 
@@ -170,12 +179,14 @@ _LEEF_MAX_MSG = 1000
 
 def _escape_leef_header(value: str) -> str:
     """En-tete LEEF : `|` separe les champs, `\\` echappe."""
+    logger.debug("_escape_leef_header: retour value.replace('\\\\', '\\\\\\\\').replace('|'…(…)")
     return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ").replace("\r", " ")
 
 
 def _escape_leef_value(value: Any) -> str:
     """Valeur d'attribut LEEF : echappe `\\`, `=`, le separateur et les
     fins de ligne (un evenement tient sur une ligne)."""
+    logger.debug("_escape_leef_value: retour str(value).replace('\\\\', '\\\\\\\\').replac…(…)")
     return (
         str(value)
         .replace("\\", "\\\\")
@@ -188,6 +199,7 @@ def _escape_leef_value(value: Any) -> str:
 
 def _leef_time(timestamp_ms: int) -> str:
     when = _dt.datetime.fromtimestamp(timestamp_ms / 1000, tz=_dt.UTC)
+    logger.debug("_leef_time: retour when.strftime('%b %d %Y %H:%M:%S.') + f'(when.mic…")
     return when.strftime("%b %d %Y %H:%M:%S.") + f"{when.microsecond // 1000:03d} UTC"
 
 
@@ -198,6 +210,7 @@ def to_leef(records: list[SiemRecord]) -> list[str]:
     ``devTimeFormat``, ``src``/``dst``/``dstPort`` quand le constat les
     porte ; attributs propres : ``point`` (point de capture), ``cveId``,
     ``msg`` (detail, tronque a 1000 caracteres)."""
+    logger.debug("to_leef: records={}", summarize(records, "records"))
     lines: list[str] = []
     for rec in records:
         f = rec.finding
@@ -224,11 +237,13 @@ def to_leef(records: list[SiemRecord]) -> list[str]:
         )
         body = LEEF_DELIMITER.join(f"{k}={_escape_leef_value(v)}" for k, v in attrs)
         lines.append(f"{header}|{_LEEF_DELIMITER_HEADER}|{body}")
+    logger.debug("to_leef: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
 def export_leef(report: Report) -> list[str]:
     """Exporte les constats de securite d'un Report en lignes LEEF 2.0."""
+    logger.debug("export_leef: retour to_leef(…)")
     return to_leef(_to_siem_records(report))
 
 
@@ -236,11 +251,17 @@ def export_leef(report: Report) -> list[str]:
 
 
 def _write_lines(lines: list[str], output_path: str | Path) -> str:
+    logger.debug(
+        "_write_lines: lines={} output_path={}",
+        summarize(lines, "lines"),
+        summarize(output_path, "output_path"),
+    )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         for line in lines:
             f.write(line + "\n")
+    logger.debug("_write_lines: retour str(…)")
     return str(path.resolve())
 
 
@@ -249,12 +270,18 @@ def write_cef(report: Report, output_path: str | Path) -> str:
 
     Retourne le chemin absolu du fichier ecrit.
     """
+    logger.debug(
+        "write_cef: report={} output_path={}",
+        summarize(report, "report"),
+        summarize(output_path, "output_path"),
+    )
     return _write_lines(export_cef(report), output_path)
 
 
 def write_leef(report: Report, output_path: str | Path) -> str:
     """Ecrit les constats de securite au format LEEF 2.0 ; retourne le
     chemin absolu du fichier ecrit."""
+    logger.debug("write_leef: retour _write_lines(…)")
     return _write_lines(export_leef(report), output_path)
 
 
@@ -268,12 +295,24 @@ def write_siem(
 ) -> str:
     """Ecrit l'export `fmt` (``cef``, ``leef`` ou ``stix``). Les bornes
     temporelles ne servent qu'a STIX (dates deterministes des objets)."""
+    logger.debug(
+        "write_siem: report={} output_path={} fmt={} observed_from={} observed_until={}",
+        summarize(report, "report"),
+        summarize(output_path, "output_path"),
+        summarize(fmt, "fmt"),
+        summarize(observed_from, "observed_from"),
+        summarize(observed_until, "observed_until"),
+    )
     if fmt == "cef":
+        logger.debug("write_siem: si fmt == 'cef' -> retour write_cef(…)")
         return write_cef(report, output_path)
     if fmt == "leef":
+        logger.debug("write_siem: si fmt == 'leef' -> retour write_leef(…)")
         return write_leef(report, output_path)
     if fmt == "stix":
         from netcross_report.stix_export import write_stix
 
+        logger.debug("write_siem: si fmt == 'stix' -> retour write_stix(…)")
         return write_stix(report, output_path, observed_from=observed_from, observed_until=observed_until)
+    logger.debug("write_siem: refus, ValueError")
     raise ValueError(f"format SIEM inconnu : {fmt!r} (attendu : {', '.join(SIEM_FORMATS)})")

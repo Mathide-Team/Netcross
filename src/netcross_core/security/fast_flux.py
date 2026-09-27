@@ -79,6 +79,7 @@ class FastFluxAlert:
 
     @property
     def point(self) -> str | None:
+        logger.debug("FastFluxAlert.point: retour self.points[0] if self.points else None")
         return self.points[0] if self.points else None
 
 
@@ -90,6 +91,7 @@ class FastFluxResult:
 
     @property
     def suspicious(self) -> bool:
+        logger.debug("FastFluxResult.suspicious: retour bool(…)")
         return bool(self.alerts)
 
 
@@ -188,4 +190,10 @@ def _best_window(answers: list[tuple[float, tuple[str, ...]]], window: float) ->
         ips = {ip for _, group in answers[start : end + 1] for ip in group}
         if len(ips) > len(best):
             best, best_n = ips, end - start + 1
+    logger.debug(
+        "_best_window: {} reponse(s), {} IP(s) distincte(s) sur {}s",
+        len(answers),
+        len(best),
+        window,
+    )
     return best, best_n

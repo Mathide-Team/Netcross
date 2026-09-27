@@ -30,7 +30,7 @@ Couche : `netcross_report` peut importer `netcross_core`, jamais l'inverse.
 
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -77,6 +77,7 @@ class CommEdge:
 
     @property
     def label(self) -> str:
+        logger.debug("CommEdge.label: retour chaîne formatée")
         return f"{self.src} -> {self.dst}"
 
 
@@ -100,12 +101,14 @@ def available_protocols(flows) -> list[str]:
     """Protocoles presents dans le dict `flows` de `correlate()`, tries --
     sert a remplir la liste deroulante de filtrage de la GUI sans que
     celle-ci ait a parcourir les paquets elle-meme."""
+    logger.debug("available_protocols: flows={}", summarize(flows, "flows"))
     protos = set()
     for per_point in (flows or {}).values():
         for pkts in (per_point or {}).values():
             for pk in pkts or []:
                 if pk.proto:
                     protos.add(pk.proto)
+    logger.debug("available_protocols: retour sorted(…)")
     return sorted(protos)
 
 
@@ -117,6 +120,7 @@ def _representative_packets(per_point):
     for pkts in (per_point or {}).values():
         if len(pkts or []) > len(best):
             best = pkts
+    logger.debug("_representative_packets: retour best or []")
     return best or []
 
 
@@ -139,6 +143,13 @@ def build_comm_map(flows, protocols=None, top_n=None, only_anomalies=False) -> C
     afficherait des hotes sans arete laisserait croire a une communication
     filtree alors qu'il s'agit d'un residu du filtre.
     """
+    logger.debug(
+        "build_comm_map: flows={} protocols={} top_n={} only_anomalies={}",
+        summarize(flows, "flows"),
+        summarize(protocols, "protocols"),
+        summarize(top_n, "top_n"),
+        summarize(only_anomalies, "only_anomalies"),
+    )
     wanted = {p for p in (protocols or []) if p}
     edges: dict[tuple[str, str], CommEdge] = {}
     protos_seen = set()
@@ -182,6 +193,7 @@ def build_comm_map(flows, protocols=None, top_n=None, only_anomalies=False) -> C
             node.protocols |= edge.protocols
             node.anomalies += edge.anomalies
 
+    logger.debug("build_comm_map: retour CommMap(…)")
     return CommMap(
         nodes=sorted(nodes.values(), key=lambda n: (-n.bytes, n.host)),
         edges=kept,
@@ -195,7 +207,9 @@ def format_comm_map(cmap, top_n=DEFAULT_TOP_N) -> str:
     """Rendu texte de la cartographie -- utilise par la GUI pour legender
     le graphe (et lisible sans interface graphique, ce qui rend la vue
     verifiable en console pendant le developpement)."""
+    logger.debug("format_comm_map: cmap={} top_n={}", summarize(cmap, "cmap"), summarize(top_n, "top_n"))
     if not cmap.edges:
+        logger.debug("format_comm_map: si not cmap.edges -> retour 'Aucune communication a afficher avec c…")
         return "Aucune communication a afficher avec ces filtres."
     lignes = [f"{len(cmap.edges)} arete(s) affichee(s) sur {cmap.total_edges}, {len(cmap.nodes)} hote(s)."]
     for edge in cmap.edges[:top_n]:
@@ -206,4 +220,5 @@ def format_comm_map(cmap, top_n=DEFAULT_TOP_N) -> str:
         )
     if len(cmap.edges) > top_n:
         lignes.append(f"  ... {len(cmap.edges) - top_n} arete(s) supplementaire(s) non detaillee(s)")
+    logger.debug("format_comm_map: retour '\\n'.join(…)")
     return "\n".join(lignes)

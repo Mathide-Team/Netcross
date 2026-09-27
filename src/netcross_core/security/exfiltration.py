@@ -60,7 +60,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 from netcross_core.security.address_scope import is_external
 
@@ -123,7 +123,12 @@ class ExfiltrationThresholds:
     @property
     def ratio_floor(self) -> int:
         if self.min_upload_for_ratio is not None:
+            logger.debug(
+                "ExfiltrationThresholds.ratio_floor: si self.min_upload_for_ratio… retour self.min_upload_for_ratio={}",
+                summarize(self.min_upload_for_ratio, "min_upload_for_ratio"),
+            )
             return self.min_upload_for_ratio
+        logger.debug("ExfiltrationThresholds.ratio_floor: retour self.min_volume_bytes // 10")
         return self.min_volume_bytes // 10
 
 
@@ -131,10 +136,12 @@ DEFAULT_THRESHOLDS = ExfiltrationThresholds()
 
 
 def compute_score(signals: Iterable[str]) -> int:
+    logger.debug("compute_score: retour min(…)")
     return min(100, sum(SIGNAL_WEIGHTS.get(s, 0) for s in set(signals)))
 
 
 def severity_for(score: int) -> str:
+    logger.debug("severity_for: retour 'elevee' if score >= HIGH_SEVERITY_SCORE else 'mo…")
     return "elevee" if score >= HIGH_SEVERITY_SCORE else "moyenne"
 
 
@@ -158,14 +165,17 @@ class ExfiltrationAlert:
 
     @property
     def is_strong(self) -> bool:
+        logger.debug("ExfiltrationAlert.is_strong: retour any(…)")
         return any(s in STRONG_SIGNALS for s in self.signals)
 
     @property
     def score(self) -> int:
+        logger.debug("ExfiltrationAlert.score: retour compute_score(…)")
         return compute_score(self.signals)
 
     def to_dict(self) -> dict:
         score = self.score
+        logger.debug("ExfiltrationAlert.to_dict: retour dictionnaire")
         return {
             "point": self.point,
             "src": self.src,
@@ -199,26 +209,33 @@ class ExfiltrationResult:
 def _is_off_hours(ts: float, thresholds: ExfiltrationThresholds) -> bool:
     """Verifie si le timestamp tombe hors des heures ouvrables (UTC)."""
     hour = datetime.fromtimestamp(ts, tz=timezone.utc).hour
+    logger.debug("_is_off_hours: retour hour < thresholds.business_hours_start or hour >=…")
     return hour < thresholds.business_hours_start or hour >= thresholds.business_hours_end
 
 
 def _is_outbound(src: str, dst: str, thresholds: ExfiltrationThresholds = DEFAULT_THRESHOLDS) -> bool:
     treat = thresholds.treat_test_net_as_external
+    logger.debug("_is_outbound: retour not is_external(src, treat_test_net_as_external=t…")
     return not is_external(src, treat_test_net_as_external=treat) and is_external(dst, treat_test_net_as_external=treat)
 
 
 def _proto_family(pk: Pkt) -> str:
     proto = (pk.proto or "").upper()
     if proto.startswith("ICMP"):
+        logger.debug("_proto_family: si proto.startswith('ICMP') -> retour 'ICMP'")
         return "ICMP"
     if proto == "DNS" or pk.sport == 53 or pk.dport == 53 or getattr(pk, "dns_qry_name", None):
+        logger.debug("_proto_family: si proto == 'DNS' or pk.sport == 53 or pk.dport == 53 or getat… -> retour 'DNS'")
         return "DNS"
+    logger.debug("_proto_family: retour proto={}", summarize(proto, "proto"))
     return proto
 
 
 def _ratio(upload: int, download: int) -> float:
     if download > 0:
+        logger.debug("_ratio: si download > 0 -> retour upload / download")
         return upload / download
+    logger.debug("_ratio: retour float('inf') if upload > 0 else 0.0")
     return float("inf") if upload > 0 else 0.0
 
 
@@ -260,6 +277,7 @@ def detect_exfiltration(
 
     def download_of(point: str, src: str, dst: str) -> int:
         rev = flow_data.get((point, dst, src))
+        logger.debug("detect_exfiltration.download_of: retour rev['bytes'] if rev else 0")
         return rev["bytes"] if rev else 0
 
     alerts: list[ExfiltrationAlert] = []
@@ -344,6 +362,7 @@ def dns_tunnel_sources(packets: Iterable[Pkt], dns_suspicions: Iterable[dict]) -
         if s.get("domain"):
             domains[str(s.get("point") or "")].add(str(s["domain"]).lower().rstrip("."))
     if not domains:
+        logger.debug("dns_tunnel_sources: si not domains -> retour set(…)")
         return set()
     sources: set[tuple[str, str]] = set()
     for pk in packets:

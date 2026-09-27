@@ -56,20 +56,27 @@ def group_options() -> list[tuple[str, str]]:
 def format_bytes(n: int) -> str:
     """Formate un nombre d'octets en unite lisible."""
     if n < 1024:
+        logger.debug("format_bytes: si n < 1024 -> retour _('(n) o').format(…)")
         return _("{n} o").format(n=n)
     if n < 1024 * 1024:
+        logger.debug("format_bytes: si n < 1024 * 1024 -> retour _('(v:.1f) Ko').format(…)")
         return _("{v:.1f} Ko").format(v=n / 1024)
     if n < 1024 * 1024 * 1024:
+        logger.debug("format_bytes: si n < 1024 * 1024 * 1024 -> retour _('(v:.1f) Mo').format(…)")
         return _("{v:.1f} Mo").format(v=n / (1024 * 1024))
+    logger.debug("format_bytes: retour _('(v:.1f) Go').format(…)")
     return _("{v:.1f} Go").format(v=n / (1024 * 1024 * 1024))
 
 
 def format_bps(bps: float) -> str:
     """Formate un debit en bits/s en unite lisible."""
     if bps < 1000:
+        logger.debug("format_bps: si bps < 1000 -> retour chaîne formatée")
         return f"{bps:.0f} bps"
     if bps < 1_000_000:
+        logger.debug("format_bps: si bps < 1000000 -> retour chaîne formatée")
         return f"{bps / 1000:.1f} kbps"
+    logger.debug("format_bps: retour chaîne formatée")
     return f"{bps / 1_000_000:.1f} Mbps"
 
 
@@ -127,6 +134,7 @@ def format_flow_summary(flow: Flow) -> str:
             not flow.points,
             not flow.endpoints,
         )
+    logger.debug("format_flow_summary: retour _('(points) | (endpoints) | (packets) p…(…)")
     return _("{points} | {endpoints} | {packets} pkts | {size}").format(
         points=points, endpoints=endpoints, packets=total_pkts, size=format_bytes(total_bytes)
     )

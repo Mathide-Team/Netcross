@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_report.security_report import SecurityReport, format_security_report, security_report_to_dict
 
 logger = get_logger(__name__)
@@ -22,7 +22,9 @@ def security_view_text(sr: SecurityReport | None) -> str:
     """Texte de la section Securite : le rendu de --security-report."""
     logger.debug("security_view_text: rapport={}", sr is not None)
     if sr is None:
+        logger.debug('security_view_text: si sr is None -> retour "Cocher « Rapport de securite » puis re…')
         return "Cocher « Rapport de securite » puis relancer l'analyse de fichiers."
+    logger.debug("security_view_text: retour '\\n'.join(…)")
     return "\n".join(format_security_report(sr))
 
 
@@ -35,12 +37,14 @@ def export_security_report(sr: SecurityReport, path: str) -> str:
     if suffix == ".html":
         from netcross_report.security_html import generate_security_html
 
+        logger.debug("export_security_report: si suffix == '.html' -> retour generate_security_html(…)")
         return generate_security_html(sr, path)
     if suffix == ".json":
         Path(path).write_text(
             json.dumps(security_report_to_dict(sr), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        logger.debug("export_security_report: si suffix == '.json' -> retour path={}", summarize(path, "path"))
         return path
     logger.warning("export_security_report: extension non prise en charge {!r}", suffix)
     raise ValueError(f"format d'export inconnu ({suffix or 'sans extension'}) : .html ou .json attendu")

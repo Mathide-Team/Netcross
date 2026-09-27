@@ -29,7 +29,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.plugins.api import Detector, Exporter
 
 logger = get_logger(__name__)
@@ -70,16 +70,19 @@ def forbidden_imports(source: str) -> list[str]:
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             names = [node.module]
         found += [n for n in names if n.split(".")[0] in FORBIDDEN_IMPORTS]
+    logger.debug("forbidden_imports: retour sorted(…)")
     return sorted(set(found))
 
 
 def _check_source(path: str | None, label: str) -> None:
     if not path or not path.endswith(".py"):
+        logger.debug("_check_source: si not path or not path.endswith('.py') -> retour")
         return
     try:
         source = Path(path).read_text(encoding="utf-8")
     except OSError:
         logger.exception("erreur: OSError")
+        logger.debug("_check_source: except OSError -> retour")
         return
     try:
         bad = forbidden_imports(source)
@@ -87,13 +90,16 @@ def _check_source(path: str | None, label: str) -> None:
         logger.exception(f"échec dans _check_source: {exc}")
         raise PluginLoadError(f"{label} : erreur de syntaxe ({exc.msg}, ligne {exc.lineno})") from exc
     if bad:
+        logger.debug("_check_source: si bad -> levée PluginLoadError")
         raise PluginLoadError(
             f"{label} importe {', '.join(bad)} : un plugin ne doit importer que netcross_core "
             "(il recoit le Report, pas le moteur de rendu)"
         )
+    logger.debug("_check_source: fin")
 
 
 def _entry_points(group: str) -> list[metadata.EntryPoint]:
+    logger.debug("_entry_points: retour sorted(…)")
     return sorted(metadata.entry_points(group=group), key=lambda ep: ep.name)
 
 
@@ -105,10 +111,12 @@ def discover_installed() -> list[PluginInfo]:
         for ep in _entry_points(group):
             dist = getattr(ep.dist, "name", None) or "?"
             infos.append(PluginInfo(ep.name, kind, f"entry_point:{dist}", ep.value))
+    logger.debug("discover_installed: retour infos={}", summarize(infos, "infos"))
     return infos
 
 
 def _instantiate(obj: Any) -> Any:
+    logger.debug("_instantiate: retour obj() if isinstance(obj, type) else obj")
     return obj() if isinstance(obj, type) else obj
 
 
@@ -116,7 +124,12 @@ def _check_kind(obj: Any, kind: str, label: str) -> Any:
     proto = Detector if kind == "detector" else Exporter
     method = "analyse" if kind == "detector" else "export"
     if not isinstance(getattr(obj, "name", None), str) or not callable(getattr(obj, method, None)):
+        logger.trace("_check_kind: refus, PluginLoadError")
+        logger.debug(
+            "_check_kind: si not isinstance(getattr(obj, 'name', None), str) or not call… -> levée PluginLoadError"
+        )
         raise PluginLoadError(f"{label} : ne respecte pas le protocole {proto.__name__} (name + {method}())")
+    logger.debug("_check_kind: retour obj={}", summarize(obj, "obj"))
     return obj
 
 
@@ -124,11 +137,13 @@ def load_path_module(path: str) -> dict[str, list[Any]]:
     """Importe un fichier plugin apres verification de ses imports."""
     file = Path(path)
     if not file.is_file():
+        logger.debug("load_path_module: si not file.is_file() -> levée PluginLoadError")
         raise PluginLoadError(f"--plugin-path {path} : fichier introuvable")
     _check_source(str(file), f"--plugin-path {path}")
     mod_name = f"netcross_plugin_{file.stem}_{abs(hash(str(file.resolve()))):x}"
     spec = importlib.util.spec_from_file_location(mod_name, file)
     if spec is None or spec.loader is None:
+        logger.debug("load_path_module: si spec is None or spec.loader is None -> levée PluginLoadError")
         raise PluginLoadError(f"--plugin-path {path} : module Python non chargeable")
     module = importlib.util.module_from_spec(spec)
     sys.modules[mod_name] = module
@@ -137,6 +152,7 @@ def load_path_module(path: str) -> dict[str, list[Any]]:
     except Exception as exc:
         logger.exception(f"échec dans load_path_module: {exc}")
         sys.modules.pop(mod_name, None)
+        logger.debug("load_path_module: except Exception -> levée PluginLoadError")
         raise PluginLoadError(f"--plugin-path {path} : import en erreur ({exc.__class__.__name__}: {exc})") from exc
     out: dict[str, list[Any]] = {"detector": [], "exporter": []}
     for kind, attr in (("detector", "DETECTORS"), ("exporter", "EXPORTERS")):
@@ -144,7 +160,9 @@ def load_path_module(path: str) -> dict[str, list[Any]]:
             label = f"{path}:{attr}"
             out[kind].append(_check_kind(_instantiate(obj), kind, label))
     if not out["detector"] and not out["exporter"]:
+        logger.debug("load_path_module: si not out['detector'] and (not out['exporter']) -> levée PluginLoadError")
         raise PluginLoadError(f"--plugin-path {path} : ni DETECTORS ni EXPORTERS declares")
+    logger.debug("load_path_module: retour out={}", summarize(out, "out"))
     return out
 
 
@@ -162,6 +180,7 @@ def _load_entry_point(ep: metadata.EntryPoint, kind: str) -> Any:
     except Exception as exc:
         logger.exception(f"échec dans _load_entry_point: {exc}")
         raise PluginLoadError(f"{label} : import en erreur ({exc.__class__.__name__}: {exc})") from exc
+    logger.debug("_load_entry_point: retour _check_kind(…)")
     return _check_kind(_instantiate(obj), kind, label)
 
 
@@ -209,6 +228,7 @@ def load_plugins(authorized: list[str], plugin_paths: list[str] | None = None) -
     for name in wanted:
         if name not in found and not any(e["plugin"] == name for e in loaded.errors):
             loaded.errors.append({"plugin": name, "reason": "introuvable (ni installe ni dans --plugin-path)"})
+    logger.debug("load_plugins: retour loaded={}", summarize(loaded, "loaded"))
     return loaded
 
 
@@ -240,4 +260,5 @@ def list_plugins(authorized: list[str], plugin_paths: list[str] | None = None) -
                 }
                 for o in items
             ]
+    logger.debug("list_plugins: retour rows={}", summarize(rows, "rows"))
     return rows

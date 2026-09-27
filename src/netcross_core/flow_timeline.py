@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -299,6 +299,12 @@ def build_flow_timelines(packets: list[Pkt], window_s: float = 1.0, min_packets:
     quasi nulles et un debit double. Une conversation de moins de
     `min_packets` paquets a un point est omise (pas d'inter-arrivee).
     Resultat JSON trie par point puis par debut de conversation."""
+    logger.debug(
+        "build_flow_timelines: packets={} window_s={} min_packets={}",
+        summarize(packets, "packets"),
+        summarize(window_s, "window_s"),
+        summarize(min_packets, "min_packets"),
+    )
     groups: dict[tuple, list[Pkt]] = {}
     for pk in packets:
         groups.setdefault((pk.point, _conversation(pk)), []).append(pk)

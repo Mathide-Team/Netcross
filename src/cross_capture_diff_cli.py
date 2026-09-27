@@ -90,7 +90,7 @@ from netcross_core import (
     write_redaction_map_csv,
 )
 from netcross_core.baseline_diff import diff_reports, print_diff_report, write_diff_csv
-from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
 from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
 from pcap_parser.remote import CaptureSourceError, parse_source, split_live_target
 
@@ -107,6 +107,11 @@ def _parse_capture_args(raw_list, flag_name):
     continu, a lister dans l'ordre chronologique -- aucun tri automatique.
     S'applique aussi bien a --baseline qu'a --current (jamais a
     --live-current, qui n'a pas de fichiers)."""
+    logger.debug(
+        "_parse_capture_args: raw_list={} flag_name={}",
+        summarize(raw_list, "raw_list"),
+        summarize(flag_name, "flag_name"),
+    )
     captures = []
     for c in raw_list:
         if "=" not in c:
@@ -125,6 +130,7 @@ def _parse_capture_args(raw_list, flag_name):
             )
             sys.exit(1)
         captures.extend((label, path) for path in paths)
+    logger.debug("_parse_capture_args: retour captures={}", summarize(captures, "captures"))
     return captures
 
 
@@ -172,6 +178,7 @@ def _load_packets(scenario_name, captures, parallel, parallel_workers):
                 f"l'analyse continue sur les fichiers restants, mais le resultat est incomplet.",
                 file=sys.stderr,
             )
+        logger.debug("_load_packets: si parallel -> retour all_packets={}", summarize(all_packets, "all_packets"))
         return all_packets
 
     # Meme correction que sur l'analyzer (issue #287) : cette branche
@@ -199,6 +206,7 @@ def _load_packets(scenario_name, captures, parallel, parallel_workers):
             "l'analyse continue sur les fichiers restants, mais le resultat est incomplet.",
             file=sys.stderr,
         )
+    logger.debug("_load_packets: retour all_packets={}", summarize(all_packets, "all_packets"))
     return all_packets
 
 
@@ -223,12 +231,14 @@ def _parse_live_spec(spec):
         logger.exception(f"échec dans _parse_live_spec: {exc}")
         print(f"Source invalide pour --live-current {label} : {exc}", file=sys.stderr)
         sys.exit(1)
+    logger.debug("_parse_live_spec: retour tuple de 3")
     return label, iface, bpf or None
 
 
 def _check_single_stdin(points):
     """Une seule source pipe://- (entree standard) par execution : deux
     lecteurs se partageraient les octets du meme flux pcap."""
+    logger.debug("_check_single_stdin: points={}", summarize(points, "points"))
     stdin_labels = [label for label, iface, _bpf in points if parse_source(iface).uses_stdin]
     if len(stdin_labels) > 1:
         print(
@@ -236,6 +246,7 @@ def _check_single_stdin(points):
             file=sys.stderr,
         )
         sys.exit(1)
+    logger.debug("_check_single_stdin: fin")
 
 
 def _run_live_captures(live_specs, duration):
@@ -270,6 +281,7 @@ def _run_live_captures(live_specs, duration):
             logger.exception(f"échec dans _worker: {e}")
             print(f"[courant/{label}] ERREUR : {e}", file=sys.stderr)
         print(f"[courant/{label}] capture arretee -- {count} paquet(s) au total.")
+        logger.debug("_run_live_captures._worker: fin")
 
     def _on_sigint(_signum, _frame):
         print(
@@ -277,6 +289,7 @@ def _run_live_captures(live_specs, duration):
             file=sys.stderr,
         )
         stop_event.set()
+        logger.debug("_run_live_captures._on_sigint: fin")
 
     def _on_duration_elapsed():
         print(
@@ -284,6 +297,7 @@ def _run_live_captures(live_specs, duration):
             file=sys.stderr,
         )
         stop_event.set()
+        logger.debug("_run_live_captures._on_duration_elapsed: fin")
 
     old_handler = signal.signal(signal.SIGINT, _on_sigint)
     for label, iface, bpf in points:
@@ -313,11 +327,19 @@ def _run_live_captures(live_specs, duration):
     all_packets = []
     for label, _iface, _bpf in points:
         all_packets.extend(packets_by_point[label])
+    logger.debug("_run_live_captures: retour all_packets={}", summarize(all_packets, "all_packets"))
     return all_packets
 
 
 def _analyse_packets(all_packets, points_order, args):
+    logger.debug(
+        "_analyse_packets: all_packets={} points_order={} args={}",
+        summarize(all_packets, "all_packets"),
+        summarize(points_order, "points_order"),
+        summarize(args, "args"),
+    )
     flows = correlate(all_packets, args.nat_tolerant, args.nat_window_ms)
+    logger.debug("_analyse_packets: retour analyse(…)")
     return analyse(
         flows,
         points_order,
@@ -334,12 +356,21 @@ def _run_scenario(name, captures, points_order, args, redactor=None):
     (Session 37) pour permettre a l'appelant de construire Flow/
     Conversation (netcross_core.correlate.build_flows/build_conversations)
     sur le scenario COURANT sans reanalyser les fichiers."""
+    logger.debug(
+        "_run_scenario: name={} captures={} points_order={} args={} redactor={}",
+        summarize(name, "name"),
+        summarize(captures, "captures"),
+        summarize(points_order, "points_order"),
+        summarize(args, "args"),
+        summarize(redactor, "redactor"),
+    )
     all_packets = _load_packets(name, captures, args.parallel, args.parallel_workers)
     if redactor is not None:
         # meme objet redactor pour baseline ET courant (voir main()) : une
         # adresse reelle presente des deux cotes doit obtenir le meme
         # pseudonyme, sans quoi le diff entre les deux perdrait tout son sens.
         redactor.redact(all_packets)
+    logger.debug("_run_scenario: retour tuple de 2")
     return _analyse_packets(all_packets, points_order, args), all_packets
 
 
@@ -657,6 +688,7 @@ def main():
                 found = parse_tls_capture(label, path)
                 print(f"[{scenario_name}/{label}] {len(found)} evenements TLS trouves dans {path}")
                 events.extend(found)
+            logger.debug("main._tls_findings: retour diagnose_tls(…)")
             return diagnose_tls(build_handshake_status(events), points_order)
 
         print("\n-- TLS : BASELINE --")
@@ -687,6 +719,7 @@ def main():
                 found = parse_quic_capture(label, path)
                 print(f"[{scenario_name}/{label}] {len(found)} paquets QUIC Initial trouves dans {path}")
                 events.extend(found)
+            logger.debug("main._quic_findings: retour diagnose_quic(…)")
             return diagnose_quic(events, points_order)
 
         print("\n-- QUIC : BASELINE --")
@@ -790,6 +823,7 @@ def main():
 
     if any(f.severity == "regression" for f in findings):
         sys.exit(1)  # code de sortie non nul : exploitable en CI/script pour detecter une regression
+    logger.debug("main: fin")
 
 
 if __name__ == "__main__":

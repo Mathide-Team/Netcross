@@ -53,7 +53,7 @@ from netcross_core.discovery.assets import build_asset_inventory
 from netcross_core.exploit_signatures import Detection, Signature, detect_exploits
 from netcross_core.extract.carver import detect_extracted_files
 from netcross_core.fingerprint.report import build_fingerprint_records
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt, Report
 from netcross_core.security import correlate_banner
 from netcross_core.security.beaconing import BeaconingThresholds, detect_beaconing
@@ -100,6 +100,7 @@ MAX_CVE_DETAIL_CHARS = 160
 
 def _ellipsis(text: str, limit: int) -> str:
     text = " ".join(text.split())
+    logger.debug("_ellipsis: retour text if len(text) <= limit else text[:limit - 3].…")
     return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
 
 
@@ -162,6 +163,7 @@ def exploit_findings(detections: Iterable[Detection]) -> list[dict[str, Any]]:
             entry["detail"] += f" -- {count} occurrences"
         findings.append(entry)
     logger.trace("exploit_findings: {} constat(s)", len(findings))
+    logger.debug("exploit_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -198,6 +200,7 @@ def anomaly_findings(suspicions: Iterable[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("anomaly_findings: {} constat(s)", len(findings))
+    logger.debug("anomaly_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -245,6 +248,7 @@ def dns_tunnel_findings(suspicions: Iterable[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("dns_tunnel_findings: {} constat(s)", len(findings))
+    logger.debug("dns_tunnel_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -287,6 +291,7 @@ def beaconing_findings(suspicions: Iterable[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("beaconing_findings: {} constat(s)", len(findings))
+    logger.debug("beaconing_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -306,7 +311,9 @@ _EXFIL_SIGNAL_LABELS = {
 def _fmt_bytes(n: int) -> str:
     for unit, div in (("Go", 1e9), ("Mo", 1e6), ("Ko", 1e3)):
         if n >= div:
+            logger.debug("_fmt_bytes: si n >= div -> retour chaîne formatée")
             return f"{n / div:.1f} {unit}"
+    logger.debug("_fmt_bytes: retour chaîne formatée")
     return f"{n} o"
 
 
@@ -342,6 +349,7 @@ def exfiltration_findings(alerts: Iterable[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("exfiltration_findings: {} constat(s)", len(findings))
+    logger.debug("exfiltration_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -377,6 +385,7 @@ def tls_audit_findings(audit: TlsAuditResult) -> list[dict[str, Any]]:
                 }
             )
     logger.trace("tls_audit_findings: {} constat(s)", len(findings))
+    logger.debug("tls_audit_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -417,6 +426,7 @@ def lateral_movement_findings(events: list[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("lateral_movement_findings: {} constat(s)", len(findings))
+    logger.debug("lateral_movement_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -461,6 +471,7 @@ def flow_stats_findings(flows: list[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("flow_stats_findings: {} constat(s)", len(findings))
+    logger.debug("flow_stats_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -495,6 +506,7 @@ def new_host_findings(assets: list[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("new_host_findings: {} constat(s)", len(findings))
+    logger.debug("new_host_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -535,6 +547,7 @@ def cve_findings(fingerprints: Iterable[dict], conn) -> list[dict[str, Any]]:
                 }
             )
     logger.trace("cve_findings: {} constat(s)", len(findings))
+    logger.debug("cve_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -563,6 +576,7 @@ def dga_findings(alerts: list[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("dga_findings: {} constat(s)", len(findings))
+    logger.debug("dga_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -591,6 +605,7 @@ def fast_flux_findings(alerts: list[dict]) -> list[dict[str, Any]]:
             }
         )
     logger.trace("fast_flux_findings: {} constat(s)", len(findings))
+    logger.debug("fast_flux_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -632,6 +647,7 @@ def sequence_gap_findings(gaps: list) -> list[dict[str, Any]]:
             }
         )
     logger.trace("sequence_gap_findings: {} constat(s)", len(findings))
+    logger.debug("sequence_gap_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -655,6 +671,7 @@ def cross_capture_duplicate_findings(duplicate_count: dict) -> list[dict[str, An
                 }
             )
     logger.trace("cross_capture_duplicate_findings: {} constat(s)", len(findings))
+    logger.debug("cross_capture_duplicate_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -684,6 +701,7 @@ def extracted_file_findings(extraction) -> list[dict[str, Any]]:
             }
         )
     logger.trace("extracted_file_findings: {} constat(s)", len(findings))
+    logger.debug("extracted_file_findings: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -855,3 +873,4 @@ def apply_security_findings(
         len(report.service_fingerprints),
         len(report.protocol_mismatch_details),
     )
+    logger.debug("apply_security_findings: fin")

@@ -54,7 +54,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 
 logger = get_logger(__name__)
@@ -94,23 +94,28 @@ _SCO_ID_PROPERTIES: dict[str, tuple[str, ...]] = {
 def _canonical(obj: Any) -> str:
     """Serialisation canonique (approximation de JCS, RFC 8785, suffisante
     pour des chaines/entiers/listes) : cles triees, sans espaces."""
+    logger.debug("_canonical: retour json.dumps(…)")
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def _sco_id(stix_type: str, props: Mapping[str, Any]) -> str:
     contributing = {k: props[k] for k in _SCO_ID_PROPERTIES[stix_type] if k in props}
+    logger.debug("_sco_id: retour chaîne formatée")
     return f"{stix_type}--{uuid.uuid5(STIX_SCO_NAMESPACE, _canonical(contributing))}"
 
 
 def _sdo_id(stix_type: str, content: Mapping[str, Any]) -> str:
+    logger.debug("_sdo_id: retour chaîne formatée")
     return f"{stix_type}--{uuid.uuid5(NETCROSS_NAMESPACE, stix_type + _canonical(content))}"
 
 
 def format_timestamp(when: _dt.datetime) -> str:
     """Horodatage STIX : UTC, precision milliseconde, suffixe ``Z``."""
+    logger.debug("format_timestamp: when={}", summarize(when, "when"))
     if when.tzinfo is None:
         when = when.replace(tzinfo=_dt.UTC)
     when = when.astimezone(_dt.UTC)
+    logger.debug("format_timestamp: retour when.strftime('%Y-%m-%dT%H:%M:%S.') + f'(when.mic…")
     return when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
 
 
@@ -118,6 +123,7 @@ def identity_object() -> dict[str, Any]:
     """L'identite « Netcross » a laquelle renvoie chaque ``created_by_ref``."""
     logger.debug("identity_object()")
     content = {"name": "Netcross", "identity_class": "system"}
+    logger.debug("identity_object: retour dictionnaire")
     return {
         "type": "identity",
         "spec_version": SPEC_VERSION,
@@ -129,6 +135,7 @@ def identity_object() -> dict[str, Any]:
 
 
 def _escape_pattern(value: str) -> str:
+    logger.debug("_escape_pattern: retour value.replace('\\\\', '\\\\\\\\').replace(…)")
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
@@ -136,18 +143,22 @@ class _Builder:
     """Accumule les objets du bundle, dedoublonnes par identifiant."""
 
     def __init__(self, first: str, last: str) -> None:
+        logger.debug("_Builder.__init__: first={} last={}", summarize(first, "first"), summarize(last, "last"))
         self.first = first
         self.last = last
         self.identity = identity_object()
         self.objects: dict[str, dict[str, Any]] = {self.identity["id"]: self.identity}
         self.skipped: dict[str, int] = {}
+        logger.debug("_Builder.__init__: fin")
 
     def add(self, obj: dict[str, Any]) -> str:
         self.objects.setdefault(obj["id"], obj)
+        logger.debug("_Builder.add: retour obj['id']")
         return obj["id"]
 
     def skip(self, reason: str) -> None:
         self.skipped[reason] = self.skipped.get(reason, 0) + 1
+        logger.debug("_Builder.skip: fin")
 
     def sdo(self, stix_type: str, content: dict[str, Any], *, confidence: int | None = None) -> dict[str, Any]:
         obj: dict[str, Any] = {
@@ -161,6 +172,7 @@ class _Builder:
         }
         if confidence is not None:
             obj["confidence"] = confidence
+        logger.debug("_Builder.sdo: retour obj={}", summarize(obj, "obj"))
         return obj
 
     # -- SCO ------------------------------------------------------------
@@ -170,15 +182,18 @@ class _Builder:
             addr = ipaddress.ip_address(str(value))
         except ValueError:
             logger.exception("échec dans ip")
+            logger.debug("_Builder.ip: except ValueError -> retour None")
             return None
         stix_type = "ipv4-addr" if addr.version == 4 else "ipv6-addr"
         props = {"value": str(addr)}
+        logger.debug("_Builder.ip: retour self.add(…)")
         return self.add({"type": stix_type, "spec_version": SPEC_VERSION, "id": _sco_id(stix_type, props), **props})
 
     def software(self, name: str, version: Any) -> str:
         props: dict[str, Any] = {"name": str(name)}
         if version:
             props["version"] = str(version)
+        logger.debug("_Builder.software: retour self.add(…)")
         return self.add({"type": "software", "spec_version": SPEC_VERSION, "id": _sco_id("software", props), **props})
 
     def traffic(
@@ -193,6 +208,7 @@ class _Builder:
             # `protocols` est obligatoire : sans protocole applicatif connu, la
             # couche reseau seule (ipv4/ipv6) est la seule affirmation sure.
             props["protocols"] = ["ipv6" if dst_ref.startswith("ipv6-addr") else "ipv4"]
+        logger.debug("_Builder.traffic: retour self.add(…)")
         return self.add(
             {"type": "network-traffic", "spec_version": SPEC_VERSION, "id": _sco_id("network-traffic", props), **props}
         )
@@ -206,10 +222,12 @@ class _Builder:
         }
         if point:
             content["x_netcross_point"] = str(point)
+        logger.debug("_Builder.observed: retour self.add(…)")
         return self.add(self.sdo("observed-data", content, confidence=CONFIDENCE_OBSERVATION))
 
 
 def _service_refs(b: _Builder, fp: Mapping[str, Any]) -> list[str]:
+    logger.debug("_service_refs: b={} fp={}", summarize(b, "b"), summarize(fp, "fp"))
     software_ref = b.software(fp["service"], fp.get("version"))
     refs = [software_ref]
     host_ref = b.ip(fp.get("host")) if fp.get("host") else None
@@ -218,21 +236,25 @@ def _service_refs(b: _Builder, fp: Mapping[str, Any]) -> list[str]:
         traffic_ref = b.traffic(dst_ref=host_ref, dst_port=fp.get("port"), protocol=fp.get("protocol"))
         if traffic_ref:
             refs.append(traffic_ref)
+    logger.debug("_service_refs: retour refs={}", summarize(refs, "refs"))
     return refs
 
 
 def _add_services(b: _Builder, fingerprints: Iterable[Mapping[str, Any]]) -> None:
+    logger.debug("_add_services: b={} fingerprints={}", summarize(b, "b"), summarize(fingerprints, "fingerprints"))
     for fp in fingerprints:
         if not fp.get("service"):
             b.skip("service sans nom")
             continue
         b.observed(_service_refs(b, fp), fp.get("point"))
+    logger.debug("_add_services: fin")
 
 
 def _add_cve(b: _Builder, f: Mapping[str, Any]) -> None:
     cve_id = f.get("cve_id")
     if not cve_id:
         b.skip("cve sans identifiant")
+        logger.debug("_add_cve: si not cve_id -> retour")
         return
     content: dict[str, Any] = {
         "name": str(cve_id),
@@ -244,12 +266,14 @@ def _add_cve(b: _Builder, f: Mapping[str, Any]) -> None:
         content["x_netcross_cvss"] = float(f["cvss"])
     vuln_ref = b.add(b.sdo("vulnerability", content, confidence=CONFIDENCE_CVE_BY_VERSION))
     if not f.get("service"):
+        logger.debug("_add_cve: si not f.get('service') -> retour")
         return
     # le software est celui du service detecte (meme id deterministe) ; son
     # observation est deja portee par l'observed-data du service
     software_ref = b.software(f["service"], f.get("version"))
     rel = {"relationship_type": "has", "source_ref": software_ref, "target_ref": vuln_ref}
     b.add(b.sdo("relationship", rel, confidence=CONFIDENCE_CVE_BY_VERSION))
+    logger.debug("_add_cve: fin")
 
 
 def exploit_pattern(f: Mapping[str, Any]) -> str | None:
@@ -267,10 +291,12 @@ def exploit_pattern(f: Mapping[str, Any]) -> str | None:
             continue
         parts.append(f"network-traffic:{prop}.value = '{_escape_pattern(str(addr))}'")
     if not parts:
+        logger.debug("exploit_pattern: si not parts -> retour None")
         return None
     port = f.get("port")
     if isinstance(port, int) and 0 <= port <= 65535:
         parts.append(f"network-traffic:dst_port = {port}")
+    logger.debug("exploit_pattern: retour '[' + ' AND '.join(parts) + ']'")
     return "[" + " AND ".join(parts) + "]"
 
 
@@ -278,6 +304,7 @@ def _add_exploit(b: _Builder, f: Mapping[str, Any]) -> None:
     pattern = exploit_pattern(f)
     if pattern is None:
         b.skip("exploit sans adresse")
+        logger.debug("_add_exploit: si pattern is None -> retour")
         return
     detail = str(f.get("detail") or "signature d'exploit")
     content: dict[str, Any] = {
@@ -295,6 +322,7 @@ def _add_exploit(b: _Builder, f: Mapping[str, Any]) -> None:
         content["x_netcross_point"] = str(f["point"])
     severity = str(f.get("severity") or "faible").lower()
     b.add(b.sdo("indicator", content, confidence=CONFIDENCE_EXPLOIT.get(severity, _DEFAULT_EXPLOIT_CONFIDENCE)))
+    logger.debug("_add_exploit: fin")
 
 
 def _add_anomaly(b: _Builder, f: Mapping[str, Any], orphan_notes: list[dict[str, Any]]) -> None:
@@ -305,6 +333,7 @@ def _add_anomaly(b: _Builder, f: Mapping[str, Any], orphan_notes: list[dict[str,
     host_ref = b.ip(f["host"]) if f.get("host") else None
     if host_ref is None:
         orphan_notes.append(content)
+        logger.debug("_add_anomaly: si host_ref is None -> retour")
         return
     refs = [host_ref]
     src_ref = b.ip(f["src"]) if f.get("src") else None
@@ -316,6 +345,7 @@ def _add_anomaly(b: _Builder, f: Mapping[str, Any], orphan_notes: list[dict[str,
             refs.append(traffic_ref)
     observed_ref = b.observed(refs, f.get("point"))
     b.add(b.sdo("note", {**content, "object_refs": [observed_ref]}, confidence=CONFIDENCE_OBSERVATION))
+    logger.debug("_add_anomaly: fin")
 
 
 def to_stix_bundle(
@@ -331,6 +361,12 @@ def to_stix_bundle(
     l'heure de l'export, sinon deux exports differeraient. Absentes :
     l'epoque Unix (bundle toujours deterministe, mais date non significative).
     """
+    logger.debug(
+        "to_stix_bundle: report={} observed_from={} observed_until={}",
+        summarize(report, "report"),
+        summarize(observed_from, "observed_from"),
+        summarize(observed_until, "observed_until"),
+    )
     first = format_timestamp(observed_from or _EPOCH)
     last = format_timestamp(observed_until or observed_from or _EPOCH)
     b = _Builder(first, last)
@@ -362,6 +398,7 @@ def to_stix_bundle(
 
     objects = sorted(b.objects.values(), key=lambda o: o["id"])
     bundle_id = f"bundle--{uuid.uuid5(NETCROSS_NAMESPACE, _canonical([o['id'] for o in objects]))}"
+    logger.debug("to_stix_bundle: retour dictionnaire")
     return {"type": "bundle", "id": bundle_id, "objects": objects}
 
 
@@ -373,7 +410,14 @@ def export_stix(
 ) -> str:
     """Bundle STIX 2.1 serialise (JSON indente, cles triees, determinisme
     octet pour octet)."""
+    logger.debug(
+        "export_stix: report={} observed_from={} observed_until={}",
+        summarize(report, "report"),
+        summarize(observed_from, "observed_from"),
+        summarize(observed_until, "observed_until"),
+    )
     bundle = to_stix_bundle(report, observed_from=observed_from, observed_until=observed_until)
+    logger.debug("export_stix: retour json.dumps(bundle, indent=2, sort_keys=True, ensu…")
     return json.dumps(bundle, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
@@ -385,7 +429,15 @@ def write_stix(
     observed_until: _dt.datetime | None = None,
 ) -> str:
     """Ecrit le bundle dans un fichier ; retourne son chemin absolu."""
+    logger.debug(
+        "write_stix: report={} output_path={} observed_from={} observed_until={}",
+        summarize(report, "report"),
+        summarize(output_path, "output_path"),
+        summarize(observed_from, "observed_from"),
+        summarize(observed_until, "observed_until"),
+    )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(export_stix(report, observed_from=observed_from, observed_until=observed_until), encoding="utf-8")
+    logger.debug("write_stix: retour str(…)")
     return str(path.resolve())

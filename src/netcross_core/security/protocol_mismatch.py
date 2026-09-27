@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -111,6 +111,7 @@ def _pkt_detected_protos(pkt: Pkt) -> set[str]:
         if label is not None:
             detected.add(label)
 
+    logger.debug("_pkt_detected_protos: retour detected={}", summarize(detected, "detected"))
     return detected
 
 
@@ -124,6 +125,7 @@ def _check_port_for_mismatch(
     Retourne (protocole_détecté, description) si mismatch, sinon None.
     """
     if port is None or port not in STANDARD_PORTS:
+        logger.debug("_check_port_for_mismatch: si port is None or port not in STANDARD_PORTS -> retour None")
         return None
     expected = STANDARD_PORTS[port]
     compatible = _COMPATIBLE_EXPECTED.get(expected, set())
@@ -132,10 +134,12 @@ def _check_port_for_mismatch(
     for detected in detected_protos:
         if detected in compatible:
             continue
+        logger.debug("_check_port_for_mismatch: boucle sur detected_protos -> retour tuple de 2")
         return (
             detected,
             f"{detected} détecté sur port {port} (attendu : {expected})",
         )
+    logger.debug("_check_port_for_mismatch: retour None")
     return None
 
 
@@ -153,14 +157,21 @@ def detect_protocol_mismatch(pkt: Pkt) -> tuple[str, str] | None:
     """
     detected = _pkt_detected_protos(pkt)
     if not detected:
+        logger.debug("detect_protocol_mismatch: si not detected -> retour None")
         return None
 
     # Vérifier le port destination d'abord, puis le port source
     mismatch = _check_port_for_mismatch(pkt.dport, detected, pkt.proto)
     if mismatch is not None:
+        logger.debug(
+            "detect_protocol_mismatch: si mismatch is not None -> retour mismatch={}", summarize(mismatch, "mismatch")
+        )
         return mismatch
     mismatch = _check_port_for_mismatch(pkt.sport, detected, pkt.proto)
     if mismatch is not None:
+        logger.debug(
+            "detect_protocol_mismatch: si mismatch is not None -> retour mismatch={}", summarize(mismatch, "mismatch")
+        )
         return mismatch
 
     # Détection ICMP tunneling : un paquet ICMP ne devrait porter AUCUN
@@ -168,11 +179,15 @@ def detect_protocol_mismatch(pkt: Pkt) -> tuple[str, str] | None:
     # est peuplé sur un paquet ICMP, c'est suspect.
     if pkt.proto.upper() in ("ICMP", "ICMPV6") and detected:
         proto_name = next(iter(detected))
+        logger.debug(
+            "detect_protocol_mismatch: si pkt.proto.upper() in ('ICMP', 'ICMPV6') and detected -> retour tuple de 2"
+        )
         return (
             "ICMP_TUNNEL",
             f"Payload {proto_name} dans paquet ICMP (tunneling suspect)",
         )
 
+    logger.debug("detect_protocol_mismatch: retour None")
     return None
 
 
@@ -207,6 +222,7 @@ def detect_protocol_mismatches(packets: list[Pkt]) -> list[dict[str, Any]]:
                 }
             )
     logger.info("protocol_mismatch : {} mismatch(es) detecte(s) sur {} paquet(s)", len(details), len(packets))
+    logger.debug("detect_protocol_mismatches: retour details={}", summarize(details, "details"))
     return details
 
 

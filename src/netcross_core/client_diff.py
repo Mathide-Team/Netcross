@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from netcross_core.analysis import analyse
 from netcross_core.baseline_diff import diff_reports
 from netcross_core.correlate import correlate
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 
 logger = get_logger(__name__)
@@ -97,6 +97,11 @@ def group_packets_by_client(all_packets, client_group):
     deux dans le perimetre de comparaison) -- rare en pratique (l'usage
     vise est client -> serveur), non filtre specifiquement ici.
     """
+    logger.debug(
+        "group_packets_by_client: all_packets={} client_group={}",
+        summarize(all_packets, "all_packets"),
+        summarize(client_group, "client_group"),
+    )
     by_client = {name: [] for name in client_group}
     for pk in all_packets:
         for name, ips in client_group.items():
@@ -174,13 +179,30 @@ def compare_clients(
     (reference incluse) et un dict de DiffFinding par client compare
     (reference exclue -- rien a diffee contre elle-meme).
     """
+    logger.debug(
+        "compare_clients: all_packets={} client_group={} reference={} points_order={} "
+        "bucket_seconds={} nat_tolerant={} nat_window_ms={} rtp_clock_rate={} loss_min_pp={} "
+        "latency_min_ms={}",
+        summarize(all_packets, "all_packets"),
+        summarize(client_group, "client_group"),
+        summarize(reference, "reference"),
+        summarize(points_order, "points_order"),
+        summarize(bucket_seconds, "bucket_seconds"),
+        summarize(nat_tolerant, "nat_tolerant"),
+        summarize(nat_window_ms, "nat_window_ms"),
+        summarize(rtp_clock_rate, "rtp_clock_rate"),
+        summarize(loss_min_pp, "loss_min_pp"),
+        summarize(latency_min_ms, "latency_min_ms"),
+    )
     if len(client_group) < 2:
+        logger.debug("compare_clients: refus, ValueError")
         raise ValueError(
             "compare_clients necessite au moins 2 clients (reference incluse) pour produire une comparaison."
         )
 
     reference = reference or next(iter(client_group))
     if reference not in client_group:
+        logger.debug("compare_clients: refus, ValueError")
         raise ValueError(f"Client de reference inconnu : {reference!r} (clients disponibles : {sorted(client_group)})")
 
     by_client = group_packets_by_client(all_packets, client_group)
@@ -228,6 +250,7 @@ def print_client_comparison(result: ClientComparisonResult) -> None:
     reference d'abord (banniere dediee, comme les bannieres BASELINE/
     COURANT deja utilisees pour TLS/QUIC en Session 8), puis chaque
     client compare avec son verdict."""
+    logger.debug("print_client_comparison: result={}", summarize(result, "result"))
     print("\n" + "=" * 70)
     print("COMPARAISON CLIENT VS CLIENT")
     print("=" * 70)
@@ -262,6 +285,7 @@ def write_client_diff_csv(result: ClientComparisonResult, path: str) -> None:
     plus une colonne 'client' en tete -- une ligne par (client,
     DiffFinding). Le client de reference n'a pas de ligne (rien a
     diffee contre lui-meme)."""
+    logger.debug("write_client_diff_csv: result={} path={}", summarize(result, "result"), summarize(path, "path"))
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(["client", "reference", "severite", "categorie", "segment", "message", "avant", "apres"])

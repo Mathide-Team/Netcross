@@ -19,7 +19,7 @@ from __future__ import annotations
 import operator as _operator
 
 from netcross_core.expert_model import ComplianceResult, ReferenceProfile
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -235,6 +235,11 @@ def evaluate_compliance(report, references=None) -> list[ComplianceResult]:
     Statuts produits : CONFORME, DEVIATION (ecart mineur dans la marge
     de tolerance), VIOLATION, INDETERMINE.
     """
+    logger.debug(
+        "evaluate_compliance: report={} references={}",
+        summarize(report, "report"),
+        summarize(references, "references"),
+    )
     if references is None:
         references = DEFAULT_REFERENCES
     results = []
