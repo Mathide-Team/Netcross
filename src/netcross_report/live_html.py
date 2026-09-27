@@ -162,6 +162,7 @@ _BODY = """<!doctype html>
 def _inline_json(obj) -> str:
     """JSON sur pour un <script type=application/json> : ``<``, ``>`` et
     ``&`` echappes, donc aucune sequence ``</script>`` possible."""
+    logger.debug("_inline_json: retour json.dumps(obj, ensure_ascii=False, sep…(…)")
     return (
         json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
         .replace("<", "\\u003c")
@@ -171,6 +172,7 @@ def _inline_json(obj) -> str:
 
 
 def render_live_html(snapshot: dict, journal: list[dict], interval: float) -> str:
+    logger.debug("render_live_html: retour _BODY % ('style': _STYLE, 'data': _inline_json(('…")
     return _BODY % {
         "style": _STYLE,
         "data": _inline_json({"snapshot": snapshot, "journal": journal}),

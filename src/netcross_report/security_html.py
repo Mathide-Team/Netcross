@@ -154,20 +154,26 @@ def _e(valeur) -> str:
     helper dedie -- pas par celui-ci.
     """
     if valeur is None or valeur == "":
+        logger.debug("_e: si valeur is None or valeur == '' -> retour '&ndash;'")
         return "&ndash;"
+    logger.debug("_e: retour html.escape(…)")
     return html.escape(str(valeur), quote=False)
 
 
 def _badge(severite: str | None) -> str:
     if not severite:
+        logger.debug('_badge: si not severite -> retour \'<span class="badge" style="color:#3741…')
         return '<span class="badge" style="color:#374151;background:#f3f4f6">aucune CVE connue</span>'
     avant, fond = _SEVERITY_COLORS.get(severite, _NEUTRAL)
+    logger.debug("_badge: retour chaîne formatée")
     return f'<span class="badge" style="color:{avant};background:{fond}">{_e(severite)}</span>'
 
 
 def _cible(host, port) -> str:
     if not host:
+        logger.debug("_cible: si not host -> retour '&ndash;'")
         return "&ndash;"
+    logger.debug("_cible: retour _e(f'(host):(port)') if port is not None else _e(…")
     return _e(f"{host}:{port}") if port is not None else _e(host)
 
 
@@ -175,6 +181,7 @@ def _table(id_table: str, entetes: list[str], lignes: list[str], message_vide: s
     """Un tableau filtrable, ou le message explicite qu'il n'y a rien --
     jamais un tableau vide sans explication."""
     if not lignes:
+        logger.debug("_table: si not lignes -> retour chaîne formatée")
         return f'<p class="vide">{_e(message_vide)}</p>'
     champ_filtre = (
         f'<div class="filtre"><input type="search" data-filtre-pour="{id_table}" '
@@ -184,6 +191,7 @@ def _table(id_table: str, entetes: list[str], lignes: list[str], message_vide: s
         else ""
     )
     th = "".join(f"<th>{_e(h)}</th>" for h in entetes)
+    logger.debug("_table: retour chaîne formatée")
     return f"{champ_filtre}<table id={id_table!r}><thead><tr>{th}</tr></thead><tbody>{''.join(lignes)}</tbody></table>"
 
 
@@ -195,6 +203,7 @@ def _ligne_service(s: dict) -> str:
         f'<div class="lisible mono">{_e(s["fingerprint_readable"])}</div>' if s.get("fingerprint_readable") else ""
     )
     cves = ", ".join(s.get("cve_ids") or []) or None
+    logger.debug("_ligne_service: retour chaîne formatée")
     return (
         "<tr>"
         f"<td>{_badge(s.get('severity'))}</td>"
@@ -215,6 +224,7 @@ def _ligne_constat(i: dict, avec_cve: bool, detecteur: str | None = None) -> str
     if service and i.get("version"):
         service = f"{service} {i['version']}"
     plugin = f' <span class="mono">[plugin {_e(i["plugin"])}]</span>' if i.get("plugin") else ""
+    logger.debug("_ligne_constat: retour f\"<tr><td>(_badge(i.get('severity')))</td>(colonn…")
     return (
         "<tr>"
         f"<td>{_badge(i.get('severity'))}</td>"
@@ -255,12 +265,14 @@ def _cartes(d: dict) -> str:
         f'<div class="carte"><div class="etiquette" style="margin:0 0 .35rem">'
         f"repartition par severite</div><div>{repartition}</div></div>"
     )
+    logger.debug("_cartes: retour chaîne formatée")
     return f'<div class="cartes">{"".join(cartes)}</div>'
 
 
 def _ligne_actif(a: dict) -> str:
     avant, fond = _SEVERITY_COLORS.get("moyenne", _NEUTRAL)
     nouveau = f'<span class="badge" style="color:{avant};background:{fond}">nouveau</span>' if a.get("is_new") else ""
+    logger.debug("_ligne_actif: retour chaîne formatée")
     return (
         "<tr>"
         f'<td class="mono">{_e(a.get("ip"))} {nouveau}</td>'
@@ -368,6 +380,7 @@ def render_security_html(
         "pendant la capture.</p>",
     ]
 
+    logger.debug('render_security_html: retour f\'<!DOCTYPE html>\\n<html lang="fr"><head><meta ch…')
     return (
         "<!DOCTYPE html>\n"
         '<html lang="fr"><head><meta charset="utf-8">'
@@ -383,8 +396,10 @@ def _notifications(items: list[dict]) -> str:
     notification n'a ete demandee."""
     logger.debug("_notifications: items={}", summarize(items, "items"))
     if not items:
+        logger.debug("_notifications: si not items -> retour ''")
         return ""
     lignes = "".join(f"<li>{_e(i.get('line', ''))}</li>" for i in items)
+    logger.debug("_notifications: retour chaîne formatée")
     return f'<h2>Notifications</h2><ul id="notifications">{lignes}</ul>'
 
 
@@ -392,8 +407,10 @@ def _plugins(items: list[dict]) -> str:
     """Tracabilite des plugins (issue #284) ; rien si aucun plugin demande."""
     logger.debug("_plugins: items={}", summarize(items, "items"))
     if not items:
+        logger.debug("_plugins: si not items -> retour ''")
         return ""
     lignes = "".join(f"<li>{_e(i.get('line', ''))}</li>" for i in items)
+    logger.debug("_plugins: retour chaîne formatée")
     return f'<h2>Plugins</h2><ul id="plugins">{lignes}</ul>'
 
 
@@ -413,4 +430,5 @@ def generate_security_html(
     )
     chemin = Path(output_path)
     chemin.write_text(render_security_html(sr, title=title, meta=meta), encoding="utf-8")
+    logger.debug("generate_security_html: retour str(…)")
     return str(chemin)
