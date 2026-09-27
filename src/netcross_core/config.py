@@ -137,9 +137,12 @@ class NetcrossConfig:
 def _parse_bool(val: object) -> bool:
     logger.debug("_parse_bool: val={}", summarize(val, "val"))
     if isinstance(val, bool):
+        logger.debug("_parse_bool: si isinstance(val, bool) -> retour val={}", summarize(val, "val"))
         return val
     if isinstance(val, str):
+        logger.debug("_parse_bool: si isinstance(val, str) -> retour val.lower() in ('true', 'yes', '1', 'on')")
         return val.lower() in ("true", "yes", "1", "on")
+    logger.debug("_parse_bool: retour bool(…)")
     return bool(val)
 
 
@@ -156,10 +159,12 @@ def load_config(config_path: str | Path | None = None) -> NetcrossConfig:
     """
     logger.debug("load_config: config_path={}", summarize(config_path, "config_path"))
     if tomllib is None:
+        logger.debug("load_config: si tomllib is None -> retour NetcrossConfig(…)")
         return NetcrossConfig()
 
     path = _find_config(config_path)
     if path is None or not path.exists():
+        logger.debug("load_config: si path is None or not path.exists() -> retour NetcrossConfig(…)")
         return NetcrossConfig()
 
     with path.open("rb") as f:
@@ -197,6 +202,7 @@ def load_config(config_path: str | Path | None = None) -> NetcrossConfig:
     cfg.notify.silence_hours = float(notify.get("silence_hours", 24.0))
     cfg.notify.state_path = str(notify.get("state_path", ""))
 
+    logger.debug("load_config: retour cfg={}", summarize(cfg, "cfg"))
     return cfg
 
 
@@ -204,21 +210,26 @@ def _find_config(config_path: str | Path | None) -> Path | None:
     """Trouve le fichier de configuration à charger."""
     logger.debug("_find_config: config_path={}", summarize(config_path, "config_path"))
     if config_path is not None:
+        logger.debug("_find_config: si config_path is not None -> retour Path(…)")
         return Path(config_path)
 
     # 1. Variable d'environnement
     env_path = os.environ.get("NETCROSS_CONFIG")
     if env_path:
+        logger.debug("_find_config: si env_path -> retour Path(…)")
         return Path(env_path)
 
     # 2. .netcross.toml dans le répertoire courant
     cwd_path = Path.cwd() / ".netcross.toml"
     if cwd_path.exists():
+        logger.debug("_find_config: si cwd_path.exists() -> retour cwd_path={}", summarize(cwd_path, "cwd_path"))
         return cwd_path
 
     # 3. ~/.netcross.toml
     home_path = Path.home() / ".netcross.toml"
     if home_path.exists():
+        logger.debug("_find_config: si home_path.exists() -> retour home_path={}", summarize(home_path, "home_path"))
         return home_path
 
+    logger.debug("_find_config: retour None")
     return None

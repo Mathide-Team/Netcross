@@ -52,6 +52,7 @@ def locale_dirs() -> list[Path]:
     for d in dirs:
         if d not in unique:
             unique.append(d)
+    logger.debug("locale_dirs: retour unique={}", summarize(unique, "unique"))
     return unique
 
 
@@ -60,7 +61,9 @@ def requested_languages(language: str | None = None) -> list[str] | None:
     laisse gettext lire LANGUAGE/LC_ALL/LC_MESSAGES/LANG."""
     value = language or os.environ.get(ENV_LANG)
     if not value:
+        logger.debug("requested_languages: si not value -> retour None")
         return None
+    logger.debug("requested_languages: retour liste")
     return [part.strip() for part in value.split(":") if part.strip()]
 
 
@@ -83,6 +86,7 @@ def setup(language: str | None = None) -> gettext.NullTranslations:
     else:
         logger.debug("i18n.setup: aucun catalogue trouve, chaines source (francais)")
     _translation = found
+    logger.debug("setup: retour found={}", summarize(found, "found"))
     return found
 
 
@@ -90,6 +94,7 @@ def active_language() -> str | None:
     """Langue du catalogue actif (``None`` : chaines source en francais)."""
     logger.debug("active_language()")
     info = _current().info()
+    logger.debug("active_language: retour info.get('language') or None")
     return info.get("language") or None
 
 
@@ -102,25 +107,30 @@ def available_languages(localedir: Path | None = None) -> list[str]:
     for d in dirs:
         if d.is_dir():
             langs.update(p.parent.parent.name for p in d.glob(f"*/LC_MESSAGES/{DOMAIN}.mo"))
+    logger.debug("available_languages: retour sorted(…)")
     return sorted(langs)
 
 
 def _current() -> gettext.NullTranslations:
+    logger.debug("_current: retour _translation if _translation is not None else set…")
     return _translation if _translation is not None else setup()
 
 
 def _(message: str) -> str:
     """Traduit ``message`` (francais source) dans la langue active."""
+    logger.debug("_: retour _current().gettext(…)")
     return _current().gettext(message)
 
 
 def ngettext(singular: str, plural: str, n: int) -> str:
     """Forme singulier/pluriel selon ``n`` et les regles de la langue."""
+    logger.debug("ngettext: retour _current().ngettext(…)")
     return _current().ngettext(singular, plural, n)
 
 
 def N_(message: str) -> str:  # noqa: N802 -- convention gettext
     """Marque ``message`` pour l'extraction sans le traduire (constantes)."""
+    logger.debug("N_: retour message={}", summarize(message, "message"))
     return message
 
 
