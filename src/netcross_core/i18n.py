@@ -74,9 +74,14 @@ def setup(language: str | None = None) -> gettext.NullTranslations:
         try:
             found = gettext.translation(DOMAIN, localedir=str(localedir), languages=languages)
         except OSError:
-            logger.exception("erreur: OSError")
+            # Absence de catalogue dans ce repertoire : cas normal (lancement
+            # depuis les sources, locale francaise = langue source). #468
+            logger.debug("i18n.setup: aucun catalogue {} dans {}", DOMAIN, localedir)
             continue
+        logger.debug("i18n.setup: catalogue charge depuis {}", localedir)
         break
+    else:
+        logger.debug("i18n.setup: aucun catalogue trouve, chaines source (francais)")
     _translation = found
     return found
 

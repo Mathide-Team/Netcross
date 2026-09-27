@@ -8,6 +8,21 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Ajouté
+- Guide utilisateur (#465), `docs/guide/` : installation, préparation des
+  captures, première analyse pas à pas, interface graphique (captures
+  d'écran réelles), lecture du rapport et du score de santé, comparaison
+  avant/après, dépannage. Il s'appuie sur des captures d'exemple versionnées
+  (`docs/guide/exemples/`, 5 pertes connues entre LAN et WAN) et sur leur
+  générateur reproductible : chaque sortie citée a été obtenue avec ces
+  fichiers.
+- Matrice de parité GUI / CLI / API (#330), `docs/parite-surfaces.md` :
+  chaque fonction et sa disponibilité sur chaque surface, avec les écarts
+  classés par impact. Le principal : le JSON de l'API n'est pas celui de
+  `--json-report` (ni constats, ni triage, ni score de santé).
+  `tests/test_parite_surfaces.py` extrait les options argparse des 6 CLI,
+  les routes et paramètres FastAPI et les cases de la GUI (AST) : toute
+  option ou route non classée dans la page, ou tout décompte périmé, fait
+  échouer la CI.
 - `netcross_gtk4/bpf_panel.py` — décisions du panneau de filtres BPF de la
   capture live extraites de `app.py` et couvertes à **100 %** (62 tests) :
   conversion indice de menu ↔ filtre, infobulle, désolidarisation du menu sur
@@ -57,6 +72,29 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - `docs/fingerprints-ja4-hassh.md` (#259)
 
 ### Corrigé
+- Premier démarrage (#468) : l'absence de `~/.netcross/bpf_filters.json` et
+  de catalogue de traduction n'est plus journalisée en `ERROR` avec trace ;
+  une capture introuvable ou illisible est signalée avant tshark avec la
+  cause et la commande de correction ; si tshark (snap, AppArmor) refuse
+  d'ouvrir un fichier pourtant lisible, il le reçoit sur son entrée
+  standard ; la GUI lancée sans affichage accessible (root, SSH) affiche un
+  message explicite et renvoie le code 2 au lieu d'une trace GTK.
+- Page d'accueil de la documentation : la commande « Première analyse »
+  (`--capture point_a.pcapng --analyze`) échouait, car `--analyze`
+  n'existe pas et `--capture` exige `NOM=chemin`.
+- `CONTRIBUTING.md` décrivait la branche `dev` comme protégée alors
+  qu'aucune protection n'existait (`protected: false`) : c'est ce qui avait
+  permis de fusionner les PR #316 à #327 avec une CI rouge (#334). La règle
+  est désormais versionnée dans `.github/branch-protection/dev.json`, à
+  appliquer par un administrateur, et le workflow « Protection de dev »
+  (`scripts/check_branch_protection.py`) signale tout écart entre ce fichier
+  et la protection réelle.
+- Le workflow « Documentation » échouait à chaque push sur `main` (erreur
+  404 au déploiement) : il publiait vers GitHub Pages, qui n'est pas activé
+  sur le dépôt. La publication est retirée ; la construction
+  `mkdocs build --strict` reste bloquante et le site HTML reste
+  téléchargeable comme artefact du run. Permissions du workflow réduites
+  à `contents: read`, `site_url` retiré de `mkdocs.yml`.
 - Le tableau de bord analytique, la vue statistiques et la sélection de flux
   de la GUI plantaient silencieusement (`AttributeError` dans un callback
   `GLib.idle_add`) dès qu'un flux existait : les deux threads d'analyse

@@ -1,0 +1,39 @@
+# Verifie que la protection reelle de `dev` correspond a la regle versionnee
+# .github/branch-protection/dev.json (issue #334).
+#
+# Une protection de branche est un reglage du depot, invisible dans le code :
+# elle peut ne jamais avoir ete creee (cas constate le 26/09/2026, alors que
+# CONTRIBUTING.md la decrivait deja), etre desactivee ou perdre un check requis
+# sans que personne ne le remarque. Ce workflow rend cet ecart visible.
+#
+# Pas de declencheur pull_request : l'etat de la protection ne depend pas du
+# contenu d'une PR. La coherence de la regle avec les workflows (chaque check
+# requis correspond a un job qui tourne sur les PR vers dev) est verifiee sur
+# chaque PR par la suite de tests (tests/test_check_branch_protection.py).
+#
+# Avec le GITHUB_TOKEN (sans droit d'administration), l'exigence de branche a
+# jour (strict) n'est pas lisible : elle est signalee en avertissement.
+name: Protection de dev
+
+"on":
+  push:
+    branches: [dev]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verification:
+    name: "Protection de dev conforme a la règle versionnée"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du depot
+        uses: actions/checkout@v7
+
+      - name: Comparaison avec .github/branch-protection/dev.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/check_branch_protection.py --branche dev

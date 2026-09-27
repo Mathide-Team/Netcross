@@ -47,9 +47,24 @@ from pathlib import Path
 from loguru import logger
 
 from pcap_parser.capfile import detect_format, first_timestamp, format_extension, has_packets, split_by_size
-from pcap_parser.ek_source import TsharkError, TsharkNotFoundError, iter_ek_records
+from pcap_parser.ek_source import (
+    CaptureAccessError,
+    TsharkError,
+    TsharkNotFoundError,
+    is_permission_error,
+    iter_ek_records,
+)
 from pcap_parser.packet import RawPacket, build_packet
 from pcap_parser.remote import CaptureSource, parse_source
+
+
+def _collect_packets(packets: list[RawPacket], path: str, *, read_via_stdin: bool) -> None:
+    logger.debug("_collect_packets: {} (stdin={})", path, read_via_stdin)
+    records = iter_ek_records(path=path, read_via_stdin=True) if read_via_stdin else iter_ek_records(path=path)
+    for record in records:
+        pkt = build_packet(record.ts, record.layers)
+        if pkt is not None:
+            packets.append(pkt)
 
 
 def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
@@ -68,14 +83,33 @@ def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
     logger.debug("parse_capture: lecture de {}", path)
     packets: list[RawPacket] = []
     try:
-        for record in iter_ek_records(path=path):
-            pkt = build_packet(record.ts, record.layers)
-            if pkt is not None:
-                packets.append(pkt)
-    except (TsharkNotFoundError, TsharkError) as e:
-        logger.exception("échec dans parse_capture({}) : {}", path, e)
-        if raise_on_error:
+        try:
+            _collect_packets(packets, path, read_via_stdin=False)
+        except CaptureAccessError as denied:
+            logger.debug("parse_capture: accès refusé avant tshark : {}", denied)
             raise
+        except TsharkError as first:
+            if not is_permission_error(first):
+                raise
+            # Le fichier est lisible par l'utilisateur (verifie en amont) mais
+            # tshark refuse de l'ouvrir : tshark confine (snap, AppArmor) ou
+            # lance sous une autre identite. On lui transmet le contenu sur
+            # l'entree standard. #468
+            logger.warning(
+                "parse_capture: tshark ne peut pas ouvrir {} lui-même, lecture via l'entrée standard",
+                path,
+            )
+            packets.clear()
+            _collect_packets(packets, path, read_via_stdin=True)
+    except (TsharkNotFoundError, TsharkError) as e:
+        if raise_on_error:
+            # l'appelant journalise l'echec : eviter la trace en double (#468)
+            logger.debug("parse_capture: échec pour {}, remonté à l'appelant : {}", path, e)
+            raise
+        if isinstance(e, CaptureAccessError):
+            logger.error("parse_capture: {}", e)
+        else:
+            logger.exception("échec dans parse_capture({}) : {}", path, e)
         print(f"impossible de lire {path} : {e}", file=sys.stderr)
         return []
     logger.debug("parse_capture: {} -> {} paquet(s)", path, len(packets))
@@ -291,6 +325,7 @@ class CaptureRingBuffer:
         """
         ts = time.time() if now is None else now
         if self._rotation_started_ts is None or (ts - self._rotation_started_ts) >= self.max_duration_per_file:
+            logger.debug("maybe_rotate: rotation declenchee (premiere={})", self._rotation_started_ts is None)
             return self.rotate(ts)
         return None
 
@@ -526,10 +561,13 @@ def _format_seconds(value: float) -> str:
     """60.0 -> "60", 0.5 -> "0.5" : evite de passer "60.0" a editcap alors
     qu'un entier suffit (les versions anciennes d'editcap n'acceptent que
     des secondes entieres pour -i)."""
-    return str(int(value)) if float(value).is_integer() else repr(float(value))
+    text = str(int(value)) if float(value).is_integer() else repr(float(value))
+    logger.trace("_format_seconds: {} -> {}", value, text)
+    return text
 
 
 def _check_split_args(by: str, value: float) -> None:
+    logger.debug("_check_split_args: by={} value={!r}", by, value)
     if by not in SPLIT_MODES:
         raise ValueError(f"by doit valoir l'un de {SPLIT_MODES} (recu : {by!r})")
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
@@ -548,6 +586,7 @@ def _list_segments(output_dir: str, stem: str) -> list[str]:
         m = pattern.fullmatch(name)
         if m:
             found.append((int(m.group(1)), os.path.join(output_dir, name)))
+    logger.debug("_list_segments: {} segment(s) {} dans {}", len(found), stem, output_dir)
     return [path for _index, path in sorted(found)]
 
 
@@ -748,9 +787,12 @@ def _relay_stop(stop_event: threading.Event, halt: threading.Event) -> None:
 
 def _drain_queue(out: queue.Queue) -> None:
     """Vide la file sans bloquer -- debloque les producteurs bloques sur une file pleine."""
+    drained = 0
     while not out.empty():
         with contextlib.suppress(queue.Empty):  # course avec un autre consommateur : sans gravite
             out.get_nowait()
+            drained += 1
+    logger.debug("_drain_queue: {} element(s) retire(s) de la file", drained)
 
 
 def _shutdown_live_sources(out: queue.Queue, threads: Sequence[threading.Thread]) -> None:
@@ -868,6 +910,7 @@ def iter_live_multi(
     franchement.
     """
     sources = _validate_live_sources(interfaces)
+    logger.debug("iter_live_multi: {} interface(s), bpf={}", len(sources), bool(bpf_filter))
     return _iter_live_multi(sources, stop_event, bpf_filter)
 
 
@@ -927,7 +970,9 @@ def _format_from_extension(path_out: str) -> str:
     confiance a l'extension. La docstring d'origine d'export_filtered
     promettait cette deduction ; elle n'etait jamais appliquee.
     """
-    return "pcap" if os.path.splitext(path_out)[1].lower() in _PCAP_EXTENSIONS else "pcapng"
+    fmt = "pcap" if os.path.splitext(path_out)[1].lower() in _PCAP_EXTENSIONS else "pcapng"
+    logger.debug("_format_from_extension: {} -> {}", path_out, fmt)
+    return fmt
 
 
 def _output_format_args(path_out: str) -> list[str]:
@@ -1144,8 +1189,10 @@ def _check_in_out(path_in: str, path_out: str) -> None:
     """Source existante et distincte de la sortie : ``-w`` sur le fichier
     lu le tronquerait avant lecture (capture perdue)."""
     if not os.path.isfile(path_in):
+        logger.debug("_check_in_out: source {} introuvable", path_in)
         raise FileNotFoundError(f"capture introuvable : {path_in}")
     if os.path.exists(path_out) and os.path.samefile(path_in, path_out):
+        logger.debug("_check_in_out: sortie {} identique a la source, refus", path_out)
         raise ValueError(f"la sortie {path_out} est le fichier source : choisir un autre chemin.")
 
 

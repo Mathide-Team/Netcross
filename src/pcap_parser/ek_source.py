@@ -29,6 +29,7 @@ import calendar
 import contextlib
 import datetime
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -50,6 +51,8 @@ def _parse_frame_time_epoch(value: str | None) -> float | None:
         return None
     m = _FRAME_TIME_RE.match(value)
     if not m:
+        # chemin chaud (une fois par paquet) : TRACE, et seulement le cas anormal
+        logger.trace("_parse_frame_time_epoch: horodatage non reconnu {!r}", value)
         return None
     y, mo, d, h, mi, se, frac = m.groups()
     dt = datetime.datetime(int(y), int(mo), int(d), int(h), int(mi), int(se), tzinfo=datetime.timezone.utc)
@@ -70,6 +73,40 @@ class TsharkError(RuntimeError):
         super().__init__(message)
         self.returncode = returncode
         self.stderr = stderr
+
+
+class CaptureAccessError(TsharkError):
+    """Le fichier de capture est absent ou illisible par l'utilisateur
+    courant : inutile de lancer tshark, le message explique quoi corriger."""
+
+
+def check_capture_readable(path: str) -> None:
+    """Verifie avant tshark que ``path`` est un fichier lisible (#468).
+
+    Leve ``CaptureAccessError`` avec un message actionnable (proprietaire,
+    droits, commande de correction) plutot que le message brut de tshark.
+    """
+    if not os.path.exists(path):
+        raise CaptureAccessError(f"fichier de capture introuvable : {path}")
+    if os.path.isdir(path):
+        raise CaptureAccessError(f"{path} est un repertoire, pas un fichier de capture")
+    if not os.access(path, os.R_OK):
+        try:
+            st = os.stat(path)
+            detail = f" (proprietaire uid {st.st_uid}, droits {st.st_mode & 0o777:o})"
+        except OSError as exc:
+            logger.debug("check_capture_readable: stat({}) impossible : {}", path, exc)
+            detail = ""
+        raise CaptureAccessError(
+            f"droits insuffisants pour lire {path}{detail}. "
+            f"Rendez le fichier lisible, par exemple : sudo chown \"$USER\" '{path}' && chmod u+r '{path}'"
+        )
+
+
+def is_permission_error(exc: TsharkError) -> bool:
+    """tshark a refuse d'ouvrir le fichier faute de droits."""
+    text = f"{exc} {exc.stderr}".lower()
+    return "permission" in text or "permission non accord" in text
 
 
 # Preferences tshark activees par defaut. rtp.heuristic_rtp est le point
@@ -127,6 +164,10 @@ def redact_args(args: Sequence[str]) -> list:
         match = _SECRET_PREF_RE.match(str(arg))
         out.append(f"{match.group(1)}:***" if match else arg)
         mask_next = arg == "-A"
+    masked = sum(1 for a, b in zip(args, out) if a != b)
+    if masked:
+        # ne jamais journaliser la valeur : seulement le nombre de secrets masques
+        logger.debug("redact_args: {} argument(s) secret(s) masque(s)", masked)
     return out
 
 
@@ -139,13 +180,27 @@ def _build_args(
     extra_prefs: Sequence[str] = (),
     extra_args: Sequence[str] = (),
     lua_scripts: Sequence[str] = (),
+    read_via_stdin: bool = False,
 ) -> list:
     if (path is None) == (interface is None):
+        logger.debug("_build_args: path et interface tous deux {}", "absents" if path is None else "fournis")
         raise ValueError("fournir soit path= (batch), soit interface= (live), pas les deux")
+    logger.debug(
+        "_build_args: mode {}, stdin={}, bpf={}, filtre={}, {} pref(s), {} script(s) lua",
+        "fichier" if path is not None else "live",
+        read_via_stdin,
+        bool(bpf_filter),
+        bool(display_filter),
+        len(extra_prefs),
+        len(lua_scripts),
+    )
 
     args = [_tshark_path()]
     if path is not None:
-        args += ["-r", path]
+        # read_via_stdin : le fichier est ouvert par Python et transmis sur
+        # l'entree standard ("-r -"), pour les tshark confines (snap,
+        # AppArmor...) qui n'ont pas le droit d'ouvrir le chemin eux-memes.
+        args += ["-r", "-" if read_via_stdin else path]
     else:
         # -l : flush ligne par ligne (indispensable pour du live streaming,
         # sinon tshark bufferise sa sortie et rien n'arrive avant un bon
@@ -220,6 +275,7 @@ def iter_ek_records(
     extra_args: Sequence[str] = (),
     lua_scripts: Sequence[str] = (),
     stop_event: threading.Event | None = None,
+    read_via_stdin: bool = False,
 ) -> Iterator[EkRecord]:
     """
     Lance tshark -T ek et yield un EkRecord par paquet, au fil de l'eau.
@@ -237,10 +293,16 @@ def iter_ek_records(
     tshark directement -- reactif meme sur une interface sans trafic.
     Sans objet en mode batch (le processus se termine de lui-meme).
 
-    Leve TsharkNotFoundError si tshark n'est pas installe, ou TsharkError
+    read_via_stdin (mode batch uniquement) : le fichier est ouvert par
+    Python et fourni a tshark sur son entree standard.
+
+    Leve TsharkNotFoundError si tshark n'est pas installe, CaptureAccessError
+    si le fichier n'est pas lisible par l'utilisateur courant, ou TsharkError
     si le processus tshark a echoue (code de retour non nul et aucun
     paquet produit).
     """
+    if path is not None:
+        check_capture_readable(path)
     args = _build_args(
         path=path,
         interface=interface,
@@ -249,16 +311,24 @@ def iter_ek_records(
         extra_prefs=extra_prefs,
         extra_args=extra_args,
         lua_scripts=lua_scripts,
+        read_via_stdin=read_via_stdin,
     )
     logger.debug("tshark args : {}", redact_args(args))
 
-    proc = subprocess.Popen(
-        args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,  # bufsize=1 : line-buffered, necessaire pour le live
-    )
+    stdin_file = open(path, "rb") if (read_via_stdin and path is not None) else None  # noqa: SIM115
+    try:
+        proc = subprocess.Popen(
+            args,
+            stdin=stdin_file,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,  # bufsize=1 : line-buffered, necessaire pour le live
+        )
+    finally:
+        # le processus fils a herite du descripteur : le parent peut fermer le sien
+        if stdin_file is not None:
+            stdin_file.close()
     if stop_event is not None:
         threading.Thread(target=_terminate_on_event, args=(proc, stop_event), daemon=True).start()
     logger.debug("iter_ek_records: tshark lancé (pid {}, source={})", getattr(proc, "pid", None), path or interface)

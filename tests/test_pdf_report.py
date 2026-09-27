@@ -29,6 +29,7 @@ n'etait verifie par rien.
 
 from __future__ import annotations
 
+import re
 import subprocess
 
 import pytest
@@ -212,7 +213,10 @@ def test_le_pdf_accepte_des_constats_deja_calcules(tmp_path):
     fourni = tmp_path / "b.pdf"
     generate_pdf(r, str(calcule))
     generate_pdf(r, str(fourni), findings=findings)
-    assert _texte_pdf(calcule) == _texte_pdf(fourni)
+    # L'horodatage de generation (minute) peut basculer entre les deux
+    # rendus : on le neutralise pour ne comparer que le contenu.
+    horodatage = re.compile(r"\d{2}/\d{2}/\d{4} \d{2}:\d{2}")
+    assert horodatage.sub("<date>", _texte_pdf(calcule)) == horodatage.sub("<date>", _texte_pdf(fourni))
 
 
 # --------------------------------------------------------------------------
