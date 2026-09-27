@@ -149,7 +149,9 @@ def run_diff_pipeline(
         _log("Triage des écarts...")
         from netcross_report import format_health_line, health_score, print_triage, rank_segments
 
-        ranked = rank_segments(findings)
+        # DiffFinding a les champs lus par rank_segments (segment, category,
+        # severity) : même appel que cross_capture_diff_cli.py.
+        ranked = rank_segments(findings)  # type: ignore[arg-type]
         with contextlib.redirect_stdout(buf):
             print_triage(ranked, options.triage_topn)
             print(format_health_line(health_score(ranked)))
