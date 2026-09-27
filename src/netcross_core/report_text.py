@@ -64,6 +64,7 @@ def _linktype_lisible(code) -> str:
 
 
 def print_report(r: Report):
+    logger.debug("print_report: r={}", summarize(r, "r"))
     print("=" * 70)
     print("ANALYSE CROISEE DE CAPTURES")
     print("=" * 70)
@@ -916,6 +917,7 @@ _SEQ_GAP_LABELS = {
 def print_sequence_gaps(r: Report):
     """Detail de la section "Integrite de capture" : trous de sequence TCP par
     point, avec leur cause (capture / reseau / indeterminee)."""
+    logger.debug("print_sequence_gaps: r={}", summarize(r, "r"))
     print(
         "  (octets jamais vus a ce point alors que des octets posterieurs l'ont ete, sans retransmission ulterieure ;"
     )
@@ -971,6 +973,14 @@ def write_detail_csv(path, flows, points, names=None):
     """Ecrit le detail par flux en CSV. Si ``names`` (une
     ``netcross_core.naming.NameTable``) est fourni, les colonnes src/dst
     affichent les noms logiques resolus a la place des adresses brutes."""
+
+    logger.debug(
+        "write_detail_csv: path={} flows={} points={} names={}",
+        summarize(path, "path"),
+        summarize(flows, "flows"),
+        summarize(points, "points"),
+        summarize(names, "names"),
+    )
 
     def _label(addr) -> str:
         if names is None:

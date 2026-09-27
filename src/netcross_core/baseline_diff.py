@@ -25,7 +25,7 @@ import statistics
 from dataclasses import dataclass, field
 
 from netcross_core.expert_model import EvidenceLink, PacketEvidence
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 
 logger = get_logger(__name__)
@@ -132,6 +132,11 @@ def _http_error_evidence(examples: list[str], status_class: int, frames: list[in
 
 def _common_points(baseline: Report, current: Report) -> tuple[list[str], list[str], list[str]]:
     """Renvoie (points_communs, presents_seulement_avant, presents_seulement_apres)."""
+    logger.debug(
+        "_common_points: baseline={} current={}",
+        summarize(baseline, "baseline"),
+        summarize(current, "current"),
+    )
     b, c = set(baseline.points), set(current.points)
     common = sorted(b & c)
     only_before = sorted(b - c)
@@ -157,6 +162,20 @@ def _compare_rate(
     evite le bruit sur des ecarts de 0.1% qui n'ont aucune signification
     operationnelle.
     """
+    logger.debug(
+        "_compare_rate: findings={} category={} segment={} before_n={} before_d={} after_n={} "
+        "after_d={} min_pp={} label={} evidence={}",
+        summarize(findings, "findings"),
+        summarize(category, "category"),
+        summarize(segment, "segment"),
+        summarize(before_n, "before_n"),
+        summarize(before_d, "before_d"),
+        summarize(after_n, "after_n"),
+        summarize(after_d, "after_d"),
+        summarize(min_pp, "min_pp"),
+        summarize(label, "label"),
+        summarize(evidence, "evidence"),
+    )
     before_rate = _pct(before_n, before_d)
     after_rate = _pct(after_n, after_d)
     delta = after_rate - before_rate
@@ -196,6 +215,20 @@ def _compare_count(
     +300%) est significatif, un passage de 400 a 403 (delta=3, +0.75%)
     ne l'est pas.
     """
+    logger.debug(
+        "_compare_count: findings={} category={} segment={} before={} after={} min_delta={} "
+        "rel_threshold={} label={} higher_is_worse={} evidence={}",
+        summarize(findings, "findings"),
+        summarize(category, "category"),
+        summarize(segment, "segment"),
+        summarize(before, "before"),
+        summarize(after, "after"),
+        summarize(min_delta, "min_delta"),
+        summarize(rel_threshold, "rel_threshold"),
+        summarize(label, "label"),
+        summarize(higher_is_worse, "higher_is_worse"),
+        summarize(evidence, "evidence"),
+    )
     delta = after - before
     if abs(delta) < min_delta:
         return
@@ -225,6 +258,15 @@ def _compare_latency(
     min_ms: float = 5.0,
     rel_threshold: float = 0.2,
 ) -> None:
+    logger.debug(
+        "_compare_latency: findings={} segment={} before={} after={} min_ms={} rel_threshold={}",
+        summarize(findings, "findings"),
+        summarize(segment, "segment"),
+        summarize(before, "before"),
+        summarize(after, "after"),
+        summarize(min_ms, "min_ms"),
+        summarize(rel_threshold, "rel_threshold"),
+    )
     b_mean, a_mean = _mean(before), _mean(after)
     if b_mean is None or a_mean is None:
         if before and not after:
@@ -916,6 +958,7 @@ def print_diff_report(findings: list[DiffFinding]) -> None:
 
 
 def write_diff_csv(findings: list[DiffFinding], path: str) -> None:
+    logger.debug("write_diff_csv: findings={} path={}", summarize(findings, "findings"), summarize(path, "path"))
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(["severite", "categorie", "segment", "message", "avant", "apres"])

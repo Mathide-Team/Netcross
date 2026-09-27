@@ -40,7 +40,7 @@ from typing import Any
 from loguru import logger
 
 from netcross_core import lua_doc
-from netcross_core.logging_config import add_debug_argument, apply_debug_argument, is_debug_enabled
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, is_debug_enabled, summarize
 from netcross_core.lua_doc import Attribut, FicheClasse, Methode, ResultatRecherche
 
 _INDENT = "    "
@@ -128,6 +128,7 @@ def render_attribut(a: Attribut, indent: str = "") -> list[str]:
 
 def render_fiche(f: FicheClasse, version: str) -> list[str]:
     """Fiche complete d'une classe, en texte."""
+    logger.debug("render_fiche: f={} version={}", summarize(f, "f"), summarize(version, "version"))
     entete = f.nom + (f"  (module {f.module})" if f.module else "") + (f"  -- Wireshark {version}" if version else "")
     lignes = [entete, "=" * len(entete)]
     if f.description:
@@ -148,6 +149,13 @@ def render_fiche(f: FicheClasse, version: str) -> list[str]:
 
 def render_resultats(conn: sqlite3.Connection, terme: str, res: list[ResultatRecherche], full: bool) -> list[str]:
     """Liste des resultats de recherche, en texte."""
+    logger.debug(
+        "render_resultats: conn={} terme={} res={} full={}",
+        summarize(conn, "conn"),
+        summarize(terme, "terme"),
+        summarize(res, "res"),
+        summarize(full, "full"),
+    )
     version = lua_doc.get_meta(conn).get("version_wireshark", "")
     lignes = [f"{len(res)} resultat(s) pour « {terme} »" + (f" -- Wireshark {version}" if version else ""), ""]
     for r in res:
@@ -175,6 +183,13 @@ def render_resultats(conn: sqlite3.Connection, terme: str, res: list[ResultatRec
 
 
 def _json_resultats(conn: sqlite3.Connection, terme: str, res: list[ResultatRecherche], full: bool) -> dict[str, Any]:
+    logger.debug(
+        "_json_resultats: conn={} terme={} res={} full={}",
+        summarize(conn, "conn"),
+        summarize(terme, "terme"),
+        summarize(res, "res"),
+        summarize(full, "full"),
+    )
     items: list[dict[str, Any]] = []
     for r in res:
         item = asdict(r)
@@ -250,6 +265,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(conn: sqlite3.Connection, args: argparse.Namespace, terme: str) -> int:
+    logger.debug(
+        "_run: conn={} args={} terme={}",
+        summarize(conn, "conn"),
+        summarize(args, "args"),
+        summarize(terme, "terme"),
+    )
     meta = lua_doc.get_meta(conn)
     version = meta.get("version_wireshark", "")
 

@@ -43,7 +43,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt, Report
 
 logger = get_logger(__name__)
@@ -206,6 +206,7 @@ def _protocol_counts(protocols: Iterable[str]) -> dict[str, int]:
 
 def _dos_bursts(events: list[tuple[float, int | None, str]], t: CorrelationThresholds):
     """Rafales de >= dos_min_events evenements dans dos_window_s (evenements tries par ts)."""
+    logger.debug("_dos_bursts: events={} t={}", summarize(events, "events"), summarize(t, "t"))
     bursts = []
     n = len(events)
     start = end = 0

@@ -179,6 +179,7 @@ def _group_flows(
     group_by: str,
 ) -> dict[str, list[Flow]]:
     """Regroupe les flux par dimension."""
+    logger.debug("_group_flows: flows={} group_by={}", summarize(flows, "flows"), summarize(group_by, "group_by"))
     groups: dict[str, list[Flow]] = {}
     for f in flows:
         label = _flow_label(f, group_by)

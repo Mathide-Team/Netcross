@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from netcross_core.discovery.os_detect import OsGuess, guess_os_from_ttl, refine_with_tcp_options
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import ROLE_SERVER, Pkt
 
 logger = get_logger(__name__)
@@ -111,6 +111,7 @@ class AssetInventory:
         couches : netcross_core n'importe jamais netcross_report).
         Sert de base a une integration SIEM (critere d'acceptation de
         l'issue #151)."""
+        logger.debug("AssetInventory.to_records()")
         records = []
         for host in self.sorted_hosts():
             os_guess = host.os_guess
@@ -227,6 +228,11 @@ def build_asset_inventory(all_packets: list[Pkt], baseline_hosts: set[str] | Non
     classique d'une baseline mal initialisee qui noierait l'analyste
     sous de faux positifs des le premier lancement).
     """
+    logger.debug(
+        "build_asset_inventory: all_packets={} baseline_hosts={}",
+        summarize(all_packets, "all_packets"),
+        summarize(baseline_hosts, "baseline_hosts"),
+    )
     hosts: dict[str, HostAsset] = {}
     ttl_samples: dict[str, list[int]] = {}
     handshake_samples: dict[str, Pkt] = {}

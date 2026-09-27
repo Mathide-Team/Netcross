@@ -198,6 +198,7 @@ class AddressRedactor:
         """Tuples (adresse_reelle, pseudonyme, type), tries par type puis
         par pseudonyme -- ordre stable pour un export reproductible
         (--redact-map, tests)."""
+        logger.debug("AddressRedactor.entries()")
         return sorted(
             ((addr, pseudo, kind) for addr, (pseudo, kind) in self._map.items()),
             key=lambda t: (t[2], t[1]),
@@ -218,6 +219,7 @@ def redact_packets(packets) -> AddressRedactor:
     paquets) : construit un AddressRedactor neuf, redige `packets`,
     renvoie le redacteur (mapping/entries() consultables ensuite,
     notamment pour --redact-map)."""
+    logger.debug("redact_packets: packets={}", summarize(packets, "packets"))
     redactor = AddressRedactor()
     redactor.redact(packets)
     return redactor
