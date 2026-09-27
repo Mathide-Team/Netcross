@@ -216,14 +216,21 @@ def _compute_status(observed: float, ref: ReferenceProfile, op) -> str:
     comportement d'origine : CONFORME ou VIOLATION uniquement.
     """
     if op(observed, ref.threshold):
-        return "CONFORME"
-    # Au-dela du seuil : verifier si dans la marge de tolerance
-    if ref.deviation_margin is not None and ref.threshold > 0:
+        status = "CONFORME"
+    elif ref.deviation_margin is not None and ref.threshold > 0:
         margin_abs = ref.threshold * ref.deviation_margin
-        # DEVIATION si observed <= threshold + margin_abs
-        if observed <= ref.threshold + margin_abs:
-            return "DEVIATION"
-    return "VIOLATION"
+        status = "DEVIATION" if observed <= ref.threshold + margin_abs else "VIOLATION"
+    else:
+        status = "VIOLATION"
+    logger.debug(
+        "_compute_status: {} {} {} -> {} (observé={})",
+        ref.metric,
+        ref.operator,
+        ref.threshold,
+        status,
+        round(observed, 3),
+    )
+    return status
 
 
 def evaluate_compliance(report, references=None) -> list[ComplianceResult]:
@@ -242,9 +249,22 @@ def evaluate_compliance(report, references=None) -> list[ComplianceResult]:
         func = _METRIC_FUNCS.get(ref.metric)
         op = _OPERATORS.get(ref.operator)
         if func is None or op is None:
+            logger.debug("evaluate_compliance: métrique '{}' indéterminée", ref.metric)
             results.append(ComplianceResult(ref, None, "INDETERMINE"))
             continue
         observed = func(report)
         status = _compute_status(observed, ref, op)
         results.append(ComplianceResult(ref, observed, status))
+    conforme = sum(1 for r in results if r.status == "CONFORME")
+    deviation = sum(1 for r in results if r.status == "DEVIATION")
+    violation = sum(1 for r in results if r.status == "VIOLATION")
+    indetermine = sum(1 for r in results if r.status == "INDETERMINE")
+    logger.debug(
+        "evaluate_compliance: {} référence(s) -> {} conforme(s), {} déviation(s), {} violation(s), {} indéterminé(s)",
+        len(results),
+        conforme,
+        deviation,
+        violation,
+        indetermine,
+    )
     return results

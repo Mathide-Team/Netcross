@@ -221,6 +221,8 @@ class AlarmEngine:
             active_keys.add(key)
             signal_values[key] = sig.value
 
+        logger.debug("feed: {} signal(s) reçu(s), {} config(s)", len(signals), len(self._configs))
+
         for ci, cfg in enumerate(self._configs):
             # Déterminer quels segments sont concernés par cette config.
             if cfg.segment is not None:
@@ -354,6 +356,13 @@ class AlarmEngine:
                 return None
 
             state.alarmed = True
+            logger.debug(
+                "_evaluate: alarme levée {} sur {} (persistance={:.1f}s, ratio={:.0%})",
+                cfg.rule_id,
+                segment,
+                persistence,
+                ratio,
+            )
             return AlarmEvent(
                 rule_id=cfg.rule_id,
                 segment=segment,
@@ -372,6 +381,7 @@ class AlarmEngine:
 
             state.alarmed = False
             state.active_since = None
+            logger.debug("_evaluate: alarme cleared {} sur {}", cfg.rule_id, segment)
             return AlarmEvent(
                 rule_id=cfg.rule_id,
                 segment=segment,
