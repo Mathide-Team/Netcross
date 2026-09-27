@@ -92,6 +92,7 @@ def main():
         print(exc, file=sys.stderr)
         sys.exit(1)
     print_history(entries)
+    logger.debug("main: fin")
 
 
 if __name__ == "__main__":
