@@ -49,7 +49,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -83,16 +83,20 @@ def _is_internal(ip: str) -> bool:
     except ValueError:
         # appele pour chaque paquet : TRACE (adresse absente ou non IP, trame L2)
         logger.trace("_is_internal: adresse non IP {!r}", ip)
+        logger.debug("_is_internal: except ValueError -> retour False")
         return False
+    logger.debug("_is_internal: retour addr.is_private or addr.is_link_local")
     return addr.is_private or addr.is_link_local
 
 
 def _is_syn_only(flags: str | None) -> bool:
     """Vrai pour un paquet TCP SYN sans ACK (drapeau S sans A)."""
     if not flags:
+        logger.debug("_is_syn_only: si not flags -> retour False")
         return False
     has_syn = "S" in flags
     has_ack = "A" in flags
+    logger.debug("_is_syn_only: retour has_syn and (not has_ack)")
     return has_syn and not has_ack
 
 
@@ -133,6 +137,7 @@ class LateralMovementEvent:
 
     @property
     def points_list(self) -> list[str]:
+        logger.debug("LateralMovementEvent.points_list: retour list(self.points) if self.points else [self.point…")
         return list(self.points) if self.points else ([self.point] if self.point else [])
 
 
@@ -148,6 +153,7 @@ class LateralMovementResult:
         grouped: dict[str, list[LateralMovementEvent]] = defaultdict(list)
         for ev in self.events:
             grouped[ev.event_type].append(ev)
+        logger.debug("LateralMovementResult.events_by_type: retour grouped={}", summarize(grouped, "grouped"))
         return grouped
 
 

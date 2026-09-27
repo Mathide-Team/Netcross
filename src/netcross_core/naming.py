@@ -59,6 +59,7 @@ class NameEntry:
         adresses respecte la casse (les adresses IP n'en ont pas, mais les
         noms d'hotes IPv6 ou labels le pourraient).
         """
+        logger.debug("NameEntry.matches: retour address is not None and self.address == address o…")
         return (address is not None and self.address == address) or (
             mac is not None and self.mac is not None and self.mac.lower() == mac.lower()
         )
@@ -78,6 +79,7 @@ class NameTable:
         self._entries: list[NameEntry] = []
         for e in entries or ():
             self.add(e)
+        logger.debug("NameTable.__init__: fin")
 
     # -- Mutation ---------------------------------------------------------
 
@@ -86,29 +88,36 @@ class NameTable:
         adresse ou MAC."""
         if not entry.name:
             logger.trace("NameTable.add: refus, ValueError")
+            logger.debug("NameTable.add: si not entry.name -> levée ValueError")
             raise ValueError("NameEntry.name est requis")
         if entry.address is None and entry.mac is None:
             logger.trace("NameTable.add: refus, ValueError")
+            logger.debug("NameTable.add: si entry.address is None and entry.mac is None -> levée ValueError")
             raise ValueError("NameEntry doit avoir au moins une adresse ou une MAC")
         self._entries.append(entry)
         if entry.address is not None:
             self._by_address[entry.address] = entry
         if entry.mac is not None:
             self._by_mac[entry.mac.lower()] = entry
+        logger.debug("NameTable.add: fin")
 
     # -- Resolution -------------------------------------------------------
 
     def resolve(self, address: str | None) -> NameEntry | None:
         """Retourne l'entree correspondant a une adresse, ou None."""
         if address is None:
+            logger.debug("NameTable.resolve: si address is None -> retour None")
             return None
+        logger.debug("NameTable.resolve: retour self._by_address.get(…)")
         return self._by_address.get(address)
 
     def resolve_mac(self, mac: str | None) -> NameEntry | None:
         """Retourne l'entree correspondant a une MAC, ou None."""
         logger.debug("NameTable.resolve_mac: mac={}", summarize(mac, "mac"))
         if mac is None:
+            logger.debug("NameTable.resolve_mac: si mac is None -> retour None")
             return None
+        logger.debug("NameTable.resolve_mac: retour self._by_mac.get(…)")
         return self._by_mac.get(mac.lower())
 
     def display(self, address: str | None) -> str:
@@ -116,14 +125,17 @@ class NameTable:
         aucune entree ne correspond (ou si l'adresse est None -> chaine
         vide). C'est le point d'entree unique des rendus."""
         if address is None:
+            logger.debug("NameTable.display: si address is None -> retour ''")
             return ""
         entry = self._by_address.get(address)
+        logger.debug("NameTable.display: retour entry.name if entry is not None else address")
         return entry.name if entry is not None else address
 
     # -- Persistance ------------------------------------------------------
 
     def to_list(self) -> list[dict]:
         """Liste de dictionnaires (ordre stable) pour la serialisation."""
+        logger.debug("NameTable.to_list: retour liste")
         return [asdict(e) for e in self._entries]
 
     @classmethod
@@ -135,6 +147,7 @@ class NameTable:
         for i, item in enumerate(items):
             if "name" not in item or not item["name"]:
                 logger.trace("NameTable.from_list: refus, ValueError")
+                logger.debug("NameTable.from_list: si 'name' not in item or not item['name'] -> levée ValueError")
                 raise ValueError(f"entree #{i}: 'name' est requis")
             entries.append(
                 NameEntry(
@@ -147,6 +160,7 @@ class NameTable:
                     comment=item.get("comment"),
                 )
             )
+        logger.debug("NameTable.from_list: retour cls(…)")
         return cls(entries)
 
     @classmethod
@@ -156,6 +170,7 @@ class NameTable:
         p = Path(path)
         if not p.exists():
             logger.trace("NameTable.load: refus, FileNotFoundError")
+            logger.debug("NameTable.load: si not p.exists() -> levée FileNotFoundError")
             raise FileNotFoundError(f"table des noms introuvable: {path}")
         suffix = p.suffix.lower()
         text = p.read_text(encoding="utf-8")
@@ -171,7 +186,9 @@ class NameTable:
             data = data.get("entries", [])
         if not isinstance(data, list):
             logger.trace("NameTable.load: refus, ValueError")
+            logger.debug("NameTable.load: si not isinstance(data, list) -> levée ValueError")
             raise ValueError(f"la table des noms doit etre une liste, pas {type(data).__name__}")
+        logger.debug("NameTable.load: retour cls.from_list(…)")
         return cls.from_list(data)
 
     def save(self, path: str | Path) -> None:
@@ -186,13 +203,16 @@ class NameTable:
                 json.dumps(items, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
+        logger.debug("NameTable.save: fin")
 
     # -- Divers -----------------------------------------------------------
 
     def __len__(self) -> int:
+        logger.debug("NameTable.__len__: retour len(…)")
         return len(self._entries)
 
     def __bool__(self) -> bool:
+        logger.debug("NameTable.__bool__: retour bool(…)")
         return bool(self._entries)
 
 
@@ -204,6 +224,7 @@ def _load_yaml(text: str):
         raise ImportError(
             "lecture YAML requiert pyyaml (pip install pyyaml) ; utilisez un fichier .json pour eviter cette dependance"
         ) from exc
+    logger.debug("_load_yaml: retour yaml.safe_load(…)")
     return yaml.safe_load(text)
 
 
@@ -216,4 +237,5 @@ def _dump_yaml(items: list[dict]) -> str:
             "ecriture YAML requiert pyyaml (pip install pyyaml) ; "
             "utilisez un fichier .json pour eviter cette dependance"
         ) from exc
+    logger.debug("_dump_yaml: retour yaml.safe_dump(…)")
     return yaml.safe_dump(items, allow_unicode=True, sort_keys=False)

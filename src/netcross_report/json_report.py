@@ -29,6 +29,7 @@ def _evidence_list_dict(evidence) -> list[dict]:
     """Serialise une liste d'EvidenceLink -- factorise entre _finding_dict
     et _expert_event_dict (Session 36), meme format des deux cotes
     (point/text/frame_number optionnel)."""
+    logger.debug("_evidence_list_dict: retour liste")
     return [
         {
             "point": e.point,
@@ -83,6 +84,7 @@ def _finding_dict(f) -> dict:
     rule_id = getattr(f, "rule_id", None)
     if rule_id is not None:
         d["rule_id"] = rule_id
+    logger.debug("_finding_dict: retour d={}", summarize(d, "d"))
     return d
 
 
@@ -103,6 +105,7 @@ def _flow_dict(flow, names=None) -> dict:
     }
     if names is not None and endpoints is not None:
         doc["endpoints_labels"] = [names.display(a) for a in endpoints]
+    logger.debug("_flow_dict: retour doc={}", summarize(doc, "doc"))
     return doc
 
 
@@ -119,6 +122,7 @@ def _conversation_dict(conv, names=None) -> dict:
     }
     if names is not None:
         doc["endpoints_labels"] = [names.display(a) for a in endpoints]
+    logger.debug("_conversation_dict: retour doc={}", summarize(doc, "doc"))
     return doc
 
 
@@ -156,6 +160,7 @@ def _expert_event_dict(ev) -> dict:
     Finding.rule_id quand le Finding source correspond a une regle du
     catalogue netcross_core.expert_rules), toujours None cote "tshark"
     (voir expert_model.ExpertEvent pour le detail complet)."""
+    logger.debug("_expert_event_dict: retour dictionnaire")
     return {
         "category": ev.category,
         "severity": ev.severity,
@@ -180,6 +185,7 @@ def _expert_event_dict(ev) -> dict:
 def _diagnosis_dict(diag) -> dict:
     """Serialise un Diagnosis (netcross_core.expert_model, Session 36) --
     meme raisonnement que _expert_event_dict pour cause/impact."""
+    logger.debug("_diagnosis_dict: retour dictionnaire")
     return {
         "segment": diag.segment,
         "events": [_expert_event_dict(ev) for ev in diag.events],
@@ -191,6 +197,7 @@ def _diagnosis_dict(diag) -> dict:
 def _compliance_dict(result) -> dict:
     """Serialise un ComplianceResult (netcross_core.expert_model,
     Session 36)."""
+    logger.debug("_compliance_dict: retour dictionnaire")
     return {
         "reference": {
             "id": result.reference.id,
@@ -212,6 +219,7 @@ def _segment_score_dict(s) -> dict:
     donne, pour eviter une duplication complete de l'arbre. low_confidence :
     voir netcross_report.triage.rank_segments (echantillon(s) faible(s)
     derriere les findings qui pesent dans le score de ce segment)."""
+    logger.debug("_segment_score_dict: retour dictionnaire")
     return {
         "segment": s.segment,
         "score": s.score,
@@ -223,12 +231,14 @@ def _segment_score_dict(s) -> dict:
 
 
 def _now_iso() -> str:
+    logger.debug("_now_iso: retour datetime.datetime.now().astimezone().is…(…)")
     return datetime.datetime.now().astimezone().isoformat()
 
 
 def _write(doc: dict, output_path) -> str:
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, ensure_ascii=False, indent=2)
+    logger.debug("_write: retour output_path={}", summarize(output_path, "output_path"))
     return output_path
 
 
@@ -405,6 +415,7 @@ def generate_json_report(
             if rule_list  # omet les regles sans Finding (liste vide)
         }
 
+    logger.debug("generate_json_report: retour _write(…)")
     return _write(doc, output_path)
 
 
@@ -520,4 +531,5 @@ def generate_json_diff(
     if wireshark_expert_events is not None:
         doc["wireshark_expert_events"] = [_expert_event_dict(ev) for ev in wireshark_expert_events]
 
+    logger.debug("generate_json_diff: retour _write(…)")
     return _write(doc, output_path)

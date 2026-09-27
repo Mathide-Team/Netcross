@@ -68,6 +68,7 @@ LEGACY_VENDORS: dict[tuple[str, str], tuple[str, ...]] = {
 
 def vendor_candidates(vendor: str, product: str) -> tuple[str, ...]:
     """Vendeur actuel puis vendeurs historiques du couple (vendor, product)."""
+    logger.debug("vendor_candidates: retour tuple de 2")
     return (vendor, *LEGACY_VENDORS.get((vendor, product), ()))
 
 
@@ -94,11 +95,13 @@ class ParsedBanner:
 
     @property
     def cpe23(self) -> str:
+        logger.debug("ParsedBanner.cpe23: retour build_cpe23(…)")
         return build_cpe23(self.vendor, self.product, self.version)
 
 
 def build_cpe23(vendor: str, product: str, version: str) -> str:
     """Construit un identifiant CPE 2.3 (partie applicative 'a')."""
+    logger.debug("build_cpe23: retour chaîne formatée")
     return f"cpe:2.3:a:{vendor}:{product}:{version}:*:*:*:*:*:*:*"
 
 
@@ -115,8 +118,10 @@ def parse_banner(banner: str) -> ParsedBanner | None:
     for token in banner.split():
         parsed = _parse_token(token)
         if parsed is not None:
+            logger.debug("parse_banner: si parsed is not None -> retour parsed={}", summarize(parsed, "parsed"))
             return parsed
     logger.trace("parse_banner: aucun produit reconnu")
+    logger.debug("parse_banner: retour None")
     return None
 
 
@@ -135,13 +140,16 @@ def parse_all_banners(banner: str) -> list[ParsedBanner]:
 def _parse_token(token: str) -> ParsedBanner | None:
     match = _BANNER_RE.match(token.strip().strip("()"))
     if match is None:
+        logger.debug("_parse_token: si match is None -> retour None")
         return None
     name, version = match.group(1), match.group(2)
     key = name.lower()
     aliases = PRODUCT_ALIASES.get(key)
     if aliases is None:
+        logger.debug("_parse_token: si aliases is None -> retour None")
         return None
     vendor, product = aliases
+    logger.debug("_parse_token: retour ParsedBanner(…)")
     return ParsedBanner(raw=token, product_key=key, vendor=vendor, product=product, version=version)
 
 
@@ -154,6 +162,7 @@ def _version_key(version: str) -> tuple:
     deux versions alternent chiffres/lettres a des positions differentes
     (rare mais pas exclu, ex: "1.1.1k" vs "1.1.1a").
     """
+    logger.debug("_version_key: retour tuple(…)")
     return tuple((0, int(g)) if g.isdigit() else (1, g.lower()) for g in re.findall(r"\d+|[A-Za-z]+", version))
 
 
@@ -161,7 +170,9 @@ def compare_versions(a: str, b: str) -> int:
     """-1 si a < b, 0 si a == b, 1 si a > b (comparaison lexicographique par groupe, voir _version_key)."""
     ka, kb = _version_key(a), _version_key(b)
     if ka == kb:
+        logger.debug("compare_versions: si ka == kb -> retour 0")
         return 0
+    logger.debug("compare_versions: retour -1 if ka < kb else 1")
     return -1 if ka < kb else 1
 
 

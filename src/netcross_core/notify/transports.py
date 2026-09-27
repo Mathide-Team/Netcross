@@ -49,26 +49,37 @@ def validate_http_url(url: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         logger.debug("validate_http_url: refus, ValueError")
         raise ValueError(f"URL invalide (http:// ou https:// attendu) : {url!r}")
+    logger.debug("validate_http_url: retour url={}", summarize(url, "url"))
     return url
 
 
 def _reason(exc: BaseException) -> str:
     logger.debug("_reason: exc={}", summarize(exc, "exc"))
     if isinstance(exc, urllib.error.HTTPError):
+        logger.debug("_reason: si isinstance(exc, urllib.error.HTTPError) -> retour chaîne formatée")
         return f"HTTP {exc.code}"
     if isinstance(exc, TimeoutError | socket.timeout):
+        logger.debug("_reason: si isinstance(exc, TimeoutError | socket.timeout) -> retour 'delai depasse'")
         return "delai depasse"
     if isinstance(exc, urllib.error.URLError):
         inner = exc.reason
         if isinstance(inner, TimeoutError | socket.timeout):
+            logger.debug("_reason: si isinstance(inner, TimeoutError | socket.timeout) -> retour 'delai depasse'")
             return "delai depasse"
+        logger.debug("_reason: si isinstance(exc, urllib.error.URLError) -> retour chaîne formatée")
         return f"injoignable ({inner})"
     if isinstance(exc, smtplib.SMTPAuthenticationError):
+        logger.debug(
+            "_reason: si isinstance(exc, smtplib.SMTPAuthenticationError) -> retour 'authentification SMTP refusee'"
+        )
         return "authentification SMTP refusee"
     if isinstance(exc, smtplib.SMTPException):
+        logger.debug("_reason: si isinstance(exc, smtplib.SMTPException) -> retour chaîne formatée")
         return f"erreur SMTP ({exc.__class__.__name__})"
     if isinstance(exc, OSError):
+        logger.debug("_reason: si isinstance(exc, OSError) -> retour chaîne formatée")
         return f"injoignable ({exc.strerror or exc})"
+    logger.debug("_reason: retour chaîne formatée")
     return f"{exc.__class__.__name__}: {exc}"
 
 
@@ -82,6 +93,7 @@ def _post_json(url: str, payload: dict[str, Any], timeout: float) -> None:
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             if not 200 <= response.status < 300:
+                logger.debug("_post_json: si not 200 <= response.status < 300 -> levée NotifyError")
                 raise NotifyError(f"HTTP {response.status}")
     except NotifyError:
         logger.exception("échec dans _post_json")
@@ -89,6 +101,7 @@ def _post_json(url: str, payload: dict[str, Any], timeout: float) -> None:
     except (OSError, ValueError) as exc:
         logger.exception(f"échec dans _post_json: {exc}")
         raise NotifyError(_reason(exc)) from exc
+    logger.debug("_post_json: fin")
 
 
 @dataclass(slots=True)
@@ -102,9 +115,11 @@ class WebhookNotifier:
 
     def __post_init__(self) -> None:
         validate_http_url(self.url)
+        logger.debug("WebhookNotifier.__post_init__: fin")
 
     def send(self, summary: NotificationSummary) -> bool:
         _post_json(self.url, {"source": "netcross", **summary.to_dict()}, self.timeout)
+        logger.debug("WebhookNotifier.send: retour True")
         return True
 
 
@@ -131,6 +146,7 @@ def slack_blocks(summary: NotificationSummary) -> list[dict[str, Any]]:
     if summary.anonymized:
         context += " · adresses internes anonymisees"
     blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": context[:3000]}]})
+    logger.debug("slack_blocks: retour blocks={}", summarize(blocks, "blocks"))
     return blocks
 
 
@@ -147,6 +163,7 @@ class SlackNotifier:
 
     def __post_init__(self) -> None:
         validate_http_url(self.url)
+        logger.debug("SlackNotifier.__post_init__: fin")
 
     def send(self, summary: NotificationSummary) -> bool:
         text = summary.to_text()
@@ -155,9 +172,11 @@ class SlackNotifier:
         except NotifyError as exc:
             logger.exception(f"échec dans send: {exc}")
             if str(exc) != "HTTP 400":
+                logger.debug("SlackNotifier.send: si str(exc) != 'HTTP 400' -> relance de l'exception en cours")
                 raise
             self.degraded = True
             _post_json(self.url, {"text": text}, self.timeout)
+        logger.debug("SlackNotifier.send: retour True")
         return True
 
 
@@ -179,9 +198,12 @@ class EmailNotifier:
 
     def __post_init__(self) -> None:
         if not self.host:
+            logger.debug("EmailNotifier.__post_init__: si not self.host -> levée ValueError")
             raise ValueError("serveur SMTP manquant (smtp_host / NETCROSS_SMTP_HOST)")
         if not self.recipients:
+            logger.debug("EmailNotifier.__post_init__: si not self.recipients -> levée ValueError")
             raise ValueError("aucun destinataire")
+        logger.debug("EmailNotifier.__post_init__: fin")
 
     def build_message(self, summary: NotificationSummary) -> EmailMessage:
         logger.debug("EmailNotifier.build_message: summary={}", summarize(summary, "summary"))
@@ -190,6 +212,7 @@ class EmailNotifier:
         msg["From"] = self.sender
         msg["To"] = ", ".join(self.recipients)
         msg.set_content(summary.to_text())
+        logger.debug("EmailNotifier.build_message: retour msg={}", summarize(msg, "msg"))
         return msg
 
     def send(self, summary: NotificationSummary) -> bool:
@@ -204,4 +227,5 @@ class EmailNotifier:
         except (OSError, smtplib.SMTPException) as exc:
             logger.exception(f"échec dans send: {exc}")
             raise NotifyError(_reason(exc)) from exc
+        logger.debug("EmailNotifier.send: retour True")
         return True

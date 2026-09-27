@@ -32,6 +32,7 @@ TUNNEL_LAYER_KEYS: tuple[str, ...] = ("gre", "vxlan", "gtp", "erspan", "capwap_d
 
 
 def is_tunnel(layers: dict) -> bool:
+    logger.debug("is_tunnel: retour any(…)")
     return any(key in layers for key in TUNNEL_LAYER_KEYS)
 
 
@@ -71,6 +72,7 @@ def detect_encapsulation(layers: dict) -> tuple[str, ...]:
 
     if tags:
         logger.trace("detect_encapsulation: {}", ",".join(tags))
+    logger.debug("detect_encapsulation: retour tuple(…)")
     return tuple(tags)
 
 
@@ -115,6 +117,7 @@ def _capwap_tags(layers: dict) -> list:
     if tags:
         # seuls les paquets CAPWAP arrivent ici avec des etiquettes
         logger.trace("_capwap_tags: {}", tags)
+    logger.debug("_capwap_tags: retour tags")
     return tags
 
 
@@ -158,6 +161,7 @@ def select_innermost_layers(layers: dict) -> dict:
     if tunnel:
         logger.trace("select_innermost_layers: tunnel, couches internes retenues")
     picker = innermost if tunnel else layer
+    logger.debug("select_innermost_layers: retour dictionnaire")
     return {
         "ip4": picker(layers, "ip"),
         "ip6": picker(layers, "ipv6"),

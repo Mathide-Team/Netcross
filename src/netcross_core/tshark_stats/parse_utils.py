@@ -29,11 +29,14 @@ def is_separator(line: str) -> bool:
     """Vrai pour une ligne de separateur ``====`` (ou ``----``)."""
     s = line.strip()
     if len(s) < 3:
+        logger.debug("is_separator: si len(s) < 3 -> retour False")
         return False
+    logger.debug("is_separator: retour set(s) <= _SEP_CHARS")
     return set(s) <= _SEP_CHARS
 
 
 def is_filter_line(line: str) -> bool:
+    logger.debug("is_filter_line: retour line.strip().startswith(…)")
     return line.strip().startswith("Filter:")
 
 
@@ -41,9 +44,11 @@ def is_title_or_section(line: str) -> bool:
     """Lignes de titre / section sans donnees chiffrees."""
     s = line.strip()
     if not s or is_separator(s) or is_filter_line(s):
+        logger.debug("is_title_or_section: si not s or is_separator(s) or is_filter_line(s) -> retour True")
         return True
     # En-tetes typiques des tableaux conv/endpoints/io,stat.
     upper = s.upper()
+    logger.debug("is_title_or_section: retour any(…)")
     return any(
         kw in upper
         for kw in (
@@ -68,6 +73,7 @@ def split_fields(line: str) -> list[str]:
     Retourne une liste vide si la ligne ne contient pas de ``|``.
     """
     if "|" not in line:
+        logger.debug("split_fields: si '|' not in line -> retour liste vide")
         return []
     parts = line.split("|")
     # Le premier et le dernier champ sont vides (bords du tableau).
@@ -75,6 +81,7 @@ def split_fields(line: str) -> list[str]:
         parts = parts[1:]
     if parts and parts[-1].strip() == "":
         parts = parts[:-1]
+    logger.debug("split_fields: retour liste")
     return [p.strip() for p in parts]
 
 
@@ -85,33 +92,43 @@ def parse_int(s: str | None) -> int | None:
     """Conversion entier tolérante : ``""``/``-`` -> None, virgules/espaces
     et unites eventuelles retirees."""
     if s is None:
+        logger.debug("parse_int: si s is None -> retour None")
         return None
     t = s.strip().replace(",", "")
     if t in ("", "-", "--"):
+        logger.debug("parse_int: si t in ('', '-', '--') -> retour None")
         return None
     m = _NUM_RE.sub("", t)
     if m in ("", "-", "+", "."):
+        logger.debug("parse_int: si m in ('', '-', '+', '.') -> retour None")
         return None
     try:
+        logger.debug("parse_int: retour int(…)")
         return int(float(m))
     except ValueError:
         logger.exception("échec dans parse_int")
+        logger.debug("parse_int: except ValueError -> retour None")
         return None
 
 
 def parse_float(s: str | None) -> float | None:
     if s is None:
+        logger.debug("parse_float: si s is None -> retour None")
         return None
     t = s.strip().replace(",", "")
     if t in ("", "-", "--"):
+        logger.debug("parse_float: si t in ('', '-', '--') -> retour None")
         return None
     m = _NUM_RE.sub("", t)
     if m in ("", "-", "+", "."):
+        logger.debug("parse_float: si m in ('', '-', '+', '.') -> retour None")
         return None
     try:
+        logger.debug("parse_float: retour float(…)")
         return float(m)
     except ValueError:
         logger.exception("échec dans parse_float")
+        logger.debug("parse_float: except ValueError -> retour None")
         return None
 
 
@@ -126,6 +143,7 @@ def normalize_header(s: str) -> str:
     t = t.replace("bits/s", "bits_s")
     t = t.replace("mbit/s", "bits_s")
     t = re.sub(r"\s+", " ", t)
+    logger.debug("normalize_header: retour t.strip(…)")
     return t.strip()
 
 
@@ -136,7 +154,9 @@ def find_column(headers: list[str], *keywords: str) -> int | None:
     for i, h in enumerate(headers):
         nh = normalize_header(h)
         if all(kw in nh for kw in keywords):
+            logger.debug("find_column: si all((kw in nh for kw in keywords)) -> retour i={}", summarize(i, "i"))
             return i
+    logger.debug("find_column: retour None")
     return None
 
 
@@ -156,6 +176,7 @@ def data_rows(text: str) -> list[str]:
         # Une ligne de donnees contient au moins un champ numerique.
         if any(parse_int(f) is not None or parse_float(f) is not None for f in fields):
             rows.append(line)
+    logger.debug("data_rows: retour rows={}", summarize(rows, "rows"))
     return rows
 
 
@@ -172,6 +193,7 @@ def header_lines(text: str) -> list[str]:
             continue
         if is_title_or_section(line):
             out.append(line)
+    logger.debug("header_lines: retour out={}", summarize(out, "out"))
     return out
 
 
@@ -186,6 +208,7 @@ def reconstruct_headers(text: str) -> list[str]:
     """
     lines = header_lines(text)
     if not lines:
+        logger.debug("reconstruct_headers: si not lines -> retour liste vide")
         return []
     per_index: dict[int, list[str]] = {}
     max_idx = -1
@@ -198,6 +221,7 @@ def reconstruct_headers(text: str) -> list[str]:
     for i in range(max_idx + 1):
         parts = [p for p in per_index.get(i, []) if p]
         names.append(normalize_header(" ".join(parts)))
+    logger.debug("reconstruct_headers: retour names={}", summarize(names, "names"))
     return names
 
 
@@ -208,4 +232,5 @@ def raw_fields_from(headers: list[str], fields: list[str]) -> dict[str, str]:
     for i, val in enumerate(fields):
         key = headers[i] if i < len(headers) else f"col_{i}"
         out[key] = val
+    logger.debug("raw_fields_from: retour out={}", summarize(out, "out"))
     return out

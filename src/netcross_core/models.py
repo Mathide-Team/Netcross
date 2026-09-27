@@ -41,6 +41,7 @@ class Banner:
     def banner(self) -> str:
         """Forme "produit/version" (ou "produit" seul), lisible par
         `netcross_core.security.cpe_match.parse_banner`."""
+        logger.debug("Banner.banner: retour f'(self.service)/(self.version)' if self.version …")
         return f"{self.service}/{self.version}" if self.version else self.service
 
 
@@ -757,6 +758,9 @@ class BPFFilter:
 
     def __post_init__(self) -> None:
         if not self.name.strip():
+            logger.debug("BPFFilter.__post_init__: si not self.name.strip() -> levée ValueError")
             raise ValueError("BPFFilter: 'name' est requis")
         if not self.expression.strip():
+            logger.debug("BPFFilter.__post_init__: si not self.expression.strip() -> levée ValueError")
             raise ValueError("BPFFilter: 'expression' est requise")
+        logger.debug("BPFFilter.__post_init__: fin")

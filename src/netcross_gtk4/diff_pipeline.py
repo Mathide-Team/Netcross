@@ -78,6 +78,7 @@ def run_diff_pipeline(
             on_progress(msg)
         else:
             logger.debug("étape: {}", msg)
+        logger.debug("run_diff_pipeline._log: fin")
 
     from netcross_core.analysis import analyse
     from netcross_core.redact import AddressRedactor
@@ -202,6 +203,7 @@ def run_diff_pipeline(
     text = buf.getvalue()
     _log("Comparaison terminée.")
 
+    logger.debug("run_diff_pipeline: retour DiffResult(…)")
     return DiffResult(
         mode="diff",
         findings=findings,

@@ -151,6 +151,7 @@ class LiveDiffEngine:
         self.state = LiveDiffState()
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        logger.debug("LiveDiffEngine.__init__: fin")
 
     def start(self, interface: str, bpf_filter: str | None = None) -> None:
         """Demarre la capture live sur UNE interface et la boucle de diff.
@@ -161,6 +162,7 @@ class LiveDiffEngine:
         self._ensure_idle()
         self._stop_event.clear()
         self._launch(self._run, interface, bpf_filter)
+        logger.debug("LiveDiffEngine.start: fin")
 
     def start_multi(self, interfaces: Sequence[tuple[str, str]], bpf_filter: str | None = None) -> None:
         """Demarre la capture live SIMULTANEE sur plusieurs interfaces.
@@ -193,15 +195,19 @@ class LiveDiffEngine:
         # premiere iteration, faite par _consume dans le thread dedie.
         packets = parse_live_multi(interfaces, stop_event=self._stop_event, bpf_filter=bpf_filter)
         self._launch(self._consume, packets)
+        logger.debug("LiveDiffEngine.start_multi: fin")
 
     def _ensure_idle(self) -> None:
         if self.state.running:
+            logger.debug("LiveDiffEngine._ensure_idle: si self.state.running -> levée RuntimeError")
             raise RuntimeError("LiveDiffEngine deja en cours")
+        logger.debug("LiveDiffEngine._ensure_idle: fin")
 
     def _launch(self, target: Callable[..., None], *args: object) -> None:
         self.state.running = True
         self._thread = threading.Thread(target=target, args=args, daemon=True)
         self._thread.start()
+        logger.debug("LiveDiffEngine._launch: fin")
 
     def stop(self, timeout: float = 5.0) -> None:
         """Arrete la capture et attend la fin du thread."""
@@ -211,6 +217,7 @@ class LiveDiffEngine:
         if self._thread is not None:
             self._thread.join(timeout=timeout)
             self._thread = None
+        logger.debug("LiveDiffEngine.stop: fin")
 
     def _run(self, interface: str, bpf_filter: str | None) -> None:
         """Capture sur une interface (start) : source de paquets pour _consume."""
@@ -227,6 +234,7 @@ class LiveDiffEngine:
                 stop_event=self._stop_event,
             )
         )
+        logger.debug("LiveDiffEngine._run: fin")
 
     def _consume(self, packets: Iterable[Pkt]) -> None:
         """Boucle principale : consomme les paquets live + evaluation
@@ -244,7 +252,9 @@ class LiveDiffEngine:
             logger.exception("échec dans _consume")
             if self.state.running:
                 self.state.running = False
+            logger.debug("LiveDiffEngine._consume: except Exception -> relance de l'exception en cours")
             raise
+        logger.debug("LiveDiffEngine._consume: fin")
 
     def _add_packet(self, pkt: Pkt) -> None:
         """Ajoute un paquet a la fenetre glissante, en respectant la limite."""
@@ -261,6 +271,7 @@ class LiveDiffEngine:
         # no-op tant que max_duration_per_file n'est pas atteint.
         if self.ring_buffer is not None:
             self.ring_buffer.maybe_rotate(pkt.ts)
+        logger.debug("LiveDiffEngine._add_packet: fin")
 
     def _evaluate_diff(self) -> list[DiffFinding]:
         """Construit un Report partiel et le compare au baseline.
@@ -271,6 +282,9 @@ class LiveDiffEngine:
 
         pkts = self.state.packets_in_window
         if len(pkts) < self.config.min_packets_for_diff:
+            logger.debug(
+                "LiveDiffEngine._evaluate_diff: si len(pkts) < self.config.min_packets_for_diff -> retour liste vide"
+            )
             return []
 
         # Construction d'un Report partiel sur la fenetre courante.
@@ -298,6 +312,7 @@ class LiveDiffEngine:
             for event in self.alarm_engine.events:
                 self.on_alarm(event)
 
+        logger.debug("LiveDiffEngine._evaluate_diff: retour findings={}", summarize(findings, "findings"))
         return findings
 
 

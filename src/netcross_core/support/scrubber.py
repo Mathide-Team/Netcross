@@ -213,9 +213,11 @@ class ScrubReport:
         de resultat : il affirme que la passe a bien eu lieu et n'a rien
         trouve a rediger.
         """
+        logger.debug("ScrubReport.statut: retour 'redige' if self.total else 'aucune_donnee_sensib…")
         return "redige" if self.total else "aucune_donnee_sensible_detectee"
 
     def to_dict(self) -> dict:
+        logger.debug("ScrubReport.to_dict: retour dictionnaire")
         return {
             "statut": self.statut,
             "total_occurrences": self.total,
@@ -248,6 +250,7 @@ class TextScrubber:
         # elles-memes (idempotence) et n'entrent pas dans le mapping.
         self._own: set[str] = set()
         self._counters: dict[str, int] = dict.fromkeys(CATEGORIES, 0)
+        logger.debug("TextScrubber.__init__: fin")
 
     # -- pseudonymes ------------------------------------------------------
 
@@ -258,9 +261,11 @@ class TextScrubber:
         rescrubber un texte deja anonymise ne renumerote rien.
         """
         if real in self._own:
+            logger.debug("TextScrubber._pseudonym: si real in self._own -> retour real={}", summarize(real, "real"))
             return real
         known = self._map.get(real)
         if known is not None:
+            logger.debug("TextScrubber._pseudonym: si known is not None -> retour known={}", summarize(known, "known"))
             return known
         idx = self._counters[kind]
         self._counters[kind] += 1
@@ -268,6 +273,7 @@ class TextScrubber:
         self._map[real] = pseudo
         self._kind[real] = kind
         self._own.add(pseudo)
+        logger.debug("TextScrubber._pseudonym: retour pseudo={}", summarize(pseudo, "pseudo"))
         return pseudo
 
     def mapping_csv_rows(self) -> list[tuple[str, str, str]]:
@@ -291,6 +297,7 @@ class TextScrubber:
         """
         report = ScrubReport()
         if not text:
+            logger.debug("TextScrubber.scrub: si not text -> retour tuple de 2")
             return text, report
 
         counts: dict[str, int] = {}
@@ -300,6 +307,7 @@ class TextScrubber:
         def _emit(value: str, kind: str) -> str:
             counts[kind] = counts.get(kind, 0) + 1
             pending.append(value)
+            logger.debug("TextScrubber.scrub._emit: retour _TOKEN.format(…)")
             return _TOKEN.format(len(pending) - 1)
 
         out = text
@@ -331,6 +339,7 @@ class TextScrubber:
             # La forme complete est aussi "notre" valeur : un second passage
             # la reconnait et ne la renumerote pas.
             self._own.add(full)
+            logger.debug("TextScrubber.scrub._capture: retour _emit(…)")
             return _emit(full, "capture")
 
         out = _RE_CAPTURE.sub(_capture, out)
@@ -344,7 +353,11 @@ class TextScrubber:
         def _fqdn(m: re.Match[str]) -> str:
             value = m.group(0)
             if value.endswith(_OWN_DOMAINS) or m.group(1).lower() in _FILE_EXTS:
+                logger.debug(
+                    "TextScrubber.scrub._fqdn: si value.endswith(_OWN_DOMAINS) or m.group(1).lower() in _FILE… -> ret…"
+                )
                 return value
+            logger.debug("TextScrubber.scrub._fqdn: retour _emit(…)")
             return _emit(self._pseudonym(value.lower(), "hostname"), "hostname")
 
         out = _RE_FQDN.sub(_fqdn, out)
@@ -355,6 +368,7 @@ class TextScrubber:
         report.par_categorie = counts
         report.total = sum(counts.values())
         report.valeurs_distinctes = len(self._map)
+        logger.debug("TextScrubber.scrub: retour tuple de 2")
         return out, report
 
     def scrub_lines(self, lines) -> tuple[list[str], ScrubReport]:
@@ -369,41 +383,50 @@ class TextScrubber:
                 agg.par_categorie[kind] = agg.par_categorie.get(kind, 0) + n
         agg.total = sum(agg.par_categorie.values())
         agg.valeurs_distinctes = len(self._map)
+        logger.debug("TextScrubber.scrub_lines: retour tuple de 2")
         return out, agg
 
 
 def _ipv4_pseudonym(index: int) -> str:
     """RFC 5737 TEST-NET-1, comme redact.py : jamais routable."""
+    logger.debug("_ipv4_pseudonym: retour chaîne formatée")
     return f"192.0.2.{index % 254 + 1}"
 
 
 def _ipv6_pseudonym(index: int) -> str:
     """RFC 3849 : 2001:db8::/32, documentation uniquement."""
+    logger.debug("_ipv6_pseudonym: retour chaîne formatée")
     return f"2001:db8::{index + 1:x}"
 
 
 def _mac_pseudonym(index: int) -> str:
     """OUI localement administre, comme redact.py."""
+    logger.debug("_mac_pseudonym: retour chaîne formatée")
     return f"02:00:00:00:{(index >> 8) & 0xFF:02x}:{index & 0xFF:02x}"
 
 
 def _email_pseudonym(index: int) -> str:
+    logger.debug("_email_pseudonym: retour chaîne formatée")
     return f"user-{index + 1}@example.invalid"
 
 
 def _url_pseudonym(index: int) -> str:
+    logger.debug("_url_pseudonym: retour chaîne formatée")
     return f"https://host-{index + 1}.example.invalid/redacted"
 
 
 def _capture_pseudonym(index: int) -> str:
+    logger.debug("_capture_pseudonym: retour chaîne formatée")
     return f"capture-{index + 1}"
 
 
 def _path_pseudonym(index: int) -> str:
+    logger.debug("_path_pseudonym: retour chaîne formatée")
     return f"user-{index + 1}"
 
 
 def _hostname_pseudonym(index: int) -> str:
+    logger.debug("_hostname_pseudonym: retour chaîne formatée")
     return f"host-{index + 1}.example.invalid"
 
 

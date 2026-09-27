@@ -123,14 +123,19 @@ class CorrelationResult:
 def _protocol_hint(pk: Pkt) -> str:
     """Protocole probable d'un paquet malforme sans couche applicative nommee."""
     if pk.dns_txn_id is not None or pk.dns_qry_name:
+        logger.debug("_protocol_hint: si pk.dns_txn_id is not None or pk.dns_qry_name -> retour 'DNS'")
         return "DNS"
     if pk.http_is_request or pk.http_is_response:
+        logger.debug("_protocol_hint: si pk.http_is_request or pk.http_is_response -> retour 'HTTP'")
         return "HTTP"
     if pk.tls_client_hello or pk.tls_server_hello or pk.tls_application_data:
+        logger.debug("_protocol_hint: si pk.tls_client_hello or pk.tls_server_hello or pk.tls_applic… -> retour 'TLS'")
         return "TLS"
     for port in (pk.dport, pk.sport):
         if port in _PORT_PROTOCOL:
+            logger.debug("_protocol_hint: si port in _PORT_PROTOCOL -> retour _PORT_PROTOCOL[port]")
             return _PORT_PROTOCOL[port]
+    logger.debug("_protocol_hint: retour PROTOCOL_OTHER={}", summarize(PROTOCOL_OTHER, "PROTOCOL_OTHER"))
     return PROTOCOL_OTHER
 
 
@@ -144,6 +149,7 @@ def app_anomaly(pk: Pkt) -> AppAnomaly | None:
     de severite (paquet synthetique sans `expert_details`) ne comptent pas.
     """
     if not pk.expert_flags:
+        logger.debug("app_anomaly: si not pk.expert_flags -> retour None")
         return None
     details = {d[0]: d for d in pk.expert_details}
     protocol: str | None = None
@@ -164,15 +170,19 @@ def app_anomaly(pk: Pkt) -> AppAnomaly | None:
         found = True
         protocol = protocol or layer_protocol
     if not found:
+        logger.debug("app_anomaly: si not found -> retour None")
         return None
+    logger.debug("app_anomaly: retour AppAnomaly(…)")
     return AppAnomaly(protocol=protocol or _protocol_hint(pk), malformed=malformed)
 
 
 def has_tcp_sequence_anomaly(pk: Pkt) -> bool:
+    logger.debug("has_tcp_sequence_anomaly: retour pk.proto == 'TCP' and any((f in _TCP_SEQUENCE_ANO…")
     return pk.proto == "TCP" and any(f in _TCP_SEQUENCE_ANOMALY_FLAGS for f in pk.expert_flags)
 
 
 def _endpoint(ip: str, port: int | None) -> tuple[str, int]:
+    logger.debug("_endpoint: retour tuple de 2")
     return (ip, port if port is not None else -1)
 
 
@@ -185,8 +195,10 @@ def flow_id(pk: Pkt) -> str:
     lo, hi = sorted((_endpoint(pk.src, pk.sport), _endpoint(pk.dst, pk.dport)))
 
     def fmt(ep: tuple[str, int]) -> str:
+        logger.debug("flow_id.fmt: retour f'(ep[0]):(ep[1])' if ep[1] >= 0 else ep[0]")
         return f"{ep[0]}:{ep[1]}" if ep[1] >= 0 else ep[0]
 
+    logger.debug("flow_id: retour chaîne formatée")
     return f"{pk.proto} {fmt(lo)} <-> {fmt(hi)}"
 
 
@@ -197,10 +209,12 @@ class _FlowState:
 
 
 def _frames(frames: Iterable[int | None]) -> list[int]:
+    logger.debug("_frames: retour [f for f in frames if f is not None][:_MAX_FRAMES]")
     return [f for f in frames if f is not None][:_MAX_FRAMES]
 
 
 def _protocol_counts(protocols: Iterable[str]) -> dict[str, int]:
+    logger.debug("_protocol_counts: retour dict(…)")
     return dict(sorted(Counter(protocols).items()))
 
 
@@ -219,12 +233,14 @@ def _dos_bursts(events: list[tuple[float, int | None, str]], t: CorrelationThres
             start = end
         else:
             start += 1
+    logger.debug("_dos_bursts: retour bursts={}", summarize(bursts, "bursts"))
     return bursts
 
 
 def _follows_tcp_anomaly(ts: float, tcp_ts: list[float], window_s: float) -> bool:
     """Vrai si une anomalie TCP (tcp_ts trie) precede `ts` d'au plus window_s (egalite incluse)."""
     i = bisect_right(tcp_ts, ts) - 1
+    logger.debug("_follows_tcp_anomaly: retour i >= 0 and ts - tcp_ts[i] <= window_s")
     return i >= 0 and ts - tcp_ts[i] <= window_s
 
 
@@ -296,6 +312,7 @@ def correlate_expert_alerts(
 
 
 def _suspicion(point: str, flow: str, kind: str, events: list[tuple[float, int | None, str]]) -> dict:
+    logger.debug("_suspicion: retour dictionnaire")
     return {
         "point": point,
         "flow": flow,
