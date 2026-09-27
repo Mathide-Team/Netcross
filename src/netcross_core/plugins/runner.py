@@ -21,7 +21,7 @@ import copy
 from pathlib import Path
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.plugins.api import (
     Detector,
     DetectorContext,
@@ -39,6 +39,7 @@ _KIND_LABEL = {"detector": "detecteur", "exporter": "exporteur", "plugin": "plug
 def _run(plugin: str, kind: str, status: str, reason: str | None = None, **extra: Any) -> dict[str, Any]:
     run: dict[str, Any] = {"plugin": plugin, "kind": kind, "status": status, "reason": reason, **extra}
     run["line"] = run_line(run)
+    logger.debug("_run: retour run={}", summarize(run, "run"))
     return run
 
 
@@ -57,15 +58,18 @@ def run_line(run: dict[str, Any]) -> str:
         text = f"{label} : ok, ecrit dans {run.get('path')}"
     else:
         text = f"{label} : {status}"
+    logger.debug("run_line: retour f'(text) -- (reason)' if reason else text")
     return f"{text} -- {reason}" if reason else text
 
 
 def _error(exc: BaseException) -> str:
+    logger.debug("_error: retour f'(exc.__class__.__name__): (exc)'[:300]")
     return f"{exc.__class__.__name__}: {exc}"[:300]
 
 
 def load_error_runs(errors: list[dict[str, str]]) -> list[dict[str, Any]]:
     """Lignes de tracabilite pour les plugins demandes mais non charges."""
+    logger.debug("load_error_runs: retour liste")
     return [_run(e["plugin"], "plugin", "refuse", e["reason"]) for e in errors]
 
 
@@ -111,6 +115,7 @@ def run_detectors(detectors: list[Detector], packets: list[Any], report: Any) ->
         if problems:
             logger.warning("detecteur {} : {} constat(s) invalide(s) ignore(s) -- {}", name, len(problems), problems[0])
         runs.append(_run(name, "detector", status, reason, findings=len(valid), invalid=len(problems)))
+    logger.debug("run_detectors: retour runs={}", summarize(runs, "runs"))
     return runs
 
 
@@ -131,4 +136,5 @@ def run_exporters(exporters: dict[str, Exporter], targets: list[tuple[str, str]]
             runs.append(_run(name, "exporter", "erreur", _error(exc), path=path))
             continue
         runs.append(_run(name, "exporter", "ok", path=path))
+    logger.debug("run_exporters: retour runs={}", summarize(runs, "runs"))
     return runs

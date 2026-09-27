@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from netcross_core.causality import correlate_diagnosis_causes, correlate_event_causes
 from netcross_core.compliance import evaluate_compliance
 from netcross_core.correlate import build_conversations, build_flows
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.wireshark_expert import build_wireshark_expert_events
 from netcross_report.expert_events import build_diagnoses, build_expert_events
 
@@ -90,6 +90,7 @@ class SessionObjects:
         }
         if self.wireshark_expert_events is not None:
             kwargs["wireshark_expert_events"] = self.wireshark_expert_events
+        logger.debug("SessionObjects.json_kwargs: retour kwargs={}", summarize(kwargs, "kwargs"))
         return kwargs
 
 
@@ -126,6 +127,14 @@ def build_session_objects(
     des ExpertEvent DEJA enrichis par `correlate_event_causes()`, et
     `build_diagnoses()` doit avoir groupe les evenements avant.
     """
+    logger.debug(
+        "build_session_objects: report={} findings={} flows={} all_packets={} wireshark_expert_events={}",
+        summarize(report, "report"),
+        summarize(findings, "findings"),
+        summarize(flows, "flows"),
+        summarize(all_packets, "all_packets"),
+        summarize(wireshark_expert_events, "wireshark_expert_events"),
+    )
     flow_objs = build_flows(flows) if flows else []
     conversations = build_conversations(flow_objs) if flow_objs else []
     expert_events = build_expert_events(findings)
@@ -135,6 +144,7 @@ def build_session_objects(
     compliance = evaluate_compliance(report)
     if wireshark_expert_events is None and all_packets:
         wireshark_expert_events = build_wireshark_expert_events(all_packets)
+    logger.debug("build_session_objects: retour SessionObjects(…)")
     return SessionObjects(
         flows=flow_objs,
         conversations=conversations,
@@ -151,11 +161,14 @@ def _flow_label(flow) -> str:
     sinon la cle brute -- un Flow sans endpoints ne doit pas disparaitre
     du rendu."""
     if flow.endpoints:
+        logger.debug("_flow_label: si flow.endpoints -> retour chaîne formatée")
         return f"{flow.endpoints[0]} <-> {flow.endpoints[1]}"
+    logger.debug("_flow_label: retour str(…)")
     return str(flow.key)
 
 
 def _total(counter: dict) -> int:
+    logger.debug("_total: retour sum(…)")
     return sum(counter.values())
 
 
@@ -163,11 +176,14 @@ def _truncated(items, top_n):
     """(premieres entrees, nombre de restantes) -- `top_n` None ou <= 0
     desactive le plafond (utile pour un test ou un export)."""
     if top_n is None or top_n <= 0 or len(items) <= top_n:
+        logger.debug("_truncated: si top_n is None or top_n <= 0 or len(items) <= top_n -> retour tuple de 2")
         return list(items), 0
+    logger.debug("_truncated: retour tuple de 2")
     return list(items[:top_n]), len(items) - top_n
 
 
 def _format_flows(objs, top_n) -> list[str]:
+    logger.debug("_format_flows: objs={} top_n={}", summarize(objs, "objs"), summarize(top_n, "top_n"))
     lines = [f"Flux correles : {len(objs.flows)} ({len(objs.conversations)} conversation(s))"]
     # Tri par volume de paquets decroissant : sur une capture reelle, les
     # flux les plus bavards sont ceux qui portent le trafic a expliquer.
@@ -184,10 +200,17 @@ def _format_flows(objs, top_n) -> list[str]:
         )
     if remaining:
         lines.append(f"  ... et {remaining} autre(s) flux (voir --json-report)")
+    logger.debug("_format_flows: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
 def _format_events(events, title, top_n) -> list[str]:
+    logger.debug(
+        "_format_events: events={} title={} top_n={}",
+        summarize(events, "events"),
+        summarize(title, "title"),
+        summarize(top_n, "top_n"),
+    )
     lines = [f"{title} : {len(events)}"]
     shown, remaining = _truncated(events, top_n)
     for ev in shown:
@@ -203,10 +226,16 @@ def _format_events(events, title, top_n) -> list[str]:
             lines.append(f"      Impact : {ev.impact}")
     if remaining:
         lines.append(f"  ... et {remaining} autre(s) evenement(s) (voir --json-report)")
+    logger.debug("_format_events: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
 def _format_diagnoses(diagnoses, top_n) -> list[str]:
+    logger.debug(
+        "_format_diagnoses: diagnoses={} top_n={}",
+        summarize(diagnoses, "diagnoses"),
+        summarize(top_n, "top_n"),
+    )
     lines = [f"Diagnostics par segment : {len(diagnoses)}"]
     shown, remaining = _truncated(diagnoses, top_n)
     for diag in shown:
@@ -217,19 +246,23 @@ def _format_diagnoses(diagnoses, top_n) -> list[str]:
             lines.append(f"      Impact : {diag.impact}")
     if remaining:
         lines.append(f"  ... et {remaining} autre(s) segment(s) (voir --json-report)")
+    logger.debug("_format_diagnoses: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
 def _compliance_counts(results) -> list[str]:
+    logger.debug("_compliance_counts: results={}", summarize(results, "results"))
     counts: dict[str, int] = {}
     for res in results:
         counts[res.status] = counts.get(res.status, 0) + 1
     known = [f"{counts[s]} {s}" for s in _COMPLIANCE_STATUS_ORDER if s in counts]
     unknown = [f"{counts[s]} {s}" for s in sorted(counts) if s not in _COMPLIANCE_STATUS_ORDER]
+    logger.debug("_compliance_counts: retour known + unknown")
     return known + unknown
 
 
 def _format_compliance(results, top_n) -> list[str]:
+    logger.debug("_format_compliance: results={} top_n={}", summarize(results, "results"), summarize(top_n, "top_n"))
     summary = ", ".join(_compliance_counts(results))
     lines = [f"Conformite aux referentiels : {len(results)} evaluee(s)" + (f" -- {summary}" if summary else "")]
 
@@ -238,6 +271,7 @@ def _format_compliance(results, top_n) -> list[str]:
     # ne passe pas sans derouler toute la liste.
     def _rank(res):
         order = _COMPLIANCE_STATUS_ORDER
+        logger.debug("_format_compliance._rank: retour tuple de 2")
         return (order.index(res.status) if res.status in order else len(order), res.reference.id)
 
     shown, remaining = _truncated(sorted(results, key=_rank), top_n)
@@ -250,6 +284,7 @@ def _format_compliance(results, top_n) -> list[str]:
         )
     if remaining:
         lines.append(f"  ... et {remaining} autre(s) referentiel(s) (voir --json-report)")
+    logger.debug("_format_compliance: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
@@ -264,6 +299,7 @@ def format_session_objects(objs, top_n=DEFAULT_TOP_N) -> list[str]:
     "Flux correles : 0" n'apparait que parce que l'appelant n'a pas
     passe `flows`.
     """
+    logger.debug("format_session_objects: objs={} top_n={}", summarize(objs, "objs"), summarize(top_n, "top_n"))
     lines = [_SEPARATOR, "EXPERTISE -- OBJETS ENRICHIS", _SEPARATOR, ""]
     if objs.flows:
         lines += [*_format_flows(objs, top_n), ""]
@@ -274,11 +310,14 @@ def format_session_objects(objs, top_n=DEFAULT_TOP_N) -> list[str]:
         lines += [*_format_compliance(objs.compliance, top_n), ""]
     if objs.wireshark_expert_events:
         lines += [*_format_events(objs.wireshark_expert_events, "Expertise tshark (signaux bruts)", top_n), ""]
+    logger.debug("format_session_objects: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
 def print_session_objects(objs, top_n=DEFAULT_TOP_N) -> None:
     """Ecrit `format_session_objects()` sur stdout -- pendant de
     `netcross_core.report_text.print_report()` pour les objets enrichis."""
+    logger.debug("print_session_objects: objs={} top_n={}", summarize(objs, "objs"), summarize(top_n, "top_n"))
     for line in format_session_objects(objs, top_n):
         print(line)
+    logger.debug("print_session_objects: fin")

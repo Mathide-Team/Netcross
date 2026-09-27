@@ -42,7 +42,7 @@ from typing import Any
 
 from netcross_core.correlate import build_flows
 from netcross_core.i18n import N_, _, ngettext
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_gtk4.duplicate_view import format_duplicate_indicator
 
 logger = get_logger(__name__)
@@ -148,11 +148,13 @@ def _verifier_completude() -> None:
     if declares != set(RunOutcome.CHAMPS_ETAT):
         manquants = declares - set(RunOutcome.CHAMPS_ETAT)
         surnumeraires = set(RunOutcome.CHAMPS_ETAT) - declares
+        logger.debug("_verifier_completude: si declares != set(RunOutcome.CHAMPS_ETAT) -> levée AssertionError")
         raise AssertionError(
             "RunOutcome.CHAMPS_ETAT desynchronise des champs du dataclass "
             f"-- absents de CHAMPS_ETAT : {sorted(manquants)} ; "
             f"inconnus du dataclass : {sorted(surnumeraires)}"
         )
+    logger.debug("_verifier_completude: fin")
 
 
 _verifier_completude()
@@ -185,7 +187,9 @@ def build_flow_objects(flows: Any) -> Any:
         logger.debug("build_flow_objects: {} flux -> {} Flow", len(flows), len(flow_objects))
         return flow_objects
     if isinstance(flows, list):
+        logger.debug("build_flow_objects: si isinstance(flows, list) -> retour flows={}", summarize(flows, "flows"))
         return flows
+    logger.debug("build_flow_objects: retour list(…)")
     return list(flows)
 
 
@@ -242,11 +246,13 @@ def diff_status_text(findings: Any) -> str:
     regressions = sum(1 for f in findings if getattr(f, "severity", None) == "regression")
     logger.debug("diff_status_text: {} régression(s)", regressions)
     if regressions:
+        logger.debug("diff_status_text: si regressions -> retour ngettext('Comparaison terminee -- (n) r…(…)")
         return ngettext(
             "Comparaison terminee -- {n} regression detectee.",
             "Comparaison terminee -- {n} regressions detectees.",
             regressions,
         ).format(n=regressions)
+    logger.debug("diff_status_text: retour _(…)")
     return _("Comparaison terminee -- aucune regression.")
 
 

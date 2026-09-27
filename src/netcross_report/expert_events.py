@@ -29,7 +29,7 @@ defensif : `DiffFinding` ne declare pas ce champ), jamais recalcule ici.
 from __future__ import annotations
 
 from netcross_core.expert_model import Diagnosis, ExpertEvent
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -55,6 +55,7 @@ def build_expert_events(findings) -> list[ExpertEvent]:
         if hasattr(f, "event"):
             f.event = ev
         events.append(ev)
+    logger.debug("build_expert_events: retour events={}", summarize(events, "events"))
     return events
 
 
@@ -66,4 +67,5 @@ def build_diagnoses(events) -> list[Diagnosis]:
     for ev in events:
         diag = by_segment.setdefault(ev.segment, Diagnosis(segment=ev.segment))
         diag.events.append(ev)
+    logger.debug("build_diagnoses: retour list(…)")
     return list(by_segment.values())

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.tshark_stats.models import ProtocolHierarchyStat
 from netcross_core.tshark_stats.parse_utils import (
     is_filter_line,
@@ -30,6 +30,7 @@ _DATA_RE = re.compile(r"\d")
 def parse_protocol_hierarchy(text: str) -> list[ProtocolHierarchyStat]:
     """Convertit la sortie ``tshark -z io,phs`` en ProtocolHierarchyStat."""
     # Indentation minimale observee parmi les lignes de donnees -> niveau 0.
+    logger.debug("parse_protocol_hierarchy: text={}", summarize(text, "text"))
     data: list[tuple[int, str, list[str]]] = []
     for line in text.splitlines():
         if is_separator(line) or is_filter_line(line):

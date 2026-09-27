@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 # LLMNR, NetBIOS, SSDP) : une IP qui n'apparait QUE dans ce trafic (le
 # resolveur, le serveur NTP...) est presente dans toutes les captures d'un
 # meme reseau et ne prouve rien sur le fait qu'elles observent le meme flux.
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 INFRA_PORTS = frozenset({53, 67, 68, 123, 137, 138, 5353, 5355, 1900})
@@ -70,10 +70,13 @@ class CaptureInventory:
     @property
     def duration(self) -> float:
         if self.start is None or self.end is None:
+            logger.debug("CaptureInventory.duration: si self.start is None or self.end is None -> retour 0.0")
             return 0.0
+        logger.debug("CaptureInventory.duration: retour max(…)")
         return max(0.0, self.end - self.start)
 
     def to_dict(self) -> dict:
+        logger.debug("CaptureInventory.to_dict: retour dictionnaire")
         return {
             "label": self.label,
             "path": self.path,
@@ -88,6 +91,7 @@ class CaptureInventory:
 
     @classmethod
     def from_dict(cls, data: dict) -> CaptureInventory:
+        logger.debug("CaptureInventory.from_dict: retour cls(…)")
         return cls(
             label=data["label"],
             path=data["path"],
@@ -108,13 +112,19 @@ def _is_meaningful_ip(addr: str) -> bool:
         ip = ipaddress.ip_address(addr)
     except ValueError:
         logger.exception("échec dans _is_meaningful_ip")
+        logger.debug("_is_meaningful_ip: except ValueError -> retour False")
         return False
     if ip.is_multicast or ip.is_unspecified or ip.is_loopback or ip.is_link_local:
+        logger.debug(
+            "_is_meaningful_ip: si ip.is_multicast or ip.is_unspecified or ip.is_loopback or i… -> retour False"
+        )
         return False
+    logger.debug("_is_meaningful_ip: retour not (isinstance(ip, ipaddress.IPv4Address) and (a…")
     return not (isinstance(ip, ipaddress.IPv4Address) and (addr == "255.255.255.255" or addr.endswith(".255")))
 
 
 def _is_infra(pkt) -> bool:
+    logger.debug("_is_infra: retour pkt.sport in INFRA_PORTS or pkt.dport in INFRA_PO…")
     return (pkt.sport in INFRA_PORTS) or (pkt.dport in INFRA_PORTS)
 
 
@@ -144,6 +154,7 @@ def inventory_from_packets(label: str, path: str, packets: Iterable) -> CaptureI
             prev = inv.pairs.get(key)
             if prev is None or ts < prev:
                 inv.pairs[key] = ts
+    logger.debug("inventory_from_packets: retour inv={}", summarize(inv, "inv"))
     return inv
 
 
@@ -166,26 +177,32 @@ class PairEvaluation:
 
     @property
     def compatible(self) -> bool:
+        logger.debug("PairEvaluation.compatible: retour not self.failed")
         return not self.failed
 
     @property
     def score(self) -> int:
         """Nombre de criteres satisfaits (0-3) : sert a choisir, pour une
         capture isolee, le candidat le plus proche a citer dans le motif."""
+        logger.debug("PairEvaluation.score: retour 3 - len(self.failed)")
         return 3 - len(self.failed)
 
 
 def _estimate_offset(a: CaptureInventory, b: CaptureInventory, common_pairs) -> float | None:
     if not common_pairs:
+        logger.debug("_estimate_offset: si not common_pairs -> retour None")
         return None
+    logger.debug("_estimate_offset: retour statistics.median(…)")
     return statistics.median(b.pairs[p] - a.pairs[p] for p in common_pairs)
 
 
 def _fmt_ts(ts: float | None) -> str:
     if ts is None:
+        logger.debug("_fmt_ts: si ts is None -> retour '?'")
         return "?"
     import datetime
 
+    logger.debug("_fmt_ts: retour datetime.datetime.fromtimestamp(ts, tz=…(…)")
     return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime("%H:%M:%S")
 
 
@@ -194,17 +211,22 @@ def _fmt_list(items, limit: int = 3) -> str:
     shown = ", ".join(items[:limit])
     if len(items) > limit:
         shown += f", ... (+{len(items) - limit})"
+    logger.debug("_fmt_list: retour shown={}", summarize(shown, "shown"))
     return shown
 
 
 def _fmt_gap(seconds: float) -> str:
     seconds = abs(seconds)
     if seconds >= 86400:
+        logger.debug("_fmt_gap: si seconds >= 86400 -> retour chaîne formatée")
         return f"{seconds / 86400:.0f} jour(s)"
     if seconds >= 3600:
+        logger.debug("_fmt_gap: si seconds >= 3600 -> retour chaîne formatée")
         return f"{seconds / 3600:.1f} h"
     if seconds >= 60:
+        logger.debug("_fmt_gap: si seconds >= 60 -> retour chaîne formatée")
         return f"{seconds / 60:.0f} min"
+    logger.debug("_fmt_gap: retour chaîne formatée")
     return f"{seconds:.1f} s"
 
 
@@ -259,6 +281,7 @@ def evaluate_pair(
             failed.append(f"{len(common_ips)} IP commune(s) < {min_common_ips}")
     if not common_pairs:
         failed.append("aucune conversation commune")
+    logger.debug("evaluate_pair: retour PairEvaluation(…)")
     return PairEvaluation(
         a=a.label,
         b=b.label,
@@ -287,6 +310,7 @@ def justify(ev: PairEvaluation) -> str:
     if ev.clock_offset is not None and abs(ev.clock_offset) >= CLOCK_OFFSET_REPORT_THRESHOLD:
         state = "corrige" if ev.offset_applied else "NON corrige (hors --group-window)"
         parts.append(f"decalage d'horloge estime {ev.clock_offset:+.3f} s ({ev.b} vs {ev.a}, {state})")
+    logger.debug("justify: retour ', '.join(…)")
     return ", ".join(parts)
 
 
@@ -297,6 +321,7 @@ class CaptureGroup:
 
     @property
     def labels(self) -> list[str]:
+        logger.debug("CaptureGroup.labels: retour liste")
         return [m.label for m in self.members]
 
 
@@ -316,16 +341,20 @@ class BatchPlan:
 
     @property
     def grouped_count(self) -> int:
+        logger.debug("BatchPlan.grouped_count: retour sum(…)")
         return sum(len(g.members) for g in self.groups)
 
     def check_invariant(self) -> None:
         """Aucun fichier perdu en route : leve AssertionError sinon."""
+        logger.debug("BatchPlan.check_invariant()")
         counted = self.grouped_count + len(self.isolated) + len(self.failures)
         if counted != self.total:
+            logger.debug("BatchPlan.check_invariant: refus, AssertionError")
             raise AssertionError(
                 f"invariant du lot viole : {self.total} entree(s) mais {self.grouped_count} groupee(s) + "
                 f"{len(self.isolated)} isolee(s) + {len(self.failures)} echec(s) = {counted}"
             )
+        logger.debug("BatchPlan.check_invariant: fin")
 
 
 def plan_batch(
@@ -359,6 +388,7 @@ def plan_batch(
         isolated.extend(IsolatedCapture(inv, "regroupement desactive (--no-group)") for inv in candidates)
         plan = BatchPlan(len(inventories), [], isolated, failures, grouping_enabled=False)
         plan.check_invariant()
+        logger.debug("plan_batch: si not group -> retour plan={}", summarize(plan, "plan"))
         return plan
 
     evals: dict[tuple[str, str], PairEvaluation] = {}
@@ -370,6 +400,7 @@ def plan_batch(
             evals[key] = evaluate_pair(
                 x, y, min_overlap=min_overlap, min_common_ips=min_common_ips, group_window=group_window
             )
+        logger.debug("plan_batch.ev: retour evals[key]")
         return evals[key]
 
     buckets: list[list[CaptureInventory]] = []
@@ -408,6 +439,7 @@ def plan_batch(
 
     plan = BatchPlan(len(inventories), groups, isolated, failures)
     plan.check_invariant()
+    logger.debug("plan_batch: retour plan={}", summarize(plan, "plan"))
     return plan
 
 
@@ -451,4 +483,5 @@ def format_batch_index(
     if synthesis:
         lines.append("  synthese :")
         lines.extend(f"    {s}" for s in synthesis)
+    logger.debug("format_batch_index: retour '\\n'.join(lines) + '\\n'")
     return "\n".join(lines) + "\n"

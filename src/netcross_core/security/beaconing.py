@@ -75,7 +75,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from statistics import mean, median, pstdev
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 from netcross_core.security.address_scope import is_external
 
@@ -140,13 +140,16 @@ def _payload(pk: Pkt) -> int | None:
     """Octets de charge utile du paquet : `tcp_len` en TCP (None si inconnu,
     le paquet est alors ignore), longueur de la trame en UDP."""
     if pk.proto == "TCP":
+        logger.debug("_payload: si pk.proto == 'TCP' -> retour pk.tcp_len={}", summarize(pk.tcp_len, "tcp_len"))
         return pk.tcp_len
+    logger.debug("_payload: retour pk.length={}", summarize(pk.length, "length"))
     return pk.length
 
 
 def _cv(values: list[float]) -> float:
     """Coefficient de variation (ecart-type / moyenne) ; infini si la moyenne est nulle."""
     avg = mean(values)
+    logger.debug("_cv: retour pstdev(values) / avg if avg > 0 else float('inf')")
     return pstdev(values) / avg if avg > 0 else float("inf")
 
 
@@ -161,12 +164,14 @@ def _checkins(events: list[tuple[float, int | None, int]], gap: float) -> list[t
         else:
             merged[-1][2] += size
         last_ts = ts
+    logger.debug("_checkins: retour liste")
     return [(m[0], m[1], m[2]) for m in merged]
 
 
 def _off_hours_share(starts: list[float], office_hours: tuple[int, int]) -> float:
     start_hour, end_hour = office_hours
     off = sum(1 for ts in starts if not start_hour <= int(ts % _SECONDS_PER_DAY // _SECONDS_PER_HOUR) < end_hour)
+    logger.debug("_off_hours_share: retour off / len(starts)")
     return off / len(starts)
 
 
@@ -263,4 +268,5 @@ def detect_beaconing(packets: Iterable[Pkt], thresholds: BeaconingThresholds = D
         )
 
     logger.info("beaconing : {} suspicion(s) levee(s) sur {} flux candidats", len(result.suspicions), len(events))
+    logger.debug("detect_beaconing: retour result={}", summarize(result, "result"))
     return result

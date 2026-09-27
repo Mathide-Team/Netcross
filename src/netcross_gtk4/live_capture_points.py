@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from pcap_parser.remote import CaptureSourceError, parse_source
 
 logger = get_logger(__name__)
@@ -37,6 +37,7 @@ def split_interfaces(text: str) -> list[str]:
         name = part.strip()
         if name and name not in interfaces:
             interfaces.append(name)
+    logger.debug("split_interfaces: retour interfaces={}", summarize(interfaces, "interfaces"))
     return interfaces
 
 

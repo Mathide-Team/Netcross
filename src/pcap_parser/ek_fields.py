@@ -28,7 +28,9 @@ def layer(layers: dict, key: str) -> dict | None:
     """Couche unique (premiere/seule occurrence). None si absente."""
     val = layers.get(key)
     if val is None:
+        logger.debug("layer: si val is None -> retour None")
         return None
+    logger.debug("layer: retour val[0] if isinstance(val, list) else val")
     return val[0] if isinstance(val, list) else val
 
 
@@ -38,7 +40,9 @@ def innermost(layers: dict, key: str) -> dict | None:
     derriere un GRE/VXLAN/ERSPAN, pas l'IP du tunnel)."""
     val = layers.get(key)
     if val is None:
+        logger.debug("innermost: si val is None -> retour None")
         return None
+    logger.debug("innermost: retour val[-1] if isinstance(val, list) else val")
     return val[-1] if isinstance(val, list) else val
 
 
@@ -46,24 +50,31 @@ def all_occurrences(layers: dict, key: str) -> list[dict]:
     """Toutes les occurrences d'une couche, dans l'ordre outer -> inner."""
     val = layers.get(key)
     if val is None:
+        logger.debug("all_occurrences: si val is None -> retour liste vide")
         return []
+    logger.debug("all_occurrences: retour val if isinstance(val, list) else [val]")
     return val if isinstance(val, list) else [val]
 
 
 def g(d: dict | None, name: str, default: Any = None) -> Any:
     if d is None:
+        logger.debug("g: si d is None -> retour default")
         return default
+    logger.debug("g: retour d.get(…)")
     return d.get(name, default)
 
 
 def as_int(value: Any, base: int = 10) -> int | None:
     if value is None:
+        logger.debug("as_int: si value is None -> retour None")
         return None
     try:
+        logger.debug("as_int: retour int(value, base) if isinstance(value, str) else i…")
         return int(value, base) if isinstance(value, str) else int(value)
     except (TypeError, ValueError):
         # appele pour chaque champ de chaque paquet : TRACE, pas de traceback
         logger.trace("as_int: valeur non entière {!r} (base {})", value, base)
+        logger.debug("as_int: except (TypeError, ValueError) -> retour None")
         return None
 
 
@@ -71,9 +82,14 @@ def hex_or_dec_to_int(value: Any) -> int | None:
     """Beaucoup de champs tshark (ip.id, gtp.teid, dhcp.id...) sont rendus
     en hexadecimal prefixe "0x...". D'autres non. On accepte les deux."""
     if value is None:
+        logger.debug("hex_or_dec_to_int: si value is None -> retour None")
         return None
     if isinstance(value, str) and value.lower().startswith("0x"):
+        logger.debug(
+            "hex_or_dec_to_int: si isinstance(value, str) and value.lower().startswith('0x') -> retour as_int(…)"
+        )
         return as_int(value, 16)
+    logger.debug("hex_or_dec_to_int: retour as_int(…)")
     return as_int(value, 10)
 
 
@@ -95,9 +111,13 @@ def checksum_is_bad(status_value: Any) -> bool | None:
     par defaut, un statut inconnu n'est ni l'un ni l'autre."""
     code = hex_or_dec_to_int(status_value)
     if code == 0:
+        logger.trace("checksum_is_bad: checksum invalide signale par tshark")
+        logger.debug("checksum_is_bad: si code == 0 -> retour True")
         return True
     if code == 1:
+        logger.debug("checksum_is_bad: si code == 1 -> retour False")
         return False
+    logger.debug("checksum_is_bad: retour None")
     return None
 
 
@@ -111,11 +131,14 @@ def as_float(value: Any) -> float | None:
     neanmoins tolerant a un flottant deja natif par symetrie avec le
     reste de ce module, au cas ou une autre version de tshark differe."""
     if value is None:
+        logger.debug("as_float: si value is None -> retour None")
         return None
     try:
+        logger.debug("as_float: retour float(…)")
         return float(value)
     except (TypeError, ValueError):
         logger.trace("as_float: valeur non numérique {!r}", value)
+        logger.debug("as_float: except (TypeError, ValueError) -> retour None")
         return None
 
 
@@ -132,11 +155,17 @@ def as_bool(value: Any) -> bool:
     avec hex_or_dec_to_int qui fait la meme chose pour les nombres.
     Absent (champ non emis) -> False, comme le reste du module."""
     if isinstance(value, bool):
+        logger.debug("as_bool: si isinstance(value, bool) -> retour value")
         return value
     if value is None:
+        logger.debug("as_bool: si value is None -> retour False")
         return False
     if isinstance(value, str):
+        # tshark 4.x rend un booleen JSON natif : une chaine signale un autre format
+        logger.trace("as_bool: booleen rendu en chaine {!r}", value)
+        logger.debug("as_bool: si isinstance(value, str) -> retour value.strip().lower() not in ('', '0', 'false')")
         return value.strip().lower() not in ("", "0", "false")
+    logger.debug("as_bool: retour bool(…)")
     return bool(value)
 
 
@@ -158,11 +187,14 @@ def has_expert_flag(layer: dict | None, name: str) -> bool:
     test, qui n'a jamais produit qu'une seule condition a la fois, mais
     pas exclu non plus et le cout de le gerer est nul)."""
     if layer is None:
+        logger.debug("has_expert_flag: si layer is None -> retour False")
         return False
     expert = layer.get("_ws_expert")
     if expert is None:
+        logger.debug("has_expert_flag: si expert is None -> retour False")
         return False
     candidates = expert if isinstance(expert, list) else [expert]
+    logger.debug("has_expert_flag: retour any(…)")
     return any(name in c for c in candidates if isinstance(c, dict))
 
 
@@ -206,15 +238,20 @@ def expert_flag_names(layer: dict | None) -> tuple[str, ...]:
     (cas le plus frequent : la grande majorite des paquets n'ont aucune
     condition d'expertise tshark active)."""
     if layer is None:
+        logger.debug("expert_flag_names: si layer is None -> retour tuple de 0")
         return ()
     expert = layer.get("_ws_expert")
     if expert is None:
+        logger.debug("expert_flag_names: si expert is None -> retour tuple de 0")
         return ()
     candidates = expert if isinstance(expert, list) else [expert]
     names: set[str] = set()
     for c in candidates:
         if isinstance(c, dict):
             names.update(k for k in c if k not in _META_KEYS)
+    if names:
+        logger.trace("expert_flag_names: {} condition(s) d'expertise : {}", len(names), sorted(names))
+    logger.debug("expert_flag_names: retour tuple(…)")
     return tuple(sorted(names))
 
 
@@ -278,11 +315,15 @@ def _expert_label(raw: Any, table: dict[int, str]) -> str | None:
     chaine, jamais une supposition -- meme discipline que _flag_label
     dans wireshark_expert.py pour les noms de condition inconnus."""
     if raw is None:
+        logger.debug("_expert_label: si raw is None -> retour None")
         return None
     code = hex_or_dec_to_int(raw)
-    if code is None:
+    if code is None or code not in table:
+        logger.trace("_expert_label: code d'expertise non reconnu {!r}, valeur brute conservee", raw)
+        logger.debug("_expert_label: si code is None or code not in table -> retour str(…)")
         return str(raw)
-    return table.get(code, str(raw))
+    logger.debug("_expert_label: retour table[code]")
+    return table[code]
 
 
 def expert_flag_details(layer: dict | None) -> tuple[tuple[str, str | None, str | None, str | None], ...]:
@@ -311,9 +352,11 @@ def expert_flag_details(layer: dict | None) -> tuple[tuple[str, str | None, str 
     Vide si la couche est absente ou ne porte aucun signal d'expertise --
     meme convention que expert_flag_names()."""
     if layer is None:
+        logger.debug("expert_flag_details: si layer is None -> retour tuple de 0")
         return ()
     expert = layer.get("_ws_expert")
     if expert is None:
+        logger.debug("expert_flag_details: si expert is None -> retour tuple de 0")
         return ()
     candidates = expert if isinstance(expert, list) else [expert]
     details: set[tuple[str, str | None, str | None, str | None]] = set()
@@ -326,6 +369,9 @@ def expert_flag_details(layer: dict | None) -> tuple[tuple[str, str | None, str 
         for name in c:
             if name not in _META_KEYS:
                 details.add((name, severity, group, message))
+    if details:
+        logger.trace("expert_flag_details: {} signal(aux) d'expertise detaille(s)", len(details))
+    logger.debug("expert_flag_details: retour tuple(…)")
     return tuple(sorted(details, key=lambda d: (d[0], d[1] or "", d[2] or "", d[3] or "")))
 
 
@@ -333,9 +379,12 @@ def as_bytes_from_hex_dump(value: Any) -> bytes:
     """tshark rend un buffer binaire (ex: udp.payload) comme une chaine
     "aa:bb:cc:..." octets separes par ':'. Vide/absent -> b""."""
     if not value:
+        logger.debug("as_bytes_from_hex_dump: si not value -> retour b''")
         return b""
     try:
+        logger.debug("as_bytes_from_hex_dump: retour bytes.fromhex(…)")
         return bytes.fromhex(value.replace(":", ""))
     except ValueError:
         logger.trace("as_bytes_from_hex_dump: dump hexadécimal invalide ({} car.)", len(str(value)))
+        logger.debug("as_bytes_from_hex_dump: except ValueError -> retour b''")
         return b""

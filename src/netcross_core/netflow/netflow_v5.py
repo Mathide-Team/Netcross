@@ -31,7 +31,7 @@ import ipaddress
 import struct
 from collections.abc import Iterator
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.netflow.models import FlowRecord
 
 logger = get_logger(__name__)
@@ -52,6 +52,7 @@ def _uptime_ms_to_epoch(uptime_ms: int, unix_secs: int, unix_nsecs: int, sys_upt
     unix_secs/unix_nsecs = heure epoch au moment `sys_uptime`."""
     now_epoch = unix_secs + unix_nsecs / 1e9
     delta_ms = sys_uptime - uptime_ms  # anciennete du flux par rapport a "maintenant"
+    logger.debug("_uptime_ms_to_epoch: retour now_epoch - delta_ms / 1000.0")
     return now_epoch - delta_ms / 1000.0
 
 
@@ -66,16 +67,22 @@ def parse_netflow_v5_packet(data: bytes, exporter: str) -> list[FlowRecord]:
     FlowRecord silencieusement corrompus).
     """
     if len(data) < _HEADER.size:
+        logger.trace("parse_netflow_v5_packet: refus, NetflowV5Error")
+        logger.debug("parse_netflow_v5_packet: si len(data) < _HEADER.size -> levée NetflowV5Error")
         raise NetflowV5Error(f"datagramme trop court pour un en-tete NetFlow v5 : {len(data)} octets")
 
     version, count, sys_uptime, unix_secs, unix_nsecs, flow_sequence, engine_type, engine_id, sampling = (
         _HEADER.unpack_from(data, 0)
     )
     if version != NETFLOW_V5_VERSION:
+        logger.trace("parse_netflow_v5_packet: refus, NetflowV5Error")
+        logger.debug("parse_netflow_v5_packet: si version != NETFLOW_V5_VERSION -> levée NetflowV5Error")
         raise NetflowV5Error(f"version NetFlow inattendue : {version} (attendu {NETFLOW_V5_VERSION})")
 
     expected_size = _HEADER.size + count * _RECORD.size
     if len(data) < expected_size:
+        logger.trace("parse_netflow_v5_packet: refus, NetflowV5Error")
+        logger.debug("parse_netflow_v5_packet: si len(data) < expected_size -> levée NetflowV5Error")
         raise NetflowV5Error(
             f"datagramme tronque : {len(data)} octets recus, {expected_size} attendus pour {count} enregistrements"
         )
@@ -136,6 +143,7 @@ def parse_netflow_v5_packet(data: bytes, exporter: str) -> list[FlowRecord]:
         )
         offset += _RECORD.size
 
+    logger.debug("parse_netflow_v5_packet: retour records={}", summarize(records, "records"))
     return records
 
 
@@ -162,9 +170,12 @@ def iter_netflow_v5_file(path: str, exporter: str | None = None) -> Iterator[Flo
         count = struct.unpack_from("!H", remaining, 2)[0]
         packet_size = _HEADER.size + count * _RECORD.size
         if len(remaining) < packet_size:
+            logger.trace("iter_netflow_v5_file: refus, NetflowV5Error")
+            logger.debug("iter_netflow_v5_file: si len(remaining) < packet_size -> levée NetflowV5Error")
             raise NetflowV5Error(
                 f"{path}: datagramme tronque en fin de fichier (offset {offset}, "
                 f"{len(remaining)} octets restants, {packet_size} attendus)"
             )
         yield from parse_netflow_v5_packet(remaining[:packet_size], exporter=label)
         offset += packet_size
+    logger.debug("iter_netflow_v5_file: fin")

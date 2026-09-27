@@ -142,7 +142,7 @@ from netcross_core import (
 from netcross_core.discovery import load_baseline_hosts
 from netcross_core.flow_timeline import build_flow_timelines
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
-from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
 from netcross_core.security import close_db, connect_cve_db
 from netcross_core.security import findings as security_findings
 from netcross_core.security.cve_seed import open_seed_db
@@ -191,6 +191,7 @@ def _parse_live_spec(spec):
 def _check_single_stdin(points):
     """Une seule source pipe://- (entree standard) par execution : deux
     lecteurs se partageraient les octets du meme flux pcap."""
+    logger.debug("_check_single_stdin: points={}", summarize(points, "points"))
     stdin_labels = [label for label, iface, _bpf in points if parse_source(iface).uses_stdin]
     if len(stdin_labels) > 1:
         print(
@@ -204,6 +205,7 @@ def _parse_client_group_spec(spec):
     """NOM=IP1[,IP2,...] -> (nom, {ip1, ip2, ...}). Une IP peut apparaitre
     dans plusieurs groupes (assume, non verifie ici -- voir
     netcross_core.client_diff.group_packets_by_client pour la consequence)."""
+    logger.debug("_parse_client_group_spec: spec={}", summarize(spec, "spec"))
     if "=" not in spec:
         print(
             f"Format invalide pour --client-group: {spec} (attendu NOM=IP1[,IP2,...])",
@@ -228,6 +230,7 @@ def _advanced_options_error(args) -> str | None:
     """Validation de --flow-timeline/--tshark-stats/--forensic-search et des
     --search-* AVANT l'analyse : une erreur detectee apres des minutes de
     parsing ferait perdre le run."""
+    logger.debug("_advanced_options_error: args={}", summarize(args, "args"))
     search = {
         "--search-text": args.search_text,
         "--search-address": args.search_address,
@@ -252,6 +255,12 @@ def _advanced_options_error(args) -> str | None:
 
 
 def _write_json_output(path, payload, label) -> None:
+    logger.debug(
+        "_write_json_output: path={} payload={} label={}",
+        summarize(path, "path"),
+        summarize(payload, "payload"),
+        summarize(label, "label"),
+    )
     import json
 
     with open(path, "w", encoding="utf-8") as fh:
@@ -297,6 +306,12 @@ def _collect_tshark_stats(captures) -> dict:
 def _run_forensic_search(args, all_packets, flows) -> None:
     """Recherche forensique (issue #360) : la requete est rappelee dans le
     JSON pour qu'un resultat vide reste interpretable."""
+    logger.debug(
+        "_run_forensic_search: args={} all_packets={} flows={}",
+        summarize(args, "args"),
+        summarize(all_packets, "all_packets"),
+        summarize(flows, "flows"),
+    )
     from dataclasses import asdict
 
     from netcross_core.forensic_search import ForensicSearchIndex, ForensicSearchQuery
@@ -401,6 +416,11 @@ def _parse_capture_spec(spec, flag_name):
     ordre strict par point (STP, timeout d'inactivite) trient deja
     explicitement en interne plutot que de faire confiance a l'ordre de
     all_packets -- voir netcross_core.analysis."""
+    logger.debug(
+        "_parse_capture_spec: spec={} flag_name={}",
+        summarize(spec, "spec"),
+        summarize(flag_name, "flag_name"),
+    )
     if "=" not in spec:
         print(
             f"Format invalide pour {flag_name}: {spec} (attendu NOM=chemin[,chemin2,...])",
@@ -533,6 +553,7 @@ def _parse_size(text):
     100`. Suffixe optionnel o/b apres l'unite (100Mo, 100MB). None si le
     format n'est pas reconnu -- les unites binaires (MiB, Mio) sont
     volontairement refusees plutot que lues comme des unites decimales."""
+    logger.debug("_parse_size: text={}", summarize(text, "text"))
     m = _SIZE_RE.fullmatch(text.strip())
     if not m:
         return None
@@ -777,6 +798,7 @@ def _build_support_consent(args) -> Consent:
     mieux vaut un refus bruyant en debut de run qu'un ticket silencieusement
     non ecrit a la fin, apres une analyse de plusieurs minutes.
     """
+    logger.debug("_build_support_consent: args={}", summarize(args, "args"))
     if not args.support_ticket:
         if args.support_consent or args.support_scope or args.support_map or args.support_marker:
             print(
@@ -822,6 +844,7 @@ def _build_support_consent(args) -> Consent:
 
 def _parse_support_markers(specs) -> dict[str, str]:
     """``["trace_id=T-042"]`` -> ``{"trace_id": "T-042"}``."""
+    logger.debug("_parse_support_markers: specs={}", summarize(specs, "specs"))
     markers: dict[str, str] = {}
     for spec in specs or []:
         if "=" not in spec:
@@ -861,6 +884,7 @@ def _format_go(n_bytes: float) -> str:
 def _format_paquets(n: int) -> str:
     """``18300000`` -> ``"18,3 M paquets"`` (arrondi au dixieme de
     million, lisible dans un avertissement -- pas une valeur exacte)."""
+    logger.debug("_format_paquets: n={}", summarize(n, "n"))
     if n >= 1_000_000:
         return f"{n / 1_000_000:.1f} M paquets".replace(".", ",")
     return f"{n} paquets"
@@ -900,6 +924,7 @@ def _estimate_memory_bytes(packet_count: int) -> int:
     temps sur le chemin actuel (pas de flux, voir Etape 4 de l'issue #283
     -- non traitee par cette PR), plus une marge pour le tas Python
     lui-meme (fragmentation, objets intermediaires de tshark -T ek)."""
+    logger.debug("_estimate_memory_bytes: packet_count={}", summarize(packet_count, "packet_count"))
     return packet_count * _ESTIMATED_BYTES_PER_PACKET * 4
 
 
@@ -909,6 +934,12 @@ def _memory_warning(label: str, file_size: int, packet_count: int) -> str | None
     etre determinee ou si l'estimation ne depasse pas le disponible --
     aucune raison d'avertir dans ce cas, meme discipline que
     read_capture_comment (silence plutot que faux positif)."""
+    logger.debug(
+        "_memory_warning: label={} file_size={} packet_count={}",
+        summarize(label, "label"),
+        summarize(file_size, "file_size"),
+        summarize(packet_count, "packet_count"),
+    )
     available = _available_memory_bytes()
     if available is None:
         return None
@@ -930,6 +961,7 @@ def _check_memory_before_analysis(captures) -> None:
     metadonnees capinfos dans ce fichier) : avertir, pas bloquer -- a
     l'analyste de decider (--max-packets/--sample/Ctrl+C), voir issue
     #283 Etape 2 : "un outil qui annonce sa limite est utilisable"."""
+    logger.debug("_check_memory_before_analysis: captures={}", summarize(captures, "captures"))
     from pcap_parser.capinfos_source import read_capture_info
 
     for label, path in captures:
@@ -957,6 +989,7 @@ def _parse_sample_spec(spec: str) -> int:
     tronquerait silencieusement l'analyse sans que l'utilisateur s'en
     rende compte, inacceptable pour la meme raison que la troncature
     elle-meme doit toujours etre annoncee (voir Report.truncation_note)."""
+    logger.debug("_parse_sample_spec: spec={}", summarize(spec, "spec"))
     m = re.fullmatch(r"1\s*/\s*(\d+)", spec.strip())
     if not m or int(m.group(1)) <= 0:
         print(
@@ -979,6 +1012,12 @@ def _apply_packet_limits(all_packets, max_packets, sample_n):
     si aucune limite n'a reellement tronque quoi que ce soit (fichier plus
     petit que la limite demandee) -- Report.truncated ne doit jamais
     devenir True sans raison, meme discipline que duplicates_excluded."""
+    logger.debug(
+        "_apply_packet_limits: all_packets={} max_packets={} sample_n={}",
+        summarize(all_packets, "all_packets"),
+        summarize(max_packets, "max_packets"),
+        summarize(sample_n, "sample_n"),
+    )
     total = len(all_packets)
     kept = all_packets
     notes = []
@@ -997,6 +1036,12 @@ def _apply_packet_limits(all_packets, max_packets, sample_n):
 def _send_notifications(args, report, security_report_obj) -> list[dict]:
     """Notifications sortantes (issue #280). Ne leve jamais : un canal en
     echec est une ligne de tracabilite du rapport, pas un echec d'analyse."""
+    logger.debug(
+        "_send_notifications: args={} report={} security_report_obj={}",
+        summarize(args, "args"),
+        summarize(report, "report"),
+        summarize(security_report_obj, "security_report_obj"),
+    )
     from pathlib import Path
 
     from netcross_core.config import load_config
@@ -1027,6 +1072,11 @@ def _send_notifications(args, report, security_report_obj) -> list[dict]:
 def _list_plugins(authorized: list[str], plugin_paths: list[str]) -> int:
     """--list-plugins : installes ET locaux, en disant lesquels sont
     autorises -- un plugin installe n'est pas un plugin autorise."""
+    logger.debug(
+        "_list_plugins: authorized={} plugin_paths={}",
+        summarize(authorized, "authorized"),
+        summarize(plugin_paths, "plugin_paths"),
+    )
     from netcross_core.plugins import list_plugins
 
     rows = list_plugins(authorized, plugin_paths)
@@ -1046,6 +1096,11 @@ def _list_plugins(authorized: list[str], plugin_paths: list[str]) -> int:
 
 
 def _parse_plugin_exports(specs: list[str], authorized: list[str]) -> list[tuple[str, str]]:
+    logger.debug(
+        "_parse_plugin_exports: specs={} authorized={}",
+        summarize(specs, "specs"),
+        summarize(authorized, "authorized"),
+    )
     targets = []
     for spec in specs:
         name, sep, path = spec.partition("=")
@@ -1116,6 +1171,7 @@ def _run_content_extraction(captures, out_dir, kinds) -> None:
 
 def _check_live_report_args(args) -> None:
     """Validations de l'issue #274."""
+    logger.debug("_check_live_report_args: args={}", summarize(args, "args"))
     if (args.live_report_serve is not None or args.live_report_interval != 5.0) and not args.live_report:
         print("--live-report-interval/--live-report-serve necessitent --live-report.", file=sys.stderr)
         sys.exit(1)

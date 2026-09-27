@@ -96,14 +96,17 @@ def detect_format(path: str) -> str | None:
         magic = f.read(4)
     logger.debug("detect_format: {} magic={}", path, magic.hex())
     if magic == _PCAPNG_MAGIC:
+        logger.debug("detect_format: si magic == _PCAPNG_MAGIC -> retour FORMAT_PCAPNG")
         return FORMAT_PCAPNG
     entry = _PCAP_MAGICS.get(magic)
+    logger.debug("detect_format: retour entry[1] if entry else None")
     return entry[1] if entry else None
 
 
 def format_extension(fmt: str | None) -> str:
     """Extension de sortie coherente avec `editcap -F <fmt>` ; pcapng par
     defaut (c'est aussi ce que produit editcap sans -F)."""
+    logger.debug("format_extension: retour _FORMAT_EXTENSION.get(…)")
     return _FORMAT_EXTENSION.get(fmt or FORMAT_PCAPNG, ".pcapng")
 
 
@@ -114,7 +117,9 @@ def _read_exact_or_none(f: BinaryIO, n: int) -> bytes | None:
     if len(data) != n:
         # chemin chaud (appele par enregistrement) : seul le cas tronque est trace
         logger.trace("_read_exact_or_none: {} octet(s) lus sur {} attendus, fin tronquee", len(data), n)
+        logger.debug("_read_exact_or_none: si len(data) != n -> retour None")
         return None
+    logger.debug("_read_exact_or_none: retour data")
     return data
 
 
@@ -127,6 +132,7 @@ def _iter_pcap_records(f: BinaryIO, endian: str) -> Iterator[bytes]:
     while True:
         header = _read_exact_or_none(f, _PCAP_RECORD_HEADER_LEN)
         if header is None:
+            logger.debug("_iter_pcap_records: si header is None -> retour")
             return
         incl_len = struct.unpack_from(endian + "I", header, 8)[0]
         if incl_len > _MAX_UNIT_LEN:
@@ -148,10 +154,12 @@ def _iter_pcapng_blocks(f: BinaryIO) -> Iterator[tuple[int, bytes]]:
     while True:
         head = _read_exact_or_none(f, 8)
         if head is None:
+            logger.debug("_iter_pcapng_blocks: si head is None -> retour")
             return
         if head[:4] == _PCAPNG_MAGIC:
             bom = _read_exact_or_none(f, 4)
             if bom is None:
+                logger.debug("_iter_pcapng_blocks: si bom is None -> retour")
                 return
             if bom == _BOM_LE:
                 endian = "<"
@@ -182,9 +190,11 @@ def has_packets(path: str) -> bool:
             logger.debug("has_packets: {} format inconnu, supposé non vide", path)
             return True
         if fmt == FORMAT_PCAPNG:
+            logger.debug("has_packets: si fmt == FORMAT_PCAPNG -> retour any(…)")
             return any(block_type in _PACKET_BLOCKS for block_type, _raw in _iter_pcapng_blocks(f))
         header = _read_exact_or_none(f, _PCAP_HEADER_LEN)
         if header is None:
+            logger.debug("has_packets: si header is None -> retour False")
             return False
         endian = _PCAP_MAGICS[header[:4]][0]
         logger.debug("has_packets: {} (pcap)", path)
@@ -232,15 +242,18 @@ def _iter_options(data: bytes, endian: str) -> Iterator[tuple[int, bytes]]:
     while offset + 4 <= len(data):
         code, length = struct.unpack_from(endian + "HH", data, offset)
         if code == _OPT_ENDOFOPT:
+            logger.debug("_iter_options: si code == _OPT_ENDOFOPT -> retour")
             return
         offset += 4
         if offset + length > len(data):
             logger.trace("_iter_options: option {} tronquee ({} octets annonces), arret", code, length)
+            logger.debug("_iter_options: si offset + length > len(data) -> retour")
             return
         value = data[offset : offset + length]
         yield code, value
         # padding a 4 octets (aligne sur 32 bits)
         offset += (length + 3) & ~3
+    logger.debug("_iter_options: fin")
 
 
 def _read_pcapng_structure(f: BinaryIO) -> CaptureStructure | None:
@@ -287,7 +300,9 @@ def _read_pcapng_structure(f: BinaryIO) -> CaptureStructure | None:
         # bloc corrompu : on garde les interfaces lues jusque-la (comme une troncature)
     logger.debug("_read_pcapng_structure: version={} {} interface(s)", version, len(interfaces))
     if version is None:
+        logger.debug("_read_pcapng_structure: si version is None -> retour None")
         return None
+    logger.debug("_read_pcapng_structure: retour CaptureStructure(…)")
     return CaptureStructure(FORMAT_PCAPNG, version, tuple(interfaces))
 
 
@@ -306,9 +321,11 @@ def read_structure(path: str) -> CaptureStructure | None:
         return None
     with open(path, "rb", buffering=_READ_BUFFER) as f:
         if fmt == FORMAT_PCAPNG:
+            logger.debug("read_structure: si fmt == FORMAT_PCAPNG -> retour _read_pcapng_structure(…)")
             return _read_pcapng_structure(f)
         header = _read_exact_or_none(f, _PCAP_HEADER_LEN)
         if header is None:
+            logger.debug("read_structure: si header is None -> retour None")
             return None
         endian = _PCAP_MAGICS[header[:4]][0]
         major, minor, _thiszone, _sigfigs, snaplen, linktype = struct.unpack_from(endian + "HHiIII", header, 4)
@@ -340,6 +357,7 @@ class _SegmentSink:
 
     @property
     def is_open(self) -> bool:
+        logger.debug("_SegmentSink.is_open: retour self._file is not None")
         return self._file is not None
 
     def _roll(self) -> None:
@@ -355,11 +373,13 @@ class _SegmentSink:
         for block in self.preamble:
             self._file.write(block)
             self._size += len(block)
+        logger.debug("_SegmentSink._roll: fin")
 
     def _close_current(self) -> None:
         if self._file is not None:
             self._file.close()
             self._file = None
+        logger.debug("_SegmentSink._close_current: fin")
 
     def write(self, raw: bytes, *, is_packet: bool) -> None:
         overflow = self._size + len(raw) > self._max_bytes
@@ -371,6 +391,7 @@ class _SegmentSink:
         self._size += len(raw)
         if is_packet:
             self._packets += 1
+        logger.debug("_SegmentSink.write: fin")
 
     def write_if_open(self, raw: bytes) -> None:
         """Pour un bloc de preambule (SHB/IDB/DSB) : s'il y a un segment en
@@ -380,6 +401,7 @@ class _SegmentSink:
             logger.trace("_SegmentSink.write_if_open: bloc de preambule recopie dans le segment courant")
             self._file.write(raw)
             self._size += len(raw)
+        logger.debug("_SegmentSink.write_if_open: fin")
 
     def close(self) -> None:
         # Un dernier segment sans aucun paquet (ex : fichier qui ne contient
@@ -389,6 +411,7 @@ class _SegmentSink:
             logger.debug("_SegmentSink.close: dernier segment vide supprimé ({})", self.paths[-1])
             os.remove(self.paths.pop())
         self._close_current()
+        logger.debug("_SegmentSink.close: fin")
 
     def abort(self) -> None:
         """Ferme et supprime tous les segments deja ecrits (echec en cours
@@ -399,6 +422,7 @@ class _SegmentSink:
             with contextlib.suppress(OSError):
                 os.remove(path)
         self.paths.clear()
+        logger.debug("_SegmentSink.abort: fin")
 
 
 def split_by_size(path: str, out_prefix: str, max_bytes: int) -> list[str]:
@@ -419,9 +443,11 @@ def split_by_size(path: str, out_prefix: str, max_bytes: int) -> list[str]:
     dernier enregistrement incomplet est ignore.
     """
     if max_bytes < 1:
+        logger.debug("split_by_size: si max_bytes < 1 -> levée ValueError")
         raise ValueError("max_bytes doit etre >= 1")
     fmt = detect_format(path)
     if fmt is None:
+        logger.debug("split_by_size: si fmt is None -> levée ValueError")
         raise ValueError(
             f"{path} : format non reconnu -- le decoupage par taille exige un fichier pcap/pcapng non compresse"
         )
@@ -443,6 +469,7 @@ def split_by_size(path: str, out_prefix: str, max_bytes: int) -> list[str]:
             len(sink.paths),
         )
         sink.abort()
+        logger.debug("split_by_size: except BaseException -> relance de l'exception en cours")
         raise
     logger.debug("split_by_size: {} segment(s)", len(sink.paths))
     return sink.paths
@@ -458,6 +485,7 @@ def _split_pcap(f: BinaryIO, sink: _SegmentSink) -> None:
     sink.preamble = [header]
     for record in _iter_pcap_records(f, endian):
         sink.write(record, is_packet=True)
+    logger.debug("_split_pcap: fin")
 
 
 def _split_pcapng(f: BinaryIO, sink: _SegmentSink) -> None:
@@ -476,6 +504,7 @@ def _split_pcapng(f: BinaryIO, sink: _SegmentSink) -> None:
             sink.write_if_open(raw)
         else:
             sink.write(raw, is_packet=block_type in _PACKET_BLOCKS)
+    logger.debug("_split_pcapng: fin")
 
 
 # -- first_timestamp --------------------------------------------------------
@@ -487,20 +516,25 @@ def first_timestamp(path: str) -> float:
     FileNotFoundError si le fichier est absent, ValueError si le format
     n'est pas reconnu ou si la capture ne contient aucun paquet."""
     if not os.path.isfile(path):
+        logger.debug("first_timestamp: si not os.path.isfile(path) -> levée FileNotFoundError")
         raise FileNotFoundError(f"capture introuvable : {path}")
     fmt = detect_format(path)
     if fmt is None:
+        logger.debug("first_timestamp: si fmt is None -> levée ValueError")
         raise ValueError(f"format non reconnu : {path}")
     logger.debug("first_timestamp: {} ({})", path, fmt)
     with open(path, "rb") as f:
         if fmt == FORMAT_PCAPNG:
+            logger.debug("first_timestamp: si fmt == FORMAT_PCAPNG -> retour _first_timestamp_pcapng(…)")
             return _first_timestamp_pcapng(f)
         # pcap ou nsecpcap : lire l'en-tete global pour l'endianness
         header = f.read(_PCAP_HEADER_LEN)
         if len(header) < _PCAP_HEADER_LEN:
+            logger.debug("first_timestamp: si len(header) < _PCAP_HEADER_LEN -> levée ValueError")
             raise ValueError("fichier pcap tronque (en-tete global incomplet)")
         endian, fmt_name = _PCAP_MAGICS[header[:4]]
         nsec = fmt_name == FORMAT_NSECPCAP
+        logger.debug("first_timestamp: retour _first_timestamp_pcap(…)")
         return _first_timestamp_pcap(f, endian, nsec)
 
 
@@ -515,6 +549,7 @@ def _first_timestamp_pcap(f: BinaryIO, endian: str, nsec: bool) -> float:
     logger.debug("_first_timestamp_pcap: horodatage en {}", "nanosecondes" if nsec else "microsecondes")
     ts_sec, ts_frac = struct.unpack_from(endian + "II", header, 0)
     divisor = 1e9 if nsec else 1e6
+    logger.debug("_first_timestamp_pcap: retour ts_sec + ts_frac / divisor")
     return ts_sec + ts_frac / divisor
 
 
@@ -542,4 +577,5 @@ def _first_timestamp_pcapng(f: BinaryIO) -> float:
             divisor = 2**tsresol_shift
             logger.debug("_first_timestamp_pcapng: résolution 2^-{} s", tsresol_shift)
             return ts_64 / divisor
+    logger.debug("_first_timestamp_pcapng: levée ValueError")
     raise ValueError("pcapng sans paquet (aucun Enhanced Packet Block)")

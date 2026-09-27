@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from netcross_core.application.models import ApplicationTransaction, TransactionClassification
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -56,6 +56,10 @@ def classify_transaction(
 
     # 1. Absence de réponse
     if txn.response_ts is None:
+        logger.debug(
+            "classify_transaction: si txn.response_ts is None -> retour TransactionClassification.MISSING_RESPO…={}",
+            summarize(TransactionClassification.MISSING_RESPONSE, "MISSING_RESPO…"),
+        )
         return TransactionClassification.MISSING_RESPONSE
 
     # Seuil de lenteur selon le protocole
@@ -64,10 +68,18 @@ def classify_transaction(
     is_slow = txn.total_time_ms is not None and txn.total_time_ms >= slow_ms
 
     if not is_slow:
+        logger.debug(
+            "classify_transaction: si not is_slow -> retour TransactionClassification.NORMAL={}",
+            summarize(TransactionClassification.NORMAL, "NORMAL"),
+        )
         return TransactionClassification.NORMAL
 
     # 2. Lenteur + signaux réseau -> network_slow
     if txn.network_signals:
+        logger.debug(
+            "classify_transaction: si txn.network_signals -> retour TransactionClassification.NETWORK_SLOW={}",
+            summarize(TransactionClassification.NETWORK_SLOW, "NETWORK_SLOW"),
+        )
         return TransactionClassification.NETWORK_SLOW
 
     # 3. server_time_ms mesuré et dominant -> server_slow
@@ -76,7 +88,15 @@ def classify_transaction(
         and txn.total_time_ms is not None
         and txn.server_time_ms >= thresholds.server_dominant_ratio * txn.total_time_ms
     ):
+        logger.debug(
+            "classify_transaction: si txn.server_time_ms is not None… retour TransactionClassification.SERVER_SLOW={}",
+            summarize(TransactionClassification.SERVER_SLOW, "SERVER_SLOW"),
+        )
         return TransactionClassification.SERVER_SLOW
 
     # 4. Lenteur sans preuve réseau ni serveur -> application_slow
+    logger.debug(
+        "classify_transaction: retour TransactionClassification.APPLICATION_S…={}",
+        summarize(TransactionClassification.APPLICATION_SLOW, "APPLICATION_S…"),
+    )
     return TransactionClassification.APPLICATION_SLOW

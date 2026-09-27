@@ -42,7 +42,7 @@ from netcross_core.batch import (
     inventory_from_packets,
     plan_batch,
 )
-from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
 from netcross_core.security import findings as security_findings
 from netcross_report.security_report import build_security_report, print_security_report
 
@@ -57,6 +57,11 @@ def list_captures(folder: str, recursive: bool = False) -> tuple[list[str], list
     """Renvoie (captures, ignores) tries par chemin. Les fichiers ignores
     (extension non reconnue) sont remontes pour etre cites dans l'index :
     rien ne disparait sans trace."""
+    logger.debug(
+        "list_captures: folder={} recursive={}",
+        summarize(folder, "folder"),
+        summarize(recursive, "recursive"),
+    )
     captures: list[str] = []
     ignored: list[str] = []
     walker: Iterator[tuple[str, list[str]]]
@@ -79,6 +84,7 @@ def list_captures(folder: str, recursive: bool = False) -> tuple[list[str], list
 def make_labels(paths: list[str]) -> dict[str, str]:
     """Etiquette lisible et unique par capture (nom de fichier sans
     extension, suffixe _2, _3... en cas de collision)."""
+    logger.debug("make_labels: paths={}", summarize(paths, "paths"))
     labels: dict[str, str] = {}
     used: set[str] = set()
     for path in paths:
@@ -132,6 +138,7 @@ def load_cached_inventory(output: str, label: str, path: str) -> CaptureInventor
 
 
 def save_cached_inventory(output: str, inv: CaptureInventory) -> None:
+    logger.debug("save_cached_inventory: output={} inv={}", summarize(output, "output"), summarize(inv, "inv"))
     cache = _cache_path(output, inv.label)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     with open(cache, "w", encoding="utf-8") as fh:
@@ -139,6 +146,14 @@ def save_cached_inventory(output: str, inv: CaptureInventory) -> None:
 
 
 def collect_inventories(paths, labels, output, jobs=1, skip_existing=False) -> list[CaptureInventory]:
+    logger.debug(
+        "collect_inventories: paths={} labels={} output={} jobs={} skip_existing={}",
+        summarize(paths, "paths"),
+        summarize(labels, "labels"),
+        summarize(output, "output"),
+        summarize(jobs, "jobs"),
+        summarize(skip_existing, "skip_existing"),
+    )
     results: dict[str, CaptureInventory] = {}
     todo = []
     for path in paths:
@@ -164,6 +179,12 @@ def collect_inventories(paths, labels, output, jobs=1, skip_existing=False) -> l
 def analyse_and_write(members: list[CaptureInventory], out_path: str, security: bool) -> dict:
     """Analyse (croisee si plusieurs membres) et ecrit le rapport texte.
     Renvoie un resume pour la synthese : {"findings": {severite: n}}."""
+    logger.debug(
+        "analyse_and_write: members={} out_path={} security={}",
+        summarize(members, "members"),
+        summarize(out_path, "out_path"),
+        summarize(security, "security"),
+    )
     all_packets = []
     for m in members:
         all_packets.extend(parse_capture(m.label, m.path, raise_on_error=True))
@@ -221,6 +242,14 @@ def run_analyses(plan: BatchPlan, output: str, security: bool, skip_existing: bo
 
 
 def build_synthesis(plan, summaries, errors, ignored, security) -> list[str]:
+    logger.debug(
+        "build_synthesis: plan={} summaries={} errors={} ignored={} security={}",
+        summarize(plan, "plan"),
+        summarize(summaries, "summaries"),
+        summarize(errors, "errors"),
+        summarize(ignored, "ignored"),
+        summarize(security, "security"),
+    )
     lines = []
     total_pkts = sum(inv.packet_count for g in plan.groups for inv in g.members) + sum(
         iso.capture.packet_count for iso in plan.isolated
@@ -245,6 +274,7 @@ def build_synthesis(plan, summaries, errors, ignored, security) -> list[str]:
 
 
 def main(argv=None):
+    logger.debug("main: argv={}", summarize(argv, "argv"))
     ap = argparse.ArgumentParser(
         description="Expertise toutes les captures d'un dossier et tente l'analyse croisee des captures "
         "qui semblent observer le meme evenement (issue #277)."

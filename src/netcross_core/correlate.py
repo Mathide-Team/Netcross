@@ -7,7 +7,7 @@ et calcul du debit par fenetre temporelle.
 from collections import defaultdict
 
 from netcross_core.expert_model import Conversation, Flow
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt
 
 logger = get_logger(__name__)
@@ -27,7 +27,9 @@ def flow_key(pk: Pkt, nat_tolerant=False, nat_window_ms=200):
     """
     if nat_tolerant and pk.payload_hash:
         bucket = int(pk.ts / (nat_window_ms / 1000.0))
+        logger.debug("flow_key: si nat_tolerant and pk.payload_hash -> retour tuple de 4")
         return ("NAT", pk.proto, pk.payload_hash, bucket)
+    logger.debug("flow_key: retour tuple de 6")
     return (pk.proto, pk.src, pk.sport, pk.dst, pk.dport, pk.key_id)
 
 
@@ -156,13 +158,25 @@ def _topn_category_label(pk, dimension):
       "if pk.dscp" au lieu de "is not None".
     """
     if dimension == "protocol":
+        logger.debug(
+            "_topn_category_label: si dimension == 'protocol' -> retour pk.proto={}", summarize(pk.proto, "proto")
+        )
         return pk.proto
     if dimension == "port":
+        logger.debug(
+            "_topn_category_label: si dimension == 'port' -> retour f'(pk.proto)/(pk.dport)' if pk.dport is not None …"
+        )
         return f"{pk.proto}/{pk.dport}" if pk.dport is not None else f"{pk.proto} (sans port)"
     if dimension == "ip":
+        logger.debug("_topn_category_label: si dimension == 'ip' -> retour pk.dst={}", summarize(pk.dst, "dst"))
         return pk.dst
     if dimension == "dscp":
+        logger.debug(
+            "_topn_category_label: si dimension == 'dscp' -> retour f'DSCP (pk.dscp)' if pk.dscp is not None else 'no…"
+        )
         return f"DSCP {pk.dscp}" if pk.dscp is not None else "non marque"
+    logger.trace("_topn_category_label: refus, ValueError")
+    logger.debug("_topn_category_label: levée ValueError")
     raise ValueError(f"dimension inconnue pour compute_topn_series: {dimension!r}")
 
 

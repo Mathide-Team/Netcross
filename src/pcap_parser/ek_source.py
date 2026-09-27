@@ -48,15 +48,18 @@ _FRAME_TIME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.
 
 def _parse_frame_time_epoch(value: str | None) -> float | None:
     if not value:
+        logger.debug("_parse_frame_time_epoch: si not value -> retour None")
         return None
     m = _FRAME_TIME_RE.match(value)
     if not m:
         # chemin chaud (une fois par paquet) : TRACE, et seulement le cas anormal
         logger.trace("_parse_frame_time_epoch: horodatage non reconnu {!r}", value)
+        logger.debug("_parse_frame_time_epoch: si not m -> retour None")
         return None
     y, mo, d, h, mi, se, frac = m.groups()
     dt = datetime.datetime(int(y), int(mo), int(d), int(h), int(mi), int(se), tzinfo=datetime.timezone.utc)
     frac_seconds = int(frac[:9].ljust(9, "0")) / 1e9
+    logger.debug("_parse_frame_time_epoch: retour calendar.timegm(dt.timetuple()) + frac_seconds")
     return calendar.timegm(dt.timetuple()) + frac_seconds
 
 
@@ -73,6 +76,7 @@ class TsharkError(RuntimeError):
         super().__init__(message)
         self.returncode = returncode
         self.stderr = stderr
+        logger.debug("TsharkError.__init__: fin")
 
 
 class CaptureAccessError(TsharkError):
@@ -87,8 +91,10 @@ def check_capture_readable(path: str) -> None:
     droits, commande de correction) plutot que le message brut de tshark.
     """
     if not os.path.exists(path):
+        logger.debug("check_capture_readable: si not os.path.exists(path) -> levée CaptureAccessError")
         raise CaptureAccessError(f"fichier de capture introuvable : {path}")
     if os.path.isdir(path):
+        logger.debug("check_capture_readable: si os.path.isdir(path) -> levée CaptureAccessError")
         raise CaptureAccessError(f"{path} est un repertoire, pas un fichier de capture")
     if not os.access(path, os.R_OK):
         try:
@@ -97,15 +103,18 @@ def check_capture_readable(path: str) -> None:
         except OSError as exc:
             logger.debug("check_capture_readable: stat({}) impossible : {}", path, exc)
             detail = ""
+        logger.debug("check_capture_readable: si not os.access(path, os.R_OK) -> levée CaptureAccessError")
         raise CaptureAccessError(
             f"droits insuffisants pour lire {path}{detail}. "
             f"Rendez le fichier lisible, par exemple : sudo chown \"$USER\" '{path}' && chmod u+r '{path}'"
         )
+    logger.debug("check_capture_readable: fin")
 
 
 def is_permission_error(exc: TsharkError) -> bool:
     """tshark a refuse d'ouvrir le fichier faute de droits."""
     text = f"{exc} {exc.stderr}".lower()
+    logger.debug("is_permission_error: retour 'permission' in text or 'permission non accord' i…")
     return "permission" in text or "permission non accord" in text
 
 
@@ -168,6 +177,7 @@ def redact_args(args: Sequence[str]) -> list:
     if masked:
         # ne jamais journaliser la valeur : seulement le nombre de secrets masques
         logger.debug("redact_args: {} argument(s) secret(s) masque(s)", masked)
+    logger.debug("redact_args: retour out")
     return out
 
 
@@ -219,6 +229,7 @@ def _build_args(
         args += ["-X", f"lua_script:{script}"]
     args += ["-T", "ek"]
     args += list(extra_args)
+    logger.debug("_build_args: retour args")
     return args
 
 
@@ -240,6 +251,7 @@ def _iter_ndjson_records(stream: IO[str]) -> Iterator[dict]:
             continue
         if "layers" in obj:
             yield obj
+    logger.debug("_iter_ndjson_records: fin")
 
 
 @dataclass
@@ -263,6 +275,7 @@ def _terminate_on_event(proc: subprocess.Popen, stop_event: threading.Event) -> 
     if proc.poll() is None:
         logger.debug("_terminate_on_event: arrêt demandé, terminate() de tshark (pid {})", getattr(proc, "pid", None))
         proc.terminate()
+    logger.debug("_terminate_on_event: fin")
 
 
 def iter_ek_records(
@@ -382,3 +395,4 @@ def iter_ek_records(
                 returncode=proc.returncode,
                 stderr=stderr_text,
             )
+    logger.debug("iter_ek_records: fin")
