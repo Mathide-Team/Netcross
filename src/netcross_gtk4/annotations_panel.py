@@ -123,7 +123,9 @@ class AnnotationsPanel(Gtk.Box):
     def selected_point(self) -> str | None:
         idx = self.point_drop.get_selected()
         if 0 <= idx < len(self._point_labels):
+            logger.debug("selected_point: retour element")
             return self._point_labels[idx]
+        logger.debug("selected_point: retour None")
         return None
 
     def prefill(self, point: str | None, frame_number: int | None) -> None:
@@ -142,6 +144,7 @@ class AnnotationsPanel(Gtk.Box):
         point = self.selected_point()
         logger.debug("submit: point={}", point)
         if self.store is None or point is None:
+            logger.debug("submit: retour False")
             return False
         try:
             frame_number = parse_frame_number(self.frame_entry.get_text())
@@ -149,6 +152,7 @@ class AnnotationsPanel(Gtk.Box):
         except (ValueError, OSError) as exc:
             logger.warning("submit: annotation non enregistrée sur {} ({})", point, exc)
             self._status(f"Annotation non enregistree : {exc}")
+            logger.debug("submit: retour False")
             return False
         self.frame_entry.set_text("")
         self.tag_entry.set_text("")
@@ -161,12 +165,14 @@ class AnnotationsPanel(Gtk.Box):
     def remove(self, point: str, frame_number: int, tag: str) -> None:
         logger.debug("AnnotationsPanel.remove: point={} trame={} tag={}", point, frame_number, tag)
         if self.store is None:
+            logger.debug("remove: retour (None implicite)")
             return
         try:
             self.store.remove(point, frame_number, tag)
         except (ValueError, OSError) as exc:
             logger.warning("remove: suppression impossible sur {} ({})", point, exc)
             self._status(f"Suppression impossible : {exc}")
+            logger.debug("remove: retour (None implicite)")
             return
         self.selected_tags &= set(self.store.tags())
         self._status(None)
@@ -199,6 +205,7 @@ class AnnotationsPanel(Gtk.Box):
             self.tags_box.append(check)
 
     def visible_rows(self):
+        logger.debug("visible_rows: retour conditionnel")
         return self.store.rows(self.selected_tags) if self.store else []
 
     def _refresh_rows(self) -> None:
@@ -220,8 +227,10 @@ class AnnotationsPanel(Gtk.Box):
         """Entrees du menu contextuel pour `target` = (point, trame, tag)
         ou None (zone vide). Extrait pour etre testable sans simuler le clic."""
         if not self._point_labels:
+            logger.debug("context_actions: retour liste")
             return []
         if target is None:
+            logger.debug("context_actions: retour liste")
             return [("Ajouter une etiquette", lambda: self.prefill(self.selected_point(), None))]
         point, frame_number, tag = target
         actions = []
@@ -236,6 +245,7 @@ class AnnotationsPanel(Gtk.Box):
         actions = self.context_actions(getattr(row, "annotation", None))
         logger.debug("_on_right_click: y={} -> {} action(s)", y, len(actions))
         if not actions:
+            logger.debug("_on_right_click: retour (None implicite)")
             return
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         popover = Gtk.Popover()

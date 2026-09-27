@@ -70,11 +70,13 @@ def forbidden_imports(source: str) -> list[str]:
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             names = [node.module]
         found += [n for n in names if n.split(".")[0] in FORBIDDEN_IMPORTS]
+    logger.debug("forbidden_imports: retour sorted(...)")
     return sorted(set(found))
 
 
 def _check_source(path: str | None, label: str) -> None:
     if not path or not path.endswith(".py"):
+        logger.debug("_check_source: retour (None implicite)")
         return
     try:
         source = Path(path).read_text(encoding="utf-8")
@@ -94,6 +96,7 @@ def _check_source(path: str | None, label: str) -> None:
 
 
 def _entry_points(group: str) -> list[metadata.EntryPoint]:
+    logger.debug("_entry_points: retour sorted(...)")
     return sorted(metadata.entry_points(group=group), key=lambda ep: ep.name)
 
 
@@ -105,10 +108,12 @@ def discover_installed() -> list[PluginInfo]:
         for ep in _entry_points(group):
             dist = getattr(ep.dist, "name", None) or "?"
             infos.append(PluginInfo(ep.name, kind, f"entry_point:{dist}", ep.value))
+    logger.debug("discover_installed: retour infos")
     return infos
 
 
 def _instantiate(obj: Any) -> Any:
+    logger.debug("_instantiate: retour conditionnel")
     return obj() if isinstance(obj, type) else obj
 
 
@@ -118,6 +123,7 @@ def _check_kind(obj: Any, kind: str, label: str) -> Any:
     if not isinstance(getattr(obj, "name", None), str) or not callable(getattr(obj, method, None)):
         logger.trace("_check_kind: refus, PluginLoadError")
         raise PluginLoadError(f"{label} : ne respecte pas le protocole {proto.__name__} (name + {method}())")
+    logger.debug("_check_kind: retour obj")
     return obj
 
 
@@ -146,6 +152,7 @@ def load_path_module(path: str) -> dict[str, list[Any]]:
             out[kind].append(_check_kind(_instantiate(obj), kind, label))
     if not out["detector"] and not out["exporter"]:
         raise PluginLoadError(f"--plugin-path {path} : ni DETECTORS ni EXPORTERS declares")
+    logger.debug("load_path_module: retour out")
     return out
 
 
@@ -163,6 +170,7 @@ def _load_entry_point(ep: metadata.EntryPoint, kind: str) -> Any:
     except Exception as exc:
         logger.exception(f"échec dans _load_entry_point: {exc}")
         raise PluginLoadError(f"{label} : import en erreur ({exc.__class__.__name__}: {exc})") from exc
+    logger.debug("_load_entry_point: retour _check_kind(...)")
     return _check_kind(_instantiate(obj), kind, label)
 
 
@@ -210,6 +218,7 @@ def load_plugins(authorized: list[str], plugin_paths: list[str] | None = None) -
     for name in wanted:
         if name not in found and not any(e["plugin"] == name for e in loaded.errors):
             loaded.errors.append({"plugin": name, "reason": "introuvable (ni installe ni dans --plugin-path)"})
+    logger.debug("load_plugins: retour loaded")
     return loaded
 
 
@@ -241,4 +250,5 @@ def list_plugins(authorized: list[str], plugin_paths: list[str] | None = None) -
                 }
                 for o in items
             ]
+    logger.debug("list_plugins: retour rows")
     return rows

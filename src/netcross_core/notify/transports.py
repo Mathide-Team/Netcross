@@ -49,26 +49,35 @@ def validate_http_url(url: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         logger.debug("validate_http_url: refus, ValueError")
         raise ValueError(f"URL invalide (http:// ou https:// attendu) : {url!r}")
+    logger.debug("validate_http_url: retour url")
     return url
 
 
 def _reason(exc: BaseException) -> str:
     logger.debug("_reason: exc={}", summarize(exc, "exc"))
     if isinstance(exc, urllib.error.HTTPError):
+        logger.debug("_reason: retour valeur")
         return f"HTTP {exc.code}"
     if isinstance(exc, TimeoutError | socket.timeout):
+        logger.debug("_reason: retour 'delai depasse'")
         return "delai depasse"
     if isinstance(exc, urllib.error.URLError):
         inner = exc.reason
         if isinstance(inner, TimeoutError | socket.timeout):
+            logger.debug("_reason: retour 'delai depasse'")
             return "delai depasse"
+        logger.debug("_reason: retour valeur")
         return f"injoignable ({inner})"
     if isinstance(exc, smtplib.SMTPAuthenticationError):
+        logger.debug("_reason: retour 'authentification SMTP refusee'")
         return "authentification SMTP refusee"
     if isinstance(exc, smtplib.SMTPException):
+        logger.debug("_reason: retour valeur")
         return f"erreur SMTP ({exc.__class__.__name__})"
     if isinstance(exc, OSError):
+        logger.debug("_reason: retour valeur")
         return f"injoignable ({exc.strerror or exc})"
+    logger.debug("_reason: retour valeur")
     return f"{exc.__class__.__name__}: {exc}"
 
 
@@ -105,6 +114,7 @@ class WebhookNotifier:
 
     def send(self, summary: NotificationSummary) -> bool:
         _post_json(self.url, {"source": "netcross", **summary.to_dict()}, self.timeout)
+        logger.debug("send: retour True")
         return True
 
 
@@ -131,6 +141,7 @@ def slack_blocks(summary: NotificationSummary) -> list[dict[str, Any]]:
     if summary.anonymized:
         context += " · adresses internes anonymisees"
     blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": context[:3000]}]})
+    logger.debug("slack_blocks: retour blocks")
     return blocks
 
 
@@ -158,6 +169,7 @@ class SlackNotifier:
                 raise
             self.degraded = True
             _post_json(self.url, {"text": text}, self.timeout)
+        logger.debug("send: retour True")
         return True
 
 
@@ -190,6 +202,7 @@ class EmailNotifier:
         msg["From"] = self.sender
         msg["To"] = ", ".join(self.recipients)
         msg.set_content(summary.to_text())
+        logger.debug("build_message: retour msg")
         return msg
 
     def send(self, summary: NotificationSummary) -> bool:
@@ -204,4 +217,5 @@ class EmailNotifier:
         except (OSError, smtplib.SMTPException) as exc:
             logger.exception(f"échec dans send: {exc}")
             raise NotifyError(_reason(exc)) from exc
+        logger.debug("send: retour True")
         return True

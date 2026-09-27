@@ -129,9 +129,11 @@ class TlsAuditPolicy:
     disabled: frozenset[str] = frozenset()
 
     def severity(self, code: str) -> str:
+        logger.debug("severity: retour booleen")
         return self.severities.get(code) or DEFAULT_SEVERITIES.get(code, SEVERITY_FAIBLE)
 
     def enabled(self, code: str) -> bool:
+        logger.debug("enabled: retour booleen")
         return code not in self.disabled
 
 
@@ -160,8 +162,10 @@ def parse_cert_date(value: str | None) -> datetime | None:
     (UTC)") en datetime UTC ; None si le format est inattendu (aucune
     reconstruction approximative)."""
     if value is None:
+        logger.debug("parse_cert_date: retour None")
         return None
     try:
+        logger.debug("parse_cert_date: retour replace(...)")
         return datetime.strptime(value.removesuffix(" (UTC)"), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     except ValueError:
         logger.debug("parse_cert_date: format de date inattendu {!r}", value)
@@ -171,14 +175,17 @@ def parse_cert_date(value: str | None) -> datetime | None:
 def _shown(names: list[str]) -> str:
     extra = len(names) - _MAX_NAMES_SHOWN
     text = ", ".join(names[:_MAX_NAMES_SHOWN])
+    logger.debug("_shown: retour calcul")
     return text + (f" (+{extra})" if extra > 0 else "")
 
 
 def _is_broad_wildcard(name: str) -> bool:
     """`*` seul ou joker directement sous un suffixe a un seul label (`*.com`)."""
     if not name.startswith("*"):
+        logger.debug("_is_broad_wildcard: retour False")
         return False
     rest = name[1:].lstrip(".")
+    logger.debug("_is_broad_wildcard: retour booleen")
     return not rest or "." not in rest
 
 
@@ -205,6 +212,7 @@ def _name_issues(pk: Pkt, policy: TlsAuditPolicy) -> list[tuple[str, str]]:
             random_names.append(n)
     if random_names:
         found.append((CODE_RANDOM_NAME, f"nom d'apparence aleatoire dans le SAN : {_shown(random_names)}"))
+    logger.debug("_name_issues: retour found")
     return found
 
 
@@ -213,6 +221,7 @@ def audit_certificate(pk: Pkt, policy: TlsAuditPolicy = DEFAULT_POLICY) -> list[
     si le certificat est sain ou si `pk` n'en porte pas). L'horodatage de
     reference est celui du paquet."""
     if pk.tls_cert_serial is None:
+        logger.debug("audit_certificate: retour liste")
         return []
     raw: list[tuple[str, str]] = []
 
@@ -248,6 +257,7 @@ def audit_certificate(pk: Pkt, policy: TlsAuditPolicy = DEFAULT_POLICY) -> list[
         raw.append((CODE_INCOMPLETE_CHAIN, "chaine incomplete : certificat serveur presente sans intermediaire"))
 
     raw.extend(_name_issues(pk, policy))
+    logger.debug("audit_certificate: retour liste")
     return [TlsIssue(code, policy.severity(code), detail) for code, detail in raw if policy.enabled(code)]
 
 

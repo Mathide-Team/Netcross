@@ -114,6 +114,7 @@ def build_flow_view(
         view.byte_count += sum(pk.length for pk in pkts)
 
     if not all_pkts:
+        logger.debug("build_flow_view: retour view")
         return view
 
     # Duree et debit
@@ -172,6 +173,7 @@ def build_flow_view(
     if events is not None:
         view.events = list(events)
 
+    logger.debug("build_flow_view: retour view")
     return view
 
 
@@ -247,4 +249,5 @@ def _detect_transactions(packets: list[Pkt]) -> list[Transaction]:
             )
 
     transactions.sort(key=lambda t: t.response_ts or t.request_ts or 0.0)
+    logger.debug("_detect_transactions: retour transactions")
     return transactions

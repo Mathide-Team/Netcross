@@ -84,15 +84,18 @@ def _is_internal(ip: str) -> bool:
         # appele pour chaque paquet : TRACE (adresse absente ou non IP, trame L2)
         logger.trace("_is_internal: adresse non IP {!r}", ip)
         return False
+    logger.debug("_is_internal: retour booleen")
     return addr.is_private or addr.is_link_local
 
 
 def _is_syn_only(flags: str | None) -> bool:
     """Vrai pour un paquet TCP SYN sans ACK (drapeau S sans A)."""
     if not flags:
+        logger.debug("_is_syn_only: retour False")
         return False
     has_syn = "S" in flags
     has_ack = "A" in flags
+    logger.debug("_is_syn_only: retour booleen")
     return has_syn and not has_ack
 
 
@@ -133,6 +136,7 @@ class LateralMovementEvent:
 
     @property
     def points_list(self) -> list[str]:
+        logger.debug("points_list: retour conditionnel")
         return list(self.points) if self.points else ([self.point] if self.point else [])
 
 
@@ -148,6 +152,7 @@ class LateralMovementResult:
         grouped: dict[str, list[LateralMovementEvent]] = defaultdict(list)
         for ev in self.events:
             grouped[ev.event_type].append(ev)
+        logger.debug("events_by_type: retour grouped")
         return grouped
 
 

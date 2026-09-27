@@ -100,6 +100,7 @@ MAX_CVE_DETAIL_CHARS = 160
 
 def _ellipsis(text: str, limit: int) -> str:
     text = " ".join(text.split())
+    logger.debug("_ellipsis: retour conditionnel")
     return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
 
 
@@ -306,7 +307,9 @@ _EXFIL_SIGNAL_LABELS = {
 def _fmt_bytes(n: int) -> str:
     for unit, div in (("Go", 1e9), ("Mo", 1e6), ("Ko", 1e3)):
         if n >= div:
+            logger.debug("_fmt_bytes: retour valeur")
             return f"{n / div:.1f} {unit}"
+    logger.debug("_fmt_bytes: retour valeur")
     return f"{n} o"
 
 

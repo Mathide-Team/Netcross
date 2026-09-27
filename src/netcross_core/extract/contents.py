@@ -52,6 +52,7 @@ class ExtractedDocument:
     detected_type: str | None
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict(...)")
         return dict(self.__dict__)
 
 
@@ -66,6 +67,7 @@ class ContentExtraction:
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict")
         return {
             "usage_reminder": USAGE_REMINDER,
             "out_dir": self.out_dir,
@@ -80,12 +82,14 @@ def parse_kinds(spec: str | None) -> tuple[str, ...]:
     """``audio,video`` -> ('audio', 'video') ; ValueError sur un type inconnu."""
     logger.debug("parse_kinds: spec={}", summarize(spec, "spec"))
     if not spec:
+        logger.debug("parse_kinds: retour KINDS")
         return KINDS
     kinds = tuple(dict.fromkeys(k.strip() for k in spec.split(",") if k.strip()))
     unknown = [k for k in kinds if k not in KINDS]
     if unknown or not kinds:
         logger.debug("parse_kinds: refus, ValueError")
         raise ValueError(f"type(s) inconnu(s) : {', '.join(unknown) or spec!r} (attendu : {', '.join(KINDS)})")
+    logger.debug("parse_kinds: retour kinds")
     return kinds
 
 
@@ -99,6 +103,7 @@ def prepare_out_dir(path: str) -> Path:
         raise ValueError(f"{path} existe deja et n'est pas un repertoire vide")
     out.mkdir(mode=0o700, parents=True, exist_ok=True)
     out.chmod(0o700)
+    logger.debug("prepare_out_dir: retour out")
     return out
 
 
@@ -107,6 +112,7 @@ def _sha256(path: Path) -> str:
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
+    logger.debug("_sha256: retour hexdigest(...)")
     return h.hexdigest()
 
 
@@ -125,6 +131,7 @@ def inventory_documents(point: str, protocol: str, directory: Path) -> list[Extr
         with p.open("rb") as f:
             head = f.read(16)
         docs.append(ExtractedDocument(point, protocol, str(p), p.stat().st_size, _sha256(p), detect_file_type(head)))
+    logger.debug("inventory_documents: retour docs")
     return docs
 
 
@@ -149,6 +156,7 @@ def export_documents(
             except FileNotFoundError:
                 logger.exception("échec dans export_documents")
                 errors.append("documents : tshark introuvable, aucun document extrait")
+                logger.debug("export_documents: retour tuple")
                 return docs, errors
             except subprocess.TimeoutExpired:
                 logger.exception("échec dans export_documents")
@@ -164,10 +172,12 @@ def export_documents(
         with_docs = out_dir / "documents" / _safe(label)
         if with_docs.is_dir() and not any(with_docs.iterdir()):
             with_docs.rmdir()
+    logger.debug("export_documents: retour tuple")
     return docs, errors
 
 
 def _safe(label: str) -> str:
+    logger.debug("_safe: retour booleen")
     return "".join(c if c.isalnum() or c in "-_." else "-" for c in label) or "point"
 
 
@@ -186,6 +196,7 @@ def datagrams_from_raw(label: str, raw_packets: Iterable) -> Iterable[tuple]:
 
 def analyse_media(datagrams: Iterable[tuple]) -> tuple[list[RtpStream], list[StreamQuality]]:
     streams = collect_streams(datagrams)
+    logger.debug("analyse_media: retour tuple")
     return streams, [analyse_stream(s) for s in streams]
 
 
@@ -206,6 +217,7 @@ def run_extraction(
         import pcap_parser
 
         def read_capture(path: str):
+            logger.debug("read_capture: retour parse_capture(...)")
             return pcap_parser.parse_capture(path, raise_on_error=False)
 
     out = prepare_out_dir(out_dir) if out_dir else None
@@ -226,6 +238,7 @@ def run_extraction(
         result.documents, result.errors = export_documents(captures, out, tshark_bin=tshark_bin)
     if out is not None:
         write_manifest(result, out)
+    logger.debug("run_extraction: retour result")
     return result
 
 
@@ -278,4 +291,5 @@ def format_extraction(result: ContentExtraction) -> list[str]:
     lines.extend(f"  ! {e}" for e in result.errors)
     if result.out_dir is not None:
         lines.append(f"Manifeste : {Path(result.out_dir) / 'manifest.json'}")
+    logger.debug("format_extraction: retour lines")
     return lines

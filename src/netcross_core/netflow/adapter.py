@@ -40,6 +40,7 @@ def flow_record_to_pkt(flow: FlowRecord, point: str | None = None) -> Pkt:
     proto = _PROTO_NAMES.get(flow.protocol, str(flow.protocol))
     avg_length = flow.octets // flow.packets if flow.packets else flow.octets
 
+    logger.debug("flow_record_to_pkt: retour Pkt(...)")
     return Pkt(
         point=point or flow.exporter,
         ts=flow.start_ts,
@@ -126,4 +127,5 @@ def flow_record_to_pkt(flow: FlowRecord, point: str | None = None) -> Pkt:
 def flow_records_to_pkts(flows: list[FlowRecord], point: str | None = None) -> list[Pkt]:
     """Convertit une liste de FlowRecord en liste de Pkt synthetiques,
     meme convention que parsing.parse_capture (voir cette fonction)."""
+    logger.debug("flow_records_to_pkts: retour liste")
     return [flow_record_to_pkt(flow, point=point) for flow in flows]

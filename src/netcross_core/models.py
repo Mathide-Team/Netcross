@@ -41,6 +41,7 @@ class Banner:
     def banner(self) -> str:
         """Forme "produit/version" (ou "produit" seul), lisible par
         `netcross_core.security.cpe_match.parse_banner`."""
+        logger.debug("banner: retour conditionnel")
         return f"{self.service}/{self.version}" if self.version else self.service
 
 

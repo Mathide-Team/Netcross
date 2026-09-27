@@ -185,6 +185,7 @@ def _parse_live_spec(spec):
         logger.exception(f"échec dans _parse_live_spec: {exc}")
         print(f"Source invalide pour --live {label} : {exc}", file=sys.stderr)
         sys.exit(1)
+    logger.debug("_parse_live_spec: retour tuple")
     return label, iface, bpf or None
 
 
@@ -220,6 +221,7 @@ def _parse_client_group_spec(spec):
             file=sys.stderr,
         )
         sys.exit(1)
+    logger.debug("_parse_client_group_spec: retour tuple")
     return name, ip_set
 
 
@@ -242,15 +244,21 @@ def _advanced_options_error(args) -> str | None:
     }
     orphans = [flag for flag, value in search.items() if value is not None]
     if orphans and not args.forensic_search:
+        logger.debug("_advanced_options_error: retour valeur")
         return f"{', '.join(orphans)} necessite --forensic-search."
     if args.search_field is not None and args.search_field not in _SEARCH_FIELDS:
+        logger.debug("_advanced_options_error: retour valeur")
         return f"--search-field : champ inconnu {args.search_field!r} (attendu : {', '.join(_SEARCH_FIELDS)})."
     if args.search_port is not None and not 0 <= args.search_port <= 65535:
+        logger.debug("_advanced_options_error: retour '--search-port doit etre compris entre...'")
         return "--search-port doit etre compris entre 0 et 65535."
     if args.flow_timeline_window <= 0:
+        logger.debug("_advanced_options_error: retour '--flow-timeline-window doit etre > 0.'")
         return "--flow-timeline-window doit etre > 0."
     if args.tshark_stats and not args.capture:
+        logger.debug("_advanced_options_error: retour '--tshark-stats relit les fichiers --c...'")
         return "--tshark-stats relit les fichiers --capture avec tshark : sans objet en --live seul."
+    logger.debug("_advanced_options_error: retour None")
     return None
 
 
@@ -300,6 +308,7 @@ def _collect_tshark_stats(captures) -> dict:
             logger.warning("--tshark-stats {} ({}) : {}", label, path, exc)
             print(f"--tshark-stats {label} ({path}) : {exc}", file=sys.stderr)
         result["captures"].append(entry)
+    logger.debug("_collect_tshark_stats: retour result")
     return result
 
 
@@ -370,9 +379,11 @@ def _run_netflow(args) -> int:
             f"{', '.join(incompatible)}.",
             file=sys.stderr,
         )
+        logger.debug("_run_netflow: retour 1")
         return 1
     if args.netflow_top < 1:
         print("--netflow-top doit etre >= 1.", file=sys.stderr)
+        logger.debug("_run_netflow: retour 1")
         return 1
     records: list[FlowRecord] = []
     for spec in args.netflow:
@@ -381,12 +392,14 @@ def _run_netflow(args) -> int:
             exporter, path = None, spec
         elif not exporter or not path:
             print(f"Format invalide pour --netflow: {spec} (attendu [EXPORTATEUR=]FICHIER)", file=sys.stderr)
+            logger.debug("_run_netflow: retour 1")
             return 1
         try:
             records.extend(iter_netflow_v5_file(path, exporter=exporter))
         except (OSError, NetflowV5Error) as exc:
             logger.warning("--netflow {} : lecture impossible ({})", path, exc)
             print(f"--netflow {path} : {exc}", file=sys.stderr)
+            logger.debug("_run_netflow: retour 1")
             return 1
     summary = summarize_flow_records(records, top=args.netflow_top)
     print("\n".join(format_flow_summary(summary)))
@@ -394,6 +407,7 @@ def _run_netflow(args) -> int:
         with open(args.json_report, "w", encoding="utf-8") as fh:
             json.dump({"netflow": summary}, fh, ensure_ascii=False, indent=2)
         print(f"\nRapport JSON ecrit : {args.json_report}")
+    logger.debug("_run_netflow: retour 0")
     return 0
 
 
@@ -436,6 +450,7 @@ def _parse_capture_spec(spec, flag_name):
             file=sys.stderr,
         )
         sys.exit(1)
+    logger.debug("_parse_capture_spec: retour tuple")
     return label, paths
 
 
@@ -539,6 +554,7 @@ def _run_export(capture_specs, output_path, bpf_filter, time_start, time_end, en
         print(f"--export-pcap : {e}", file=sys.stderr)
         sys.exit(1)
     print(f"{output_path} cree ({label}).")
+    logger.debug("_run_export: retour 0")
     return 0
 
 
@@ -556,8 +572,10 @@ def _parse_size(text):
     logger.debug("_parse_size: text={}", summarize(text, "text"))
     m = _SIZE_RE.fullmatch(text.strip())
     if not m:
+        logger.debug("_parse_size: retour None")
         return None
     number, unit = m.groups()
+    logger.debug("_parse_size: retour int(...)")
     return int(float(number.replace(",", ".")) * _SIZE_FACTORS[unit.lower() if unit else None])
 
 
@@ -586,6 +604,7 @@ def _parse_split_spec(spec):
         hint = " (unites decimales k/M/G, ex: 100M ; MiB/Mio non supportes)" if mode == "size" else ""
         print(f"{err} -- la valeur doit etre un nombre > 0{hint}", file=sys.stderr)
         sys.exit(1)
+    logger.debug("_parse_split_spec: retour tuple")
     return mode, value
 
 
@@ -624,6 +643,7 @@ def _run_split(capture_specs, split_spec, output_dir):
             print(f"  ... ({len(segments) - 3} autre(s))")
         ext = os.path.splitext(segments[0])[1]
         print(f'  Pour les analyser comme un seul point : --capture "{label}=$(ls {label_dir}/*{ext} | paste -sd, -)"')
+    logger.debug("_run_split: retour status")
     return status
 
 
@@ -661,6 +681,7 @@ def _run_adjust_time(capture_specs, output_path, offset, normalize, align_to):
         print(f"--adjust-time : {e}", file=sys.stderr)
         sys.exit(1)
     print(f"{output_path} cree ({label}).")
+    logger.debug("_run_adjust_time: retour 0")
     return 0
 
 
@@ -788,6 +809,7 @@ def _run_live_captures(live_specs, duration, reporter=None):
     all_packets = []
     for label, _iface, _bpf in points:
         all_packets.extend(packets_by_point[label])
+    logger.debug("_run_live_captures: retour all_packets")
     return all_packets
 
 
@@ -806,6 +828,7 @@ def _build_support_consent(args) -> Consent:
                 file=sys.stderr,
             )
             sys.exit(1)
+        logger.debug("_build_support_consent: retour Consent(...)")
         return Consent(granted=False)
 
     if not args.support_consent:
@@ -834,6 +857,7 @@ def _build_support_consent(args) -> Consent:
             sys.exit(1)
         scopes = demandees
 
+    logger.debug("_build_support_consent: retour Consent(...)")
     return Consent(
         granted=True,
         scopes=scopes,
@@ -855,6 +879,7 @@ def _parse_support_markers(specs) -> dict[str, str]:
             sys.exit(1)
         cle, valeur = spec.split("=", 1)
         markers[cle.strip()] = valeur.strip()
+    logger.debug("_parse_support_markers: retour markers")
     return markers
 
 
@@ -878,6 +903,7 @@ _ESTIMATED_BYTES_PER_PACKET = 350
 def _format_go(n_bytes: float) -> str:
     """``4_200_000_000`` -> ``"4.2 Go"`` (Go decimal = 10**9, comme le
     reste de ce fichier pour les tailles de fichier -- voir _parse_size)."""
+    logger.debug("_format_go: retour valeur")
     return f"{n_bytes / 1_000_000_000:.1f} Go"
 
 
@@ -886,7 +912,9 @@ def _format_paquets(n: int) -> str:
     million, lisible dans un avertissement -- pas une valeur exacte)."""
     logger.debug("_format_paquets: n={}", summarize(n, "n"))
     if n >= 1_000_000:
+        logger.debug("_format_paquets: retour replace(...)")
         return f"{n / 1_000_000:.1f} M paquets".replace(".", ",")
+    logger.debug("_format_paquets: retour valeur")
     return f"{n} paquets"
 
 
@@ -909,10 +937,12 @@ def _available_memory_bytes() -> int | None:
                     # Format : "MemAvailable:    3145728 kB"
                     parts = line.split()
                     if len(parts) >= 2:
+                        logger.debug("_available_memory_bytes: retour calcul")
                         return int(parts[1]) * 1024
     except (OSError, ValueError):
         logger.exception("échec dans _available_memory_bytes")
         return None
+    logger.debug("_available_memory_bytes: retour None")
     return None
 
 
@@ -942,10 +972,13 @@ def _memory_warning(label: str, file_size: int, packet_count: int) -> str | None
     )
     available = _available_memory_bytes()
     if available is None:
+        logger.debug("_memory_warning: retour None")
         return None
     estimated = _estimate_memory_bytes(packet_count)
     if estimated <= available:
+        logger.debug("_memory_warning: retour None")
         return None
+    logger.debug("_memory_warning: retour valeur")
     return (
         f"{label} : {_format_go(file_size)}, {_format_paquets(packet_count)} -> environ "
         f"{_format_go(estimated)} de memoire estimes, {_format_go(available)} disponibles. "
@@ -997,6 +1030,7 @@ def _parse_sample_spec(spec: str) -> int:
             file=sys.stderr,
         )
         sys.exit(1)
+    logger.debug("_parse_sample_spec: retour int(...)")
     return int(m.group(1))
 
 
@@ -1029,7 +1063,9 @@ def _apply_packet_limits(all_packets, max_packets, sample_n):
         kept = kept[:max_packets]
         notes.append(f"analyse limitee aux {max_packets:,} premiers paquets sur {before:,}".replace(",", " "))
     if not notes:
+        logger.debug("_apply_packet_limits: retour tuple")
         return kept, None
+    logger.debug("_apply_packet_limits: retour tuple")
     return kept, "analyse tronquee -- " + " ; ".join(notes) + " -- les constats ne couvrent pas la capture entiere."
 
 
@@ -1066,6 +1102,7 @@ def _send_notifications(args, report, security_report_obj) -> list[dict]:
         state_path=Path(args.notify_state) if args.notify_state else None,
         silence_hours=args.notify_silence,
     )
+    logger.debug("_send_notifications: retour liste")
     return [res.to_dict() for res in results]
 
 
@@ -1082,6 +1119,7 @@ def _list_plugins(authorized: list[str], plugin_paths: list[str]) -> int:
     rows = list_plugins(authorized, plugin_paths)
     if not rows:
         print("Aucun plugin installe (entry points netcross.detectors / netcross.exporters) ni --plugin-path.")
+        logger.debug("_list_plugins: retour 0")
         return 0
     print(f"{'NOM':<24} {'TYPE':<10} {'AUTORISE':<9} ORIGINE")
     for row in rows:
@@ -1092,6 +1130,7 @@ def _list_plugins(authorized: list[str], plugin_paths: list[str]) -> int:
     unknown = [n for n in authorized if n not in {r["name"] for r in rows}]
     if unknown:
         print(f"Demande(s) dans --plugins mais introuvable(s) : {', '.join(unknown)}")
+    logger.debug("_list_plugins: retour 0")
     return 0
 
 
@@ -1111,6 +1150,7 @@ def _parse_plugin_exports(specs: list[str], authorized: list[str]) -> list[tuple
             print(f"--plugin-export {name.strip()} : exporteur absent de --plugins.", file=sys.stderr)
             sys.exit(1)
         targets.append((name.strip(), path.strip()))
+    logger.debug("_parse_plugin_exports: retour targets")
     return targets
 
 
@@ -1122,6 +1162,7 @@ def _check_extraction_args(args) -> tuple[str, ...]:
         print("--extract-kinds necessite --extract-contents.", file=sys.stderr)
         sys.exit(1)
     if not (args.media_quality or args.extract_contents):
+        logger.debug("_check_extraction_args: retour tuple")
         return ()
     if args.live:
         print(
@@ -1151,6 +1192,7 @@ def _check_extraction_args(args) -> tuple[str, ...]:
                 file=sys.stderr,
             )
             sys.exit(1)
+    logger.debug("_check_extraction_args: retour kinds")
     return kinds
 
 
@@ -1176,6 +1218,7 @@ def _check_live_report_args(args) -> None:
         print("--live-report-interval/--live-report-serve necessitent --live-report.", file=sys.stderr)
         sys.exit(1)
     if not args.live_report:
+        logger.debug("_check_live_report_args: retour (None implicite)")
         return
     if not args.live:
         print("--live-report necessite --live (pour une capture existante, --json-report suffit).", file=sys.stderr)
@@ -1194,6 +1237,7 @@ def _check_live_report_args(args) -> None:
 def _start_live_report(args):
     """(LiveReporter | None, serveur HTTP | None) pour --live-report."""
     if not args.live_report:
+        logger.debug("_start_live_report: retour tuple")
         return None, None
     from netcross_core.live_report import LiveReporter, LiveReportWriter
     from netcross_report.live_html import render_live_html
@@ -1221,6 +1265,7 @@ def _start_live_report(args):
             sys.exit(1)
         threading.Thread(target=server.serve_forever, name="netcross-live-http", daemon=True).start()
         print(f"Page servie sur http://127.0.0.1:{server.server_address[1]}/ (?mode=completive pour le journal)")
+    logger.debug("_start_live_report: retour tuple")
     return LiveReporter(writer), server
 
 
@@ -1237,6 +1282,7 @@ def _check_ai_args(args):
                 file=sys.stderr,
             )
             sys.exit(1)
+        logger.debug("_check_ai_args: retour None")
         return None
     from netcross_ai.optional import AIUnavailableError, require_ml
     from netcross_ai.pipeline import AIOptions
@@ -1263,6 +1309,7 @@ def _check_ai_args(args):
         logger.exception(f"échec dans _check_ai_args: {exc}")
         print(f"Module IA : {exc}", file=sys.stderr)
         sys.exit(1)
+    logger.debug("_check_ai_args: retour AIOptions(...)")
     return AIOptions(
         baseline_path=args.ai_anomalies,
         baseline_save=args.ai_baseline_save,
@@ -2328,6 +2375,7 @@ def main():
             )
             sys.exit(1)
         _run_merge(args.capture, args.merge, args.merge_dedup)
+        logger.debug("main: retour (None implicite)")
         return
 
     if args.convert:
@@ -2371,6 +2419,7 @@ def main():
             )
             sys.exit(1)
         _run_convert(args.capture, args.convert, args.convert_format)
+        logger.debug("main: retour (None implicite)")
         return
 
     if args.split_output_dir and not args.split:
@@ -2477,6 +2526,7 @@ def main():
             )
             sys.exit(1)
         _run_replay(args.capture, args.replay, args.replay_speed, args.replay_loop)
+        logger.debug("main: retour (None implicite)")
         return
 
     if args.adjust_time_output:

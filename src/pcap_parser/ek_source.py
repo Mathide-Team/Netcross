@@ -48,6 +48,7 @@ _FRAME_TIME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.
 
 def _parse_frame_time_epoch(value: str | None) -> float | None:
     if not value:
+        logger.debug("_parse_frame_time_epoch: retour None")
         return None
     m = _FRAME_TIME_RE.match(value)
     if not m:
@@ -57,6 +58,7 @@ def _parse_frame_time_epoch(value: str | None) -> float | None:
     y, mo, d, h, mi, se, frac = m.groups()
     dt = datetime.datetime(int(y), int(mo), int(d), int(h), int(mi), int(se), tzinfo=datetime.timezone.utc)
     frac_seconds = int(frac[:9].ljust(9, "0")) / 1e9
+    logger.debug("_parse_frame_time_epoch: retour calcul")
     return calendar.timegm(dt.timetuple()) + frac_seconds
 
 
@@ -106,6 +108,7 @@ def check_capture_readable(path: str) -> None:
 def is_permission_error(exc: TsharkError) -> bool:
     """tshark a refuse d'ouvrir le fichier faute de droits."""
     text = f"{exc} {exc.stderr}".lower()
+    logger.debug("is_permission_error: retour booleen")
     return "permission" in text or "permission non accord" in text
 
 
@@ -168,6 +171,7 @@ def redact_args(args: Sequence[str]) -> list:
     if masked:
         # ne jamais journaliser la valeur : seulement le nombre de secrets masques
         logger.debug("redact_args: {} argument(s) secret(s) masque(s)", masked)
+    logger.debug("redact_args: retour out")
     return out
 
 
@@ -219,6 +223,7 @@ def _build_args(
         args += ["-X", f"lua_script:{script}"]
     args += ["-T", "ek"]
     args += list(extra_args)
+    logger.debug("_build_args: retour args")
     return args
 
 

@@ -123,7 +123,9 @@ class ExfiltrationThresholds:
     @property
     def ratio_floor(self) -> int:
         if self.min_upload_for_ratio is not None:
+            logger.debug("ratio_floor: retour attribut")
             return self.min_upload_for_ratio
+        logger.debug("ratio_floor: retour calcul")
         return self.min_volume_bytes // 10
 
 
@@ -131,10 +133,12 @@ DEFAULT_THRESHOLDS = ExfiltrationThresholds()
 
 
 def compute_score(signals: Iterable[str]) -> int:
+    logger.debug("compute_score: retour min(...)")
     return min(100, sum(SIGNAL_WEIGHTS.get(s, 0) for s in set(signals)))
 
 
 def severity_for(score: int) -> str:
+    logger.debug("severity_for: retour conditionnel")
     return "elevee" if score >= HIGH_SEVERITY_SCORE else "moyenne"
 
 
@@ -158,14 +162,17 @@ class ExfiltrationAlert:
 
     @property
     def is_strong(self) -> bool:
+        logger.debug("is_strong: retour any(...)")
         return any(s in STRONG_SIGNALS for s in self.signals)
 
     @property
     def score(self) -> int:
+        logger.debug("score: retour compute_score(...)")
         return compute_score(self.signals)
 
     def to_dict(self) -> dict:
         score = self.score
+        logger.debug("to_dict: retour dict")
         return {
             "point": self.point,
             "src": self.src,
@@ -199,26 +206,33 @@ class ExfiltrationResult:
 def _is_off_hours(ts: float, thresholds: ExfiltrationThresholds) -> bool:
     """Verifie si le timestamp tombe hors des heures ouvrables (UTC)."""
     hour = datetime.fromtimestamp(ts, tz=timezone.utc).hour
+    logger.debug("_is_off_hours: retour booleen")
     return hour < thresholds.business_hours_start or hour >= thresholds.business_hours_end
 
 
 def _is_outbound(src: str, dst: str, thresholds: ExfiltrationThresholds = DEFAULT_THRESHOLDS) -> bool:
     treat = thresholds.treat_test_net_as_external
+    logger.debug("_is_outbound: retour booleen")
     return not is_external(src, treat_test_net_as_external=treat) and is_external(dst, treat_test_net_as_external=treat)
 
 
 def _proto_family(pk: Pkt) -> str:
     proto = (pk.proto or "").upper()
     if proto.startswith("ICMP"):
+        logger.debug("_proto_family: retour 'ICMP'")
         return "ICMP"
     if proto == "DNS" or pk.sport == 53 or pk.dport == 53 or getattr(pk, "dns_qry_name", None):
+        logger.debug("_proto_family: retour 'DNS'")
         return "DNS"
+    logger.debug("_proto_family: retour proto")
     return proto
 
 
 def _ratio(upload: int, download: int) -> float:
     if download > 0:
+        logger.debug("_ratio: retour calcul")
         return upload / download
+    logger.debug("_ratio: retour conditionnel")
     return float("inf") if upload > 0 else 0.0
 
 
@@ -260,6 +274,7 @@ def detect_exfiltration(
 
     def download_of(point: str, src: str, dst: str) -> int:
         rev = flow_data.get((point, dst, src))
+        logger.debug("download_of: retour conditionnel")
         return rev["bytes"] if rev else 0
 
     alerts: list[ExfiltrationAlert] = []
@@ -344,6 +359,7 @@ def dns_tunnel_sources(packets: Iterable[Pkt], dns_suspicions: Iterable[dict]) -
         if s.get("domain"):
             domains[str(s.get("point") or "")].add(str(s["domain"]).lower().rstrip("."))
     if not domains:
+        logger.debug("dns_tunnel_sources: retour set(...)")
         return set()
     sources: set[tuple[str, str]] = set()
     for pk in packets:

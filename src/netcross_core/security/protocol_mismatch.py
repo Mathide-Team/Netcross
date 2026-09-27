@@ -111,6 +111,7 @@ def _pkt_detected_protos(pkt: Pkt) -> set[str]:
         if label is not None:
             detected.add(label)
 
+    logger.debug("_pkt_detected_protos: retour detected")
     return detected
 
 
@@ -124,6 +125,7 @@ def _check_port_for_mismatch(
     Retourne (protocole_détecté, description) si mismatch, sinon None.
     """
     if port is None or port not in STANDARD_PORTS:
+        logger.debug("_check_port_for_mismatch: retour None")
         return None
     expected = STANDARD_PORTS[port]
     compatible = _COMPATIBLE_EXPECTED.get(expected, set())
@@ -132,10 +134,12 @@ def _check_port_for_mismatch(
     for detected in detected_protos:
         if detected in compatible:
             continue
+        logger.debug("_check_port_for_mismatch: retour tuple")
         return (
             detected,
             f"{detected} détecté sur port {port} (attendu : {expected})",
         )
+    logger.debug("_check_port_for_mismatch: retour None")
     return None
 
 
@@ -153,14 +157,17 @@ def detect_protocol_mismatch(pkt: Pkt) -> tuple[str, str] | None:
     """
     detected = _pkt_detected_protos(pkt)
     if not detected:
+        logger.debug("detect_protocol_mismatch: retour None")
         return None
 
     # Vérifier le port destination d'abord, puis le port source
     mismatch = _check_port_for_mismatch(pkt.dport, detected, pkt.proto)
     if mismatch is not None:
+        logger.debug("detect_protocol_mismatch: retour mismatch")
         return mismatch
     mismatch = _check_port_for_mismatch(pkt.sport, detected, pkt.proto)
     if mismatch is not None:
+        logger.debug("detect_protocol_mismatch: retour mismatch")
         return mismatch
 
     # Détection ICMP tunneling : un paquet ICMP ne devrait porter AUCUN
@@ -168,11 +175,13 @@ def detect_protocol_mismatch(pkt: Pkt) -> tuple[str, str] | None:
     # est peuplé sur un paquet ICMP, c'est suspect.
     if pkt.proto.upper() in ("ICMP", "ICMPV6") and detected:
         proto_name = next(iter(detected))
+        logger.debug("detect_protocol_mismatch: retour tuple")
         return (
             "ICMP_TUNNEL",
             f"Payload {proto_name} dans paquet ICMP (tunneling suspect)",
         )
 
+    logger.debug("detect_protocol_mismatch: retour None")
     return None
 
 

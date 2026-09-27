@@ -61,6 +61,7 @@ _VERSION_RE = re.compile(r"\d+(?:\.\d+)*")
 
 def _leading_version(text: str) -> str | None:
     m = _VERSION_RE.match(text.strip())
+    logger.debug("_leading_version: retour conditionnel")
     return m.group(0) if m else None
 
 
@@ -70,6 +71,7 @@ def _first_line(data: bytes, limit: int = 512) -> str:
         i = data.find(sep, 0, limit)
         if i != -1:
             end = min(end, i)
+    logger.debug("_first_line: retour strip(...)")
     return data[: min(end, limit)].decode("latin-1").strip()
 
 
@@ -86,6 +88,7 @@ def _find_products(text: str, products: tuple[str, ...]) -> list[tuple[str, str 
         m = re.search(pattern, text, re.IGNORECASE)
         if m:
             found.append((name, m.group(1)))
+    logger.debug("_find_products: retour found")
     return found
 
 
@@ -103,6 +106,7 @@ _UA_NOISE = frozenset({"mozilla", "applewebkit", "khtml", "gecko", "safari", "mo
 
 def _header_value(head: bytes, name: bytes) -> str | None:
     m = re.search(rb"(?im)^" + re.escape(name) + rb"[ \t]*:[ \t]*(.*?)[ \t]*\r?$", head)
+    logger.debug("_header_value: retour conditionnel")
     return m.group(1).decode("latin-1") if m else None
 
 
@@ -112,7 +116,9 @@ def _http_head(payload: bytes) -> bytes:
     for sep in (b"\r\n\r\n", b"\n\n"):
         i = payload.find(sep)
         if i != -1:
+            logger.debug("_http_head: retour element")
             return payload[:i]
+    logger.debug("_http_head: retour payload")
     return payload
 
 
@@ -122,6 +128,7 @@ def _versioned_tokens(value: str) -> list[tuple[str, str]]:
         m = _TOKEN_RE.match(tok)
         if m:
             tokens.append((m.group(1), m.group(2)))
+    logger.debug("_versioned_tokens: retour tokens")
     return tokens
 
 
@@ -130,23 +137,29 @@ def _http_banners(payload: bytes) -> list[Banner]:
     if payload.startswith(b"HTTP/1."):
         value = _header_value(head, b"Server")
         if not value:
+            logger.debug("_http_banners: retour liste")
             return []
         tokens = _versioned_tokens(value)
         if tokens:
+            logger.debug("_http_banners: retour liste")
             return [Banner("http", name, ver, value) for name, ver in tokens]
         # "Server: nginx", "Server: cloudflare" : pas de version mais le
         # logiciel est identifie.
         bare = _COMMENT_RE.sub(" ", value).strip()
+        logger.debug("_http_banners: retour conditionnel")
         return [Banner("http", bare, None, value)] if bare else []
     if payload.startswith(_HTTP_METHODS):
         value = _header_value(head, b"User-Agent")
         if not value:
+            logger.debug("_http_banners: retour liste")
             return []
+        logger.debug("_http_banners: retour liste")
         return [
             Banner("http", name, ver, value, ROLE_CLIENT)
             for name, ver in _versioned_tokens(value)
             if name.lower() not in _UA_NOISE
         ]
+    logger.debug("_http_banners: retour liste")
     return []
 
 
@@ -160,6 +173,7 @@ def _ssh_banners(payload: bytes, sport: int | None, dport: int | None) -> list[B
     line = _first_line(payload)
     m = _SSH_RE.match(line)
     if not m:
+        logger.debug("_ssh_banners: retour liste")
         return []
     software = m.group(2)
     sm = _SSH_SOFTWARE_RE.match(software)
@@ -168,6 +182,7 @@ def _ssh_banners(payload: bytes, sport: int | None, dport: int | None) -> list[B
     # sait laquelle est le serveur ; hors port standard on suppose que
     # l'emetteur est le serveur (il parle en premier en pratique).
     role = ROLE_CLIENT if dport == 22 and sport != 22 else ROLE_SERVER
+    logger.debug("_ssh_banners: retour liste")
     return [Banner("ssh", name, version, line, role)]
 
 
@@ -191,15 +206,19 @@ _GREETINGS: dict[int, tuple[str, bytes, tuple[str, ...]]] = {
 def _greeting_banners(payload: bytes, sport: int | None) -> list[Banner]:
     spec = _GREETINGS.get(sport) if sport is not None else None
     if spec is None:
+        logger.debug("_greeting_banners: retour liste")
         return []
     protocol, prefix, products = spec
     if not payload.startswith(prefix):
+        logger.debug("_greeting_banners: retour liste")
         return []
     line = _first_line(payload)
+    logger.debug("_greeting_banners: retour liste")
     return [Banner(protocol, _canonical(products, name), ver, line) for name, ver in _find_products(line, products)]
 
 
 def _canonical(products: tuple[str, ...], name: str) -> str:
+    logger.debug("_canonical: retour next(...)")
     return next((p for p in products if p.lower() == name.lower()), name)
 
 
@@ -240,6 +259,7 @@ def _dns_name(msg: bytes, off: int) -> tuple[str, int]:
         off += 1
         labels.append(msg[off : off + length].decode("ascii", "replace"))
         off += length
+    logger.debug("_dns_name: retour tuple")
     return ".".join(labels), (end if end is not None else off)
 
 
@@ -247,10 +267,12 @@ def _version_bind_txt(msg: bytes) -> str | None:
     """Texte de la reponse TXT a une requete CHAOS `version.bind`, None si
     ce n'est pas une telle reponse."""
     if len(msg) < 12:
+        logger.debug("_version_bind_txt: retour None")
         return None
     flags = struct.unpack_from("!H", msg, 2)[0]
     qdcount, ancount = struct.unpack_from("!HH", msg, 4)
     if not flags & 0x8000:  # reponses uniquement
+        logger.debug("_version_bind_txt: retour None")
         return None
     off = 12
     asked = False
@@ -261,6 +283,7 @@ def _version_bind_txt(msg: bytes) -> str | None:
         if name.lower() == "version.bind" and qclass == _DNS_CHAOS and qtype == _DNS_TXT:
             asked = True
     if not asked:
+        logger.debug("_version_bind_txt: retour None")
         return None
     for _ in range(ancount):
         _name, off = _dns_name(msg, off)
@@ -269,7 +292,9 @@ def _version_bind_txt(msg: bytes) -> str | None:
         rdata = msg[off : off + rdlen]
         off += rdlen
         if rtype == _DNS_TXT and rdata:
+            logger.debug("_version_bind_txt: retour decode(...)")
             return rdata[1 : 1 + rdata[0]].decode("utf-8", "replace")
+    logger.debug("_version_bind_txt: retour None")
     return None
 
 
@@ -277,17 +302,21 @@ def _dns_banners(payload: bytes, proto: str) -> list[Banner]:
     msg = payload
     if proto == "TCP":  # RFC 1035 §4.2.2 : prefixe de longueur sur 2 octets
         if len(msg) < 2 or struct.unpack_from("!H", msg, 0)[0] != len(msg) - 2:
+            logger.debug("_dns_banners: retour liste")
             return []
         msg = msg[2:]
     txt = _version_bind_txt(msg)
     if not txt:
+        logger.debug("_dns_banners: retour liste")
         return []
     known = _find_products(txt, _DNS_PRODUCTS)
     if known:
         name, ver = known[0]
+        logger.debug("_dns_banners: retour liste")
         return [Banner("dns", _canonical(_DNS_PRODUCTS, name), ver, txt)]
     # Convention BIND : `version.bind` renvoie la version brute ("9.16.1-Ubuntu").
     ver = _leading_version(txt)
+    logger.debug("_dns_banners: retour conditionnel")
     return [Banner("dns", "BIND", ver, txt)] if ver else []
 
 
@@ -310,6 +339,7 @@ def _smb_cstring(msg: bytes, pos: int, unicode_: bool) -> tuple[str, int]:
     if unicode_:
         for i in range(pos, len(msg) - 1, 2):
             if msg[i : i + 2] == b"\x00\x00":
+                logger.debug("_smb_cstring: retour tuple")
                 return msg[pos:i].decode("utf-16-le", "replace"), i + 2
         logger.trace("_smb_cstring: refus, ValueError")
         raise ValueError("chaine SMB tronquee")
@@ -317,16 +347,20 @@ def _smb_cstring(msg: bytes, pos: int, unicode_: bool) -> tuple[str, int]:
     if end == -1:
         logger.trace("_smb_cstring: refus, ValueError")
         raise ValueError("chaine SMB tronquee")
+    logger.debug("_smb_cstring: retour tuple")
     return msg[pos:end].decode("latin-1"), end + 1
 
 
 def _smb1_banners(msg: bytes) -> list[Banner]:
     if len(msg) < 33 or not msg[9] & 0x80:  # reponses uniquement
+        logger.debug("_smb1_banners: retour liste")
         return []
     command = msg[4]
     if command == _SMB1_NEGOTIATE:
+        logger.debug("_smb1_banners: retour liste")
         return [Banner("smb", "SMB", "1.0", "SMB1 negotiate response")]
     if command != _SMB1_SESSION_SETUP:
+        logger.debug("_smb1_banners: retour liste")
         return []
     unicode_ = bool(struct.unpack_from("<H", msg, 10)[0] & 0x8000)
     word_count = msg[32]
@@ -341,30 +375,38 @@ def _smb1_banners(msg: bytes) -> list[Banner]:
     m = _SAMBA_RE.match(native_lm)
     if m:
         banners.append(Banner("smb", "Samba", _leading_version(m.group(1)), native_lm))
+    logger.debug("_smb1_banners: retour banners")
     return banners
 
 
 def _smb2_banners(msg: bytes) -> list[Banner]:
     if len(msg) < 70:
+        logger.debug("_smb2_banners: retour liste")
         return []
     command = struct.unpack_from("<H", msg, 12)[0]
     flags = struct.unpack_from("<I", msg, 16)[0]
     if command != 0 or not flags & 1:  # NEGOTIATE, reponse serveur
+        logger.debug("_smb2_banners: retour liste")
         return []
     dialect = struct.unpack_from("<H", msg, 68)[0]
     version = _SMB2_DIALECTS.get(dialect, f"0x{dialect:04x}")
+    logger.debug("_smb2_banners: retour liste")
     return [Banner("smb", "SMB", version, f"SMB2 negotiate response, dialect 0x{dialect:04x}")]
 
 
 def _smb_banners(payload: bytes) -> list[Banner]:
     # En-tete NetBIOS Session Service : type 0x00 + longueur sur 3 octets.
     if len(payload) < 8 or payload[0] != 0:
+        logger.debug("_smb_banners: retour liste")
         return []
     msg = payload[4:]
     if msg[:4] == b"\xffSMB":
+        logger.debug("_smb_banners: retour _smb1_banners(...)")
         return _smb1_banners(msg)
     if msg[:4] == b"\xfeSMB":
+        logger.debug("_smb_banners: retour _smb2_banners(...)")
         return _smb2_banners(msg)
+    logger.debug("_smb_banners: retour liste")
     return []
 
 
@@ -379,6 +421,7 @@ def extract_banners(proto: str, sport: int | None, dport: int | None, payload: b
     port serveur (salutations SMTP/FTP/IMAP/POP3, DNS). Tuple vide si
     rien n'est reconnu ou si la charge utile est malformee."""
     if not payload or proto not in ("TCP", "UDP"):
+        logger.debug("extract_banners: retour tuple")
         return ()
     try:
         banners: list[Banner] = []
@@ -403,6 +446,7 @@ def extract_banners(proto: str, sport: int | None, dport: int | None, payload: b
                 sport,
                 ", tronque a " + str(MAX_BANNERS_PER_PACKET) if len(banners) > MAX_BANNERS_PER_PACKET else "",
             )
+        logger.debug("extract_banners: retour tuple(...)")
         return tuple(banners[:MAX_BANNERS_PER_PACKET])
     except (ValueError, IndexError, struct.error, UnicodeError) as exc:
         # charge utile malformee : resultat attendu, a chaque paquet -> TRACE sans traceback

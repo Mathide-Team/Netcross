@@ -37,6 +37,7 @@ def split_interfaces(text: str) -> list[str]:
         name = part.strip()
         if name and name not in interfaces:
             interfaces.append(name)
+    logger.debug("split_interfaces: retour interfaces")
     return interfaces
 
 

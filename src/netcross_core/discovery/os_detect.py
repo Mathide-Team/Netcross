@@ -77,7 +77,9 @@ def guess_initial_ttl(observed_ttl: int) -> int:
     sur 255."""
     for standard in _STANDARD_INITIAL_TTLS:
         if observed_ttl <= standard:
+            logger.debug("guess_initial_ttl: retour standard")
             return standard
+    logger.debug("guess_initial_ttl: retour element")
     return _STANDARD_INITIAL_TTLS[-1]
 
 
@@ -86,6 +88,7 @@ def guess_os_from_ttl(observed_ttl: int) -> OsGuess:
     CONFIDENCE_LOW, voir `refine_with_tcp_options` pour l'affiner."""
     initial = guess_initial_ttl(observed_ttl)
     hops = initial - observed_ttl
+    logger.debug("guess_os_from_ttl: retour OsGuess(...)")
     return OsGuess(
         family=_TTL_FAMILY[initial],
         guessed_initial_ttl=initial,
@@ -113,9 +116,12 @@ def refine_with_tcp_options(
     superieure a CONFIDENCE_LOW (idempotent, plusieurs appels
     successifs ne degradent jamais la confiance)."""
     if guess.confidence != CONFIDENCE_LOW:
+        logger.debug("refine_with_tcp_options: retour guess")
         return guess
     if wscale_shift is None or not sack_permitted:
+        logger.debug("refine_with_tcp_options: retour guess")
         return guess
+    logger.debug("refine_with_tcp_options: retour OsGuess(...)")
     return OsGuess(
         family=guess.family,
         guessed_initial_ttl=guess.guessed_initial_ttl,

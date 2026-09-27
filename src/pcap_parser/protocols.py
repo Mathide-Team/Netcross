@@ -90,9 +90,11 @@ def extract_rtp(layers: dict, udp_payload: bytes) -> dict | None:
         ssrc = hex_or_dec_to_int(g(rtp, "rtp_rtp_ssrc"))
         pt = hex_or_dec_to_int(g(rtp, "rtp_rtp_p_type"))
         if seq is not None and ts is not None and ssrc is not None:
+            logger.debug("extract_rtp: retour dict")
             return {"pt": pt, "seq": seq, "ts": ts, "ssrc": ssrc}
         logger.trace("extract_rtp: couche rtp incomplete (seq={}, ts={}, ssrc={}), repli heuristique", seq, ts, ssrc)
 
+    logger.debug("extract_rtp: retour _parse_rtp_heuristic(...)")
     return _parse_rtp_heuristic(udp_payload)
 
 
@@ -102,9 +104,11 @@ def _parse_rtp_heuristic(payload: bytes) -> dict | None:
     signalisation SDP vue dans la capture. Identique a l'ancien
     parse_rtp() de parsing.py."""
     if len(payload) < 12:
+        logger.debug("_parse_rtp_heuristic: retour None")
         return None
     b0 = payload[0]
     if (b0 >> 6) & 0x3 != 2:
+        logger.debug("_parse_rtp_heuristic: retour None")
         return None
     cc = b0 & 0xF
     header_len = 12 + cc * 4
@@ -124,6 +128,7 @@ def extract_dhcp(layers: dict) -> dict | None:
     paquet n'est pas du DHCP (dhcp.type absent)."""
     dhcp = innermost(layers, "dhcp")
     if dhcp is None:
+        logger.debug("extract_dhcp: retour None")
         return None
     msg_code = hex_or_dec_to_int(g(dhcp, "dhcp_dhcp_type"))
     if msg_code is None:
@@ -131,6 +136,7 @@ def extract_dhcp(layers: dict) -> dict | None:
         return None
     if msg_code not in DHCP_MESSAGE_TYPES:
         logger.trace("extract_dhcp: type de message DHCP inconnu {}", msg_code)
+    logger.debug("extract_dhcp: retour dict")
     return {
         "xid": hex_or_dec_to_int(g(dhcp, "dhcp_dhcp_id")),
         "msg_type": DHCP_MESSAGE_TYPES.get(msg_code, str(msg_code)),
@@ -148,6 +154,7 @@ def extract_sip(layers: dict, payload: bytes) -> dict | None:
     if sip is not None:
         msg_type = g(sip, "sip_sip_Method") or g(sip, "sip_sip_Status-Line")
         if msg_type is not None:
+            logger.debug("extract_sip: retour dict")
             return {
                 "msg_type": msg_type,
                 "call_id": g(sip, "sip_sip_Call-ID"),
@@ -157,6 +164,7 @@ def extract_sip(layers: dict, payload: bytes) -> dict | None:
             }
         logger.trace("extract_sip: couche sip sans methode ni ligne de statut, repli heuristique")
 
+    logger.debug("extract_sip: retour _parse_sip_heuristic(...)")
     return _parse_sip_heuristic(payload)
 
 
@@ -165,6 +173,7 @@ def _parse_sip_heuristic(payload: bytes) -> dict | None:
     (methode connue ou "SIP/2.0 <code>"), extraction litterale des
     en-tetes sans interpretation."""
     if not payload:
+        logger.debug("_parse_sip_heuristic: retour None")
         return None
     try:
         text = payload.decode("utf-8", errors="replace")
@@ -173,6 +182,7 @@ def _parse_sip_heuristic(payload: bytes) -> dict | None:
         return None
     lines = text.split("\r\n") if "\r\n" in text else text.split("\n")
     if not lines:
+        logger.debug("_parse_sip_heuristic: retour None")
         return None
     first = lines[0].strip()
 
@@ -186,6 +196,7 @@ def _parse_sip_heuristic(payload: bytes) -> dict | None:
         if token in SIP_METHODS:
             msg_type = token
     if msg_type is None:
+        logger.debug("_parse_sip_heuristic: retour None")
         return None
 
     headers = {}
@@ -197,6 +208,7 @@ def _parse_sip_heuristic(payload: bytes) -> dict | None:
         name, _, value = line.partition(":")
         headers[name.strip().lower()] = value.strip()
 
+    logger.debug("_parse_sip_heuristic: retour dict")
     return {
         "msg_type": msg_type,
         "call_id": headers.get("call-id") or headers.get("i"),
@@ -221,6 +233,7 @@ def extract_dns(layers: dict) -> dict | None:
     innermost() pour les couches empilees ailleurs dans ce package."""
     dns = innermost(layers, "dns")
     if dns is None:
+        logger.debug("extract_dns: retour None")
         return None
     txn_id = hex_or_dec_to_int(g(dns, "dns_dns_id"))
     if txn_id is None:
@@ -231,6 +244,7 @@ def extract_dns(layers: dict) -> dict | None:
         # plusieurs questions dans un meme paquet : rarissime, seule la premiere est gardee
         logger.trace("extract_dns: {} questions dans le paquet, premiere retenue", len(qry_name))
         qry_name = qry_name[0] if qry_name else None
+    logger.debug("extract_dns: retour dict")
     return {
         "txn_id": txn_id,
         "is_response": as_bool(g(dns, "dns_dns_flags_response")),
@@ -257,6 +271,7 @@ def _dns_answers(dns: dict) -> tuple[str, ...]:
                 out.append(str(ip))
     if len(out) > 1:
         logger.trace("_dns_answers: {} adresses A/AAAA distinctes", len(out))
+    logger.debug("_dns_answers: retour tuple(...)")
     return tuple(out)
 
 
@@ -294,6 +309,7 @@ def extract_http(layers: dict) -> dict | None:
     """
     http = innermost(layers, "http")
     if http is None:
+        logger.debug("extract_http: retour None")
         return None
     is_request = as_bool(g(http, "http_http_request"))
     is_response = as_bool(g(http, "http_http_response"))
@@ -309,6 +325,7 @@ def extract_http(layers: dict) -> dict | None:
     content_type = g(http, "http_http_content_type")
     if isinstance(content_type, list):
         content_type = content_type[0] if content_type else None
+    logger.debug("extract_http: retour dict")
     return {
         "is_request": is_request,
         "is_response": is_response,
@@ -340,15 +357,21 @@ def _public_key_summary(cert) -> tuple[str | None, int | None]:
         logger.debug("_public_key_summary: clé publique non décodable ({})", type(exc).__name__)
         return None, None
     if isinstance(key, _rsa.RSAPublicKey):
+        logger.debug("_public_key_summary: retour tuple")
         return "RSA", key.key_size
     if isinstance(key, _ec.EllipticCurvePublicKey):
+        logger.debug("_public_key_summary: retour tuple")
         return "EC", key.curve.key_size
     if isinstance(key, _dsa.DSAPublicKey):
+        logger.debug("_public_key_summary: retour tuple")
         return "DSA", key.key_size
     if isinstance(key, _ed25519.Ed25519PublicKey):
+        logger.debug("_public_key_summary: retour tuple")
         return "Ed25519", None
     if isinstance(key, _ed448.Ed448PublicKey):
+        logger.debug("_public_key_summary: retour tuple")
         return "Ed448", None
+    logger.debug("_public_key_summary: retour tuple")
     return type(key).__name__, None
 
 
@@ -360,6 +383,7 @@ def _signature_hash(cert) -> str | None:
     except _UnsupportedAlgorithm:
         logger.debug("_signature_hash: algorithme non pris en charge {}", cert.signature_algorithm_oid.dotted_string)
         return _UNMAPPED_SIGNATURE_HASHES.get(cert.signature_algorithm_oid.dotted_string)
+    logger.debug("_signature_hash: retour conditionnel")
     return algo.name if algo is not None else None
 
 
@@ -380,6 +404,7 @@ def _certificate_details(tls: dict) -> dict:
     raw = g(tls, "tls_tls_handshake_certificate")
     blobs = raw if isinstance(raw, list) else ([raw] if raw else [])
     if not blobs or _x509 is None:
+        logger.debug("_certificate_details: retour dict")
         return {}
     try:
         leaf = _x509.load_der_x509_certificate(bytes.fromhex(str(blobs[0]).replace(":", "")))
@@ -394,6 +419,7 @@ def _certificate_details(tls: dict) -> dict:
         # certificat sans SAN : cas courant, pas une erreur
         logger.trace("_certificate_details: pas de SAN IP lisible ({})", type(exc).__name__)
         san_ip = ()
+    logger.debug("_certificate_details: retour dict")
     return {
         "issuer": leaf.issuer.rfc4514_string(),
         "subject": leaf.subject.rfc4514_string(),
@@ -464,11 +490,13 @@ def extract_tls_certificate(layers: dict) -> dict | None:
     """
     tls = innermost(layers, "tls")
     if tls is None:
+        logger.debug("extract_tls_certificate: retour None")
         return None
     dates = g(tls, "x509af_x509af_utcTime")
     if not isinstance(dates, list):
         dates = [dates] if dates is not None else []
     if len(dates) < 2:
+        logger.debug("extract_tls_certificate: retour None")
         return None  # pas de certificat (dates de validite) dans ce paquet
     logger.trace("extract_tls_certificate: certificat present, {} date(s) de validite dans la chaine", len(dates))
     san = g(tls, "x509ce_x509ce_dNSName")
@@ -481,6 +509,7 @@ def extract_tls_certificate(layers: dict) -> dict | None:
     serial = g(tls, "x509af_x509af_serialNumber")
     if isinstance(serial, list):
         serial = serial[0] if serial else None
+    logger.debug("extract_tls_certificate: retour dict")
     return {
         "not_before": dates[0],
         "not_after": dates[1],
@@ -528,11 +557,13 @@ def extract_tls_handshake(layers: dict) -> dict | None:
     """
     tls = innermost(layers, "tls")
     if tls is None:
+        logger.debug("extract_tls_handshake: retour None")
         return None
 
     def _as_int_set(value) -> set[int]:
         if not isinstance(value, list):
             value = [value] if value is not None else []
+        logger.debug("_as_int_set: retour valeur")
         return {v for v in (hex_or_dec_to_int(x) for x in value) if v is not None}
 
     content_types = _as_int_set(g(tls, "tls_tls_record_content_type"))
@@ -540,6 +571,7 @@ def extract_tls_handshake(layers: dict) -> dict | None:
     if handshake_types:
         logger.trace("extract_tls_handshake: types de handshake en clair {}", sorted(handshake_types))
 
+    logger.debug("extract_tls_handshake: retour dict")
     return {
         "client_hello": 1 in handshake_types,
         "server_hello": 2 in handshake_types,

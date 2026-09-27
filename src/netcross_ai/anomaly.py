@@ -37,12 +37,15 @@ class Baseline:
 
     @classmethod
     def from_flows(cls, flows: list[dict], label: str = "") -> Baseline:
+        logger.debug("from_flows: retour cls(...)")
         return cls([flow_features(f) for f in flows], label)
 
     def merge(self, other: Baseline) -> Baseline:
+        logger.debug("merge: retour Baseline(...)")
         return Baseline(self.vectors + other.vectors, self.label or other.label)
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict")
         return {
             "schema": BASELINE_SCHEMA,
             "features": list(FEATURE_NAMES),
@@ -67,6 +70,7 @@ class Baseline:
         if not isinstance(vectors, list) or not all(is_feature_vector(v) for v in vectors):
             logger.trace("Baseline.from_dict: refus, BaselineError")
             raise BaselineError(f"{source} : vecteurs invalides.")
+        logger.debug("from_dict: retour cls(...)")
         return cls(
             [[float(x) for x in v] for v in vectors], str(data.get("label", "")), str(data.get("created_at", ""))
         )
@@ -78,6 +82,7 @@ class Baseline:
         except (OSError, json.JSONDecodeError) as exc:
             logger.exception(f"échec dans load: {exc}")
             raise BaselineError(f"baseline illisible ({path}) : {exc}") from exc
+        logger.debug("load: retour from_dict(...)")
         return cls.from_dict(data, str(path))
 
 
@@ -90,6 +95,7 @@ class FlowAnomaly:
     reasons: list[str]
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict")
         return {
             "flow": self.flow,
             "score": self.score,
@@ -105,6 +111,7 @@ def _explain(vector: list[float], means: list[float], stds: list[float]) -> list
         z = (value - m) / s if s > 1e-9 else (0.0 if abs(value - m) < 1e-9 else float("inf"))
         if abs(z) >= _Z_EXPLAIN:
             out.append(f"{name} = {value:.3g} (baseline {m:.3g} +/- {s:.2g})")
+    logger.debug("_explain: retour out")
     return out
 
 
@@ -118,6 +125,7 @@ def detect_anomalies(baseline: Baseline, flows: list[dict], contamination: float
             "l'enrichir avec d'autres captures de trafic normal."
         )
     if not flows:
+        logger.debug("detect_anomalies: retour liste")
         return []
     from sklearn.ensemble import IsolationForest
 
@@ -140,4 +148,5 @@ def detect_anomalies(baseline: Baseline, flows: list[dict], contamination: float
         )
         for f, v, r, flag in zip(flows, vectors, raw, flags)
     ]
+    logger.debug("detect_anomalies: retour sorted(...)")
     return sorted(results, key=lambda a: a.score, reverse=True)

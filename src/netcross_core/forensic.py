@@ -308,6 +308,7 @@ class ForensicIndex:
         if fk is None:
             logger.debug("packet_to_flow: trame {} du point {} hors index", frame_number, point)
             return None
+        logger.debug("packet_to_flow: retour get(...)")
         return self._flow_by_key.get(fk)
 
     # -- Flow → evenements --------------------------------------------------
@@ -333,6 +334,7 @@ class ForensicIndex:
                         events.append(ev)
                         seen.add(id(ev))
 
+        logger.debug("flow_to_events: retour events")
         return events
 
     # -- Flow → paquets -----------------------------------------------------
@@ -367,6 +369,7 @@ def annotations_sidecar_path(capture_path: str) -> str:
 
     Ne verifie PAS l'existence du fichier -- utiliser `read_annotations`
     pour une lecture tolerante a l'absence."""
+    logger.debug("annotations_sidecar_path: retour valeur")
     return f"{capture_path}.annotations.json"
 
 
@@ -465,12 +468,14 @@ def _seq_delta(a: int, b: int) -> int:
     """a - b en arithmetique modulo 2**32, ramene dans [-2**31, 2**31[ : positif
     si a est "apres" b sur le cercle des numeros de sequence (gere le retour a
     zero du compteur de 32 bits)."""
+    logger.debug("_seq_delta: retour calcul")
     return ((a - b + _SEQ_HALF) % _SEQ_MODULO) - _SEQ_HALF
 
 
 def _has_flag(pk: Pkt, letter: str) -> bool:
     """Drapeau TCP leve ? `Pkt.flags` est la chaine positionnelle de tshark
     (tcp.flags.str) : une lettre (S, F, A, R...) par drapeau actif."""
+    logger.debug("_has_flag: retour booleen")
     return pk.flags is not None and letter in pk.flags
 
 
@@ -504,6 +509,7 @@ def _fill_gaps(gaps: list[_OpenGap], start: int, span: int) -> list[_OpenGap]:
         if hi < gap.length:
             tail_start = (gap.start + hi) % _SEQ_MODULO
             remaining.append(_OpenGap(tail_start, gap.length - hi, gap.prev_ts, gap.reveal_frame, gap.reveal_ts))
+    logger.debug("_fill_gaps: retour remaining")
     return remaining
 
 
@@ -576,6 +582,7 @@ def _track_stream(ordered: list[Pkt]) -> list[_OpenGap]:
     finished.extend(open_gaps)
     if finished:
         logger.trace("_track_stream: {} paquet(s), {} trou(s) de sequence", len(ordered), len(finished))
+    logger.debug("_track_stream: retour finished")
     return finished
 
 
@@ -591,6 +598,7 @@ def _classify_gap(gap: _OpenGap, ack_ts: list[float], ack_nums: list[int]) -> tu
     last = bisect_left(ack_ts, gap.epoch_end_ts)
     for i in range(first, last):
         if _seq_delta(ack_nums[i], end) >= 0:
+            logger.debug("_classify_gap: retour tuple")
             return (
                 SEQ_GAP_CAPTURE_DROP,
                 f"ACK {ack_nums[i]} >= fin du trou ({end}) : octets acquittes par le recepteur "
@@ -600,15 +608,18 @@ def _classify_gap(gap: _OpenGap, ack_ts: list[float], ack_nums: list[int]) -> tu
     if after < last:
         stuck = max(ack_nums[after:last], key=lambda a: _seq_delta(a, gap.start))
         if _seq_delta(stuck, gap.start) >= 0:
+            logger.debug("_classify_gap: retour tuple")
             return (
                 SEQ_GAP_NETWORK_LOSS,
                 f"ACK bloque a {stuck} (< fin du trou {end}) : octets non acquittes, "
                 "aucune retransmission dans la capture",
             )
+        logger.debug("_classify_gap: retour tuple")
         return (
             SEQ_GAP_INDETERMINATE,
             f"ACK du recepteur en retard sur le trou ({stuck} < debut du trou {gap.start}) : impossible de conclure",
         )
+    logger.debug("_classify_gap: retour tuple")
     return (SEQ_GAP_INDETERMINATE, "aucun ACK du recepteur observe a ce point apres le trou : impossible de conclure")
 
 

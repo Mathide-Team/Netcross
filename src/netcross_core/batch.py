@@ -70,10 +70,13 @@ class CaptureInventory:
     @property
     def duration(self) -> float:
         if self.start is None or self.end is None:
+            logger.debug("duration: retour 0.0")
             return 0.0
+        logger.debug("duration: retour max(...)")
         return max(0.0, self.end - self.start)
 
     def to_dict(self) -> dict:
+        logger.debug("to_dict: retour dict")
         return {
             "label": self.label,
             "path": self.path,
@@ -88,6 +91,7 @@ class CaptureInventory:
 
     @classmethod
     def from_dict(cls, data: dict) -> CaptureInventory:
+        logger.debug("from_dict: retour cls(...)")
         return cls(
             label=data["label"],
             path=data["path"],
@@ -110,11 +114,14 @@ def _is_meaningful_ip(addr: str) -> bool:
         logger.exception("échec dans _is_meaningful_ip")
         return False
     if ip.is_multicast or ip.is_unspecified or ip.is_loopback or ip.is_link_local:
+        logger.debug("_is_meaningful_ip: retour False")
         return False
+    logger.debug("_is_meaningful_ip: retour valeur")
     return not (isinstance(ip, ipaddress.IPv4Address) and (addr == "255.255.255.255" or addr.endswith(".255")))
 
 
 def _is_infra(pkt) -> bool:
+    logger.debug("_is_infra: retour booleen")
     return (pkt.sport in INFRA_PORTS) or (pkt.dport in INFRA_PORTS)
 
 
@@ -144,6 +151,7 @@ def inventory_from_packets(label: str, path: str, packets: Iterable) -> CaptureI
             prev = inv.pairs.get(key)
             if prev is None or ts < prev:
                 inv.pairs[key] = ts
+    logger.debug("inventory_from_packets: retour inv")
     return inv
 
 
@@ -166,26 +174,32 @@ class PairEvaluation:
 
     @property
     def compatible(self) -> bool:
+        logger.debug("compatible: retour valeur")
         return not self.failed
 
     @property
     def score(self) -> int:
         """Nombre de criteres satisfaits (0-3) : sert a choisir, pour une
         capture isolee, le candidat le plus proche a citer dans le motif."""
+        logger.debug("score: retour calcul")
         return 3 - len(self.failed)
 
 
 def _estimate_offset(a: CaptureInventory, b: CaptureInventory, common_pairs) -> float | None:
     if not common_pairs:
+        logger.debug("_estimate_offset: retour None")
         return None
+    logger.debug("_estimate_offset: retour median(...)")
     return statistics.median(b.pairs[p] - a.pairs[p] for p in common_pairs)
 
 
 def _fmt_ts(ts: float | None) -> str:
     if ts is None:
+        logger.debug("_fmt_ts: retour '?'")
         return "?"
     import datetime
 
+    logger.debug("_fmt_ts: retour strftime(...)")
     return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime("%H:%M:%S")
 
 
@@ -194,17 +208,22 @@ def _fmt_list(items, limit: int = 3) -> str:
     shown = ", ".join(items[:limit])
     if len(items) > limit:
         shown += f", ... (+{len(items) - limit})"
+    logger.debug("_fmt_list: retour shown")
     return shown
 
 
 def _fmt_gap(seconds: float) -> str:
     seconds = abs(seconds)
     if seconds >= 86400:
+        logger.debug("_fmt_gap: retour valeur")
         return f"{seconds / 86400:.0f} jour(s)"
     if seconds >= 3600:
+        logger.debug("_fmt_gap: retour valeur")
         return f"{seconds / 3600:.1f} h"
     if seconds >= 60:
+        logger.debug("_fmt_gap: retour valeur")
         return f"{seconds / 60:.0f} min"
+    logger.debug("_fmt_gap: retour valeur")
     return f"{seconds:.1f} s"
 
 
@@ -259,6 +278,7 @@ def evaluate_pair(
             failed.append(f"{len(common_ips)} IP commune(s) < {min_common_ips}")
     if not common_pairs:
         failed.append("aucune conversation commune")
+    logger.debug("evaluate_pair: retour PairEvaluation(...)")
     return PairEvaluation(
         a=a.label,
         b=b.label,
@@ -287,6 +307,7 @@ def justify(ev: PairEvaluation) -> str:
     if ev.clock_offset is not None and abs(ev.clock_offset) >= CLOCK_OFFSET_REPORT_THRESHOLD:
         state = "corrige" if ev.offset_applied else "NON corrige (hors --group-window)"
         parts.append(f"decalage d'horloge estime {ev.clock_offset:+.3f} s ({ev.b} vs {ev.a}, {state})")
+    logger.debug("justify: retour join(...)")
     return ", ".join(parts)
 
 
@@ -297,6 +318,7 @@ class CaptureGroup:
 
     @property
     def labels(self) -> list[str]:
+        logger.debug("labels: retour liste")
         return [m.label for m in self.members]
 
 
@@ -316,6 +338,7 @@ class BatchPlan:
 
     @property
     def grouped_count(self) -> int:
+        logger.debug("grouped_count: retour sum(...)")
         return sum(len(g.members) for g in self.groups)
 
     def check_invariant(self) -> None:
@@ -361,6 +384,7 @@ def plan_batch(
         isolated.extend(IsolatedCapture(inv, "regroupement desactive (--no-group)") for inv in candidates)
         plan = BatchPlan(len(inventories), [], isolated, failures, grouping_enabled=False)
         plan.check_invariant()
+        logger.debug("plan_batch: retour plan")
         return plan
 
     evals: dict[tuple[str, str], PairEvaluation] = {}
@@ -372,6 +396,7 @@ def plan_batch(
             evals[key] = evaluate_pair(
                 x, y, min_overlap=min_overlap, min_common_ips=min_common_ips, group_window=group_window
             )
+        logger.debug("ev: retour element")
         return evals[key]
 
     buckets: list[list[CaptureInventory]] = []
@@ -410,6 +435,7 @@ def plan_batch(
 
     plan = BatchPlan(len(inventories), groups, isolated, failures)
     plan.check_invariant()
+    logger.debug("plan_batch: retour plan")
     return plan
 
 
@@ -453,4 +479,5 @@ def format_batch_index(
     if synthesis:
         lines.append("  synthese :")
         lines.extend(f"    {s}" for s in synthesis)
+    logger.debug("format_batch_index: retour calcul")
     return "\n".join(lines) + "\n"

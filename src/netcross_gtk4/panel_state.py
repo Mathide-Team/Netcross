@@ -137,6 +137,7 @@ def panel_visibility(
     )
     diff_effectif = diff_mode and not live_mode
     duplicate_controls = not diff_mode
+    logger.debug("panel_visibility: retour PanelVisibility(...)")
     return PanelVisibility(
         single_panel=not diff_mode and not live_mode,
         live_panel=live_mode,
@@ -206,6 +207,7 @@ def run_button_state(
         live_points,
     )
     if live_capturing:
+        logger.debug("run_button_state: retour RunButtonState(...)")
         return RunButtonState(
             enabled=True,
             raison="capture en cours : bouton pilote par le cycle de capture",
@@ -216,6 +218,7 @@ def run_button_state(
 
     if diff_mode:
         if baseline_rows < POINTS_MINIMUM or current_rows < POINTS_MINIMUM:
+            logger.debug("run_button_state: retour RunButtonState(...)")
             return RunButtonState(
                 enabled=False,
                 raison=(
@@ -224,10 +227,12 @@ def run_button_state(
                 ),
                 label=label,
             )
+        logger.debug("run_button_state: retour RunButtonState(...)")
         return RunButtonState(enabled=True, raison=None, label=label)
 
     if live_mode:
         if live_points < POINTS_MINIMUM:
+            logger.debug("run_button_state: retour RunButtonState(...)")
             return RunButtonState(
                 enabled=False,
                 raison=(
@@ -236,14 +241,17 @@ def run_button_state(
                 ),
                 label=label,
             )
+        logger.debug("run_button_state: retour RunButtonState(...)")
         return RunButtonState(enabled=True, raison=None, label=label)
 
     if single_rows < POINTS_MINIMUM:
+        logger.debug("run_button_state: retour RunButtonState(...)")
         return RunButtonState(
             enabled=False,
             raison=(f"analyse croisee : {POINTS_MINIMUM} captures minimum ({single_rows} pour l'instant)"),
             label=label,
         )
+    logger.debug("run_button_state: retour RunButtonState(...)")
     return RunButtonState(enabled=True, raison=None, label=label)
 
 
@@ -259,9 +267,12 @@ def selected_protocol(index: int, n_items: int, lire: Callable[[int], str]) -> s
     selectionne, et une lecture directe leverait.
     """
     if n_items <= 0:
+        logger.debug("selected_protocol: retour None")
         return None
     if not 0 < index < n_items:
+        logger.debug("selected_protocol: retour None")
         return None
+    logger.debug("selected_protocol: retour lire(...)")
     return lire(index)
 
 
@@ -277,6 +288,7 @@ def comm_map_filters(
     vide signifierait « filtrer sur aucun protocole », c'est-a-dire une
     carte vide. La confusion produirait un ecran blanc sans message.
     """
+    logger.debug("comm_map_filters: retour dict")
     return {
         "protocols": [protocole] if protocole else None,
         "top_n": int(top_n),
@@ -329,16 +341,22 @@ def apply_dashboard_selection(
         if flow is None:
             logger.debug("apply_dashboard_selection: flux introuvable pour la clé {}, sélection inchangée", key)
             return selection
+        logger.debug("apply_dashboard_selection: retour select_flow(...)")
         return select_flow(selection, flow)
     if kind == "endpoint":
+        logger.debug("apply_dashboard_selection: retour select_endpoint(...)")
         return select_endpoint(selection, key)
     if kind == "protocol":
+        logger.debug("apply_dashboard_selection: retour select_protocol(...)")
         return select_protocol(selection, key)
     if kind == "point":
+        logger.debug("apply_dashboard_selection: retour select_point(...)")
         return select_point(selection, key)
     if kind == "bucket":
+        logger.debug("apply_dashboard_selection: retour select_bucket(...)")
         return select_bucket(selection, key)
     if kind == "event":
+        logger.debug("apply_dashboard_selection: retour select_event(...)")
         return select_event(selection, key, list(evenements or []))
     logger.warning("apply_dashboard_selection: type de vue inconnu {!r}", kind)
     raise UnknownViewTypeError(f"type de vue inconnu : {kind!r} (attendus : {', '.join(TYPES_DE_VUE)})")

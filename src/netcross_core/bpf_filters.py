@@ -85,6 +85,7 @@ PREDEFINED_BPF_FILTERS: tuple[BPFFilter, ...] = (
 
 
 def _name_key(name: str) -> str:
+    logger.debug("_name_key: retour casefold(...)")
     return name.strip().casefold()
 
 
@@ -98,6 +99,7 @@ def default_bpf_filters_path() -> Path:
 
 
 def _resolve(path: str | Path | None) -> Path:
+    logger.debug("_resolve: retour conditionnel")
     return Path(path).expanduser() if path is not None else default_bpf_filters_path()
 
 
@@ -121,6 +123,7 @@ def save_bpf_filters(filters: Iterable[BPFFilter], path: str | Path | None = Non
         logger.exception("erreur: BaseException")
         tmp.unlink(missing_ok=True)
         raise
+    logger.debug("save_bpf_filters: retour target")
     return target
 
 
@@ -139,6 +142,7 @@ def _filter_from_item(item: object, index: int) -> BPFFilter:
     if not isinstance(description, str):
         logger.trace("_filter_from_item: refus, ValueError")
         raise ValueError(f"entree #{index}: 'description' doit etre une chaine")
+    logger.debug("_filter_from_item: retour BPFFilter(...)")
     return BPFFilter(item["name"].strip(), item["expression"].strip(), description.strip())
 
 
@@ -176,6 +180,7 @@ def load_bpf_filters(path: str | Path | None = None) -> list[BPFFilter]:
     for index, item in enumerate(data):
         flt = _filter_from_item(item, index)
         by_name[_name_key(flt.name)] = flt
+    logger.debug("load_bpf_filters: retour list(...)")
     return list(by_name.values())
 
 
@@ -185,6 +190,7 @@ def available_bpf_filters(path: str | Path | None = None) -> list[BPFFilter]:
     voir l'en-tete du module). Meme contrat d'erreur que ``load_bpf_filters``.
     """
     user = [f for f in load_bpf_filters(path) if _name_key(f.name) not in _PREDEFINED_KEYS]
+    logger.debug("available_bpf_filters: retour liste")
     return [*PREDEFINED_BPF_FILTERS, *user]
 
 
@@ -209,4 +215,5 @@ def upsert_bpf_filter(new: BPFFilter, path: str | Path | None = None) -> list[BP
     else:
         saved.append(clean)
     save_bpf_filters(saved, path)
+    logger.debug("upsert_bpf_filter: retour available_bpf_filters(...)")
     return available_bpf_filters(path)

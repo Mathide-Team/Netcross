@@ -35,6 +35,7 @@ _COOKIE_LEN = 16
 
 
 def _read_u32(data: bytes, off: int) -> tuple[int, int]:
+    logger.debug("_read_u32: retour tuple")
     return int.from_bytes(data[off : off + 4], "big"), off + 4
 
 
@@ -42,6 +43,7 @@ def _read_namelist(data: bytes, off: int) -> tuple[list[str], int]:
     length, off = _read_u32(data, off)
     raw = data[off : off + length].decode("ascii")
     off += length
+    logger.debug("_read_namelist: retour tuple")
     return (raw.split(",") if raw else []), off
 
 
@@ -62,6 +64,7 @@ def parse_kexinit(payload: bytes) -> dict | None:
     algorithms, langues, first_kex_packet_follows) est renvoye pour
     completude mais non consomme."""
     try:
+        logger.debug("parse_kexinit: retour _parse_kexinit(...)")
         return _parse_kexinit(payload)
     except (IndexError, UnicodeError):
         logger.exception("échec dans parse_kexinit")
@@ -73,18 +76,22 @@ def _parse_kexinit(payload: bytes) -> dict | None:
     if data.startswith(b"SSH-"):
         nl = data.find(b"\n")
         if nl == -1:
+            logger.debug("_parse_kexinit: retour None")
             return None
         data = data[nl + 1 :]
     if len(data) < 6:
+        logger.debug("_parse_kexinit: retour None")
         return None
 
     packet_length = int.from_bytes(data[0:4], "big")
     padding_length = data[4]
     msg_type = data[5]
     if msg_type != _SSH_MSG_KEXINIT:
+        logger.debug("_parse_kexinit: retour None")
         return None
     payload_len = packet_length - padding_length - 1  # inclut le byte msg_type
     if payload_len < 1:
+        logger.debug("_parse_kexinit: retour None")
         return None
     body_end = 5 + payload_len  # borne haute du message SSH (msg_type inclus)
     if body_end > len(data):
@@ -95,6 +102,7 @@ def _parse_kexinit(payload: bytes) -> dict | None:
 
     off = 6 + _COOKIE_LEN  # apres msg_type (deja lu) + cookie 16 octets
     if off > body_end:
+        logger.debug("_parse_kexinit: retour None")
         return None
 
     kex_algorithms, off = _read_namelist(data, off)
@@ -106,6 +114,7 @@ def _parse_kexinit(payload: bytes) -> dict | None:
     compression_c2s, off = _read_namelist(data, off)
     compression_s2c, off = _read_namelist(data, off)
 
+    logger.debug("_parse_kexinit: retour dict")
     return {
         "kex_algorithms": kex_algorithms,
         "server_host_key_algorithms": server_host_key_algorithms,
@@ -136,6 +145,7 @@ def compute_hassh(kexinit: dict, role: str = ROLE_CLIENT) -> str:
             kexinit["compression_algorithms_client_to_server"],
         )
     fields = [",".join(kexinit["kex_algorithms"]), ",".join(enc), ",".join(mac), ",".join(comp)]
+    logger.debug("compute_hassh: retour hexdigest(...)")
     return hashlib.md5(";".join(fields).encode("ascii")).hexdigest()  # noqa: S324 -- identifiant, pas crypto
 
 
@@ -145,6 +155,7 @@ def readable_kexinit(kexinit: dict, role: str = ROLE_CLIENT) -> str:
     enc_key = "encryption_algorithms_" + ("server_to_client" if role == ROLE_SERVER else "client_to_server")
     mac_key = "mac_algorithms_" + ("server_to_client" if role == ROLE_SERVER else "client_to_server")
     comp_key = "compression_algorithms_" + ("server_to_client" if role == ROLE_SERVER else "client_to_server")
+    logger.debug("readable_kexinit: retour valeur")
     return (
         f"kex=[{','.join(kexinit['kex_algorithms'])}] "
         f"enc=[{','.join(kexinit[enc_key])}] "
@@ -161,6 +172,8 @@ def identify(payload: bytes, sport: int | None, dport: int | None) -> tuple[str,
     destination -> l'emetteur est le client."""
     kexinit = parse_kexinit(payload)
     if kexinit is None:
+        logger.debug("identify: retour None")
         return None
     role = ROLE_CLIENT if dport == 22 and sport != 22 else ROLE_SERVER
+    logger.debug("identify: retour tuple")
     return compute_hassh(kexinit, role), role, readable_kexinit(kexinit, role)

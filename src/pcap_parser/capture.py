@@ -111,6 +111,7 @@ def parse_capture(path: str, raise_on_error: bool = False) -> list[RawPacket]:
         else:
             logger.exception("échec dans parse_capture({}) : {}", path, e)
         print(f"impossible de lire {path} : {e}", file=sys.stderr)
+        logger.debug("parse_capture: retour liste")
         return []
     logger.debug("parse_capture: {} -> {} paquet(s)", path, len(packets))
     return packets
@@ -197,6 +198,7 @@ def parse_captures_parallel(
 
 def _source_kwargs(source: CaptureSource) -> dict:
     """Arguments tshark propres a une source distante (vide pour une interface locale)."""
+    logger.debug("_source_kwargs: retour conditionnel")
     return {"extra_args": source.extra_args} if source.extra_args else {}
 
 
@@ -289,11 +291,13 @@ class CaptureRingBuffer:
     @property
     def files(self) -> tuple[str, ...]:
         """Fichiers actuellement suivis, du plus ancien au plus recent."""
+        logger.debug("files: retour tuple(...)")
         return tuple(self._files)
 
     @property
     def current_path(self) -> str | None:
         """Chemin du fichier de capture courant (None avant la premiere rotation)."""
+        logger.debug("current_path: retour conditionnel")
         return self._files[-1] if self._files else None
 
     def rotate(self, now: float | None = None) -> str:
@@ -327,6 +331,7 @@ class CaptureRingBuffer:
         if self._rotation_started_ts is None or (ts - self._rotation_started_ts) >= self.max_duration_per_file:
             logger.debug("maybe_rotate: rotation declenchee (premiere={})", self._rotation_started_ts is None)
             return self.rotate(ts)
+        logger.debug("maybe_rotate: retour None")
         return None
 
     def _prune(self) -> None:
@@ -466,6 +471,7 @@ def _tcpreplay_path() -> str:
             "tcpreplay introuvable dans le PATH -- installer le paquet "
             "'tcpreplay' (apt install tcpreplay / dnf install tcpreplay)."
         )
+    logger.debug("_tcpreplay_path: retour path")
     return path
 
 
@@ -644,6 +650,7 @@ def split_capture(path: str, output_dir: str, by: str = "time", value: float = 6
 
     logger.debug("split_capture: {} -> {} par {}={}", path, output_dir, by, value)
     if by == "size":
+        logger.debug("split_capture: retour split_by_size(...)")
         return split_by_size(path, os.path.join(output_dir, stem), int(value))
 
     assert editcap is not None  # garanti par la ligne editcap = ... ci-dessus
@@ -782,6 +789,7 @@ def _relay_stop(stop_event: threading.Event, halt: threading.Event) -> None:
         if stop_event.wait(_LIVE_MULTI_RELAY_POLL_SECONDS):
             logger.debug("_relay_stop: arrêt demandé par l'appelant")
             halt.set()
+            logger.debug("_relay_stop: retour (None implicite)")
             return
 
 

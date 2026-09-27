@@ -56,6 +56,7 @@ __all__ = [
 
 def _to_pkt(label: str, raw: RawPacket) -> Pkt:
     fingerprints = compute_pkt_fingerprints(raw.proto, raw.sport, raw.dport, raw.payload)
+    logger.debug("_to_pkt: retour Pkt(...)")
     return Pkt(
         point=label,
         ts=raw.ts,
@@ -171,6 +172,7 @@ def parse_capture(label, path, raise_on_error=False) -> list[Pkt]:
         if raise_on_error:
             raise
         print(f"[{label}] impossible de lire {path} : {e}", file=sys.stderr)
+        logger.debug("parse_capture: retour liste")
         return []
     # Convertit en liberant chaque RawPacket au fur et a mesure (au lieu
     # d'une comprehension de liste, qui garderait raw_packets ET pkts
@@ -197,6 +199,7 @@ def _parse_capture_timed(label, path):
 
     t0 = time.time()
     pkts = parse_capture(label, path, raise_on_error=True)
+    logger.debug("_parse_capture_timed: retour tuple")
     return pkts, time.time() - t0
 
 
@@ -375,6 +378,7 @@ def parse_live_multi(interfaces, stop_event=None, *, bpf_filter=None):
     capture dans un thread (LiveDiffEngine.start_multi)."""
     logger.debug("parse_live_multi: capture multi-interfaces (filtre={})", bpf_filter)
     packets = pcap_parser.iter_live_multi(interfaces, stop_event=stop_event, bpf_filter=bpf_filter)
+    logger.debug("parse_live_multi: retour generateur")
     return (_to_pkt(label, raw) for label, raw in packets)
 
 
@@ -385,12 +389,14 @@ def parse_live_multi(interfaces, stop_event=None, *, bpf_filter=None):
 def parse_rtp(payload: bytes):
     from pcap_parser.protocols import _parse_rtp_heuristic
 
+    logger.debug("parse_rtp: retour _parse_rtp_heuristic(...)")
     return _parse_rtp_heuristic(payload)
 
 
 def parse_sip(payload: bytes):
     from pcap_parser.protocols import _parse_sip_heuristic
 
+    logger.debug("parse_sip: retour _parse_sip_heuristic(...)")
     return _parse_sip_heuristic(payload)
 
 
@@ -401,4 +407,5 @@ def detect_encapsulation(layers: dict):
     pcap_parser.tunnels.detect_encapsulation pour l'implementation."""
     from pcap_parser.tunnels import detect_encapsulation as _detect
 
+    logger.debug("detect_encapsulation: retour _detect(...)")
     return _detect(layers)

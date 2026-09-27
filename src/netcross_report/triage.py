@@ -90,6 +90,7 @@ def _finding_weight(f: Finding, weights: dict[str, float]) -> float:
     sample_size = getattr(f, "sample_size", None)
     if sample_size is not None and sample_size < LOW_SAMPLE_THRESHOLD:
         w *= LOW_SAMPLE_WEIGHT_FACTOR
+    logger.debug("_finding_weight: retour w")
     return w
 
 
@@ -106,6 +107,7 @@ class SegmentScore:
         """Vrai si au moins 2 categories differentes pointent vers ce segment --
         c'est la signature d'un vrai faisceau de preuves, pas un artefact
         d'une seule regle trop sensible."""
+        logger.debug("convergent: retour booleen")
         return len(self.categories) >= 2
 
 
@@ -182,6 +184,7 @@ def rank_segments(
         scored.append(SegmentScore(segment, total, categories, segment_findings_sorted, low_confidence))
 
     scored.sort(key=lambda s: (-s.score, s.segment))
+    logger.debug("rank_segments: retour scored")
     return scored
 
 
@@ -196,6 +199,7 @@ def print_triage(ranked: list[SegmentScore], top_n: int = 5) -> None:
 
     if not ranked:
         print("\nAucun segment avec un score de preuve suffisant.")
+        logger.debug("print_triage: retour (None implicite)")
         return
 
     for rank, s in enumerate(ranked[:top_n], start=1):
@@ -287,7 +291,9 @@ def health_score(ranked: list[SegmentScore], scale: float = HEALTH_SCORE_SCALE) 
     """
     total = sum(s.score for s in ranked)
     if total <= 0:
+        logger.debug("health_score: retour 100")
         return 100
+    logger.debug("health_score: retour round(...)")
     return round(100.0 * math.exp(-total / scale))
 
 
@@ -296,7 +302,9 @@ def health_label(score: int) -> str:
     le libelle affichable, HEALTH_LABEL_THRESHOLDS pour les bornes)."""
     for threshold, label in HEALTH_LABEL_THRESHOLDS:
         if score >= threshold:
+            logger.debug("health_label: retour label")
             return label
+    logger.debug("health_label: retour 'critique'")
     return "critique"  # inatteignable en pratique (dernier seuil = 0.0 et
     # health_score() ne renvoie jamais de valeur negative) -- garde-fou.
 
@@ -304,4 +312,5 @@ def health_label(score: int) -> str:
 def format_health_line(score: int) -> str:
     """Rendu texte commun (CLI console + GUI GTK4) -- une seule source pour
     le libelle exact, pour eviter que les deux divergent legerement."""
+    logger.debug("format_health_line: retour valeur")
     return f"Score de sante : {score}/100 ({HEALTH_LABELS[health_label(score)]})"

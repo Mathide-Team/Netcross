@@ -27,7 +27,9 @@ def flow_key(pk: Pkt, nat_tolerant=False, nat_window_ms=200):
     """
     if nat_tolerant and pk.payload_hash:
         bucket = int(pk.ts / (nat_window_ms / 1000.0))
+        logger.debug("flow_key: retour tuple")
         return ("NAT", pk.proto, pk.payload_hash, bucket)
+    logger.debug("flow_key: retour tuple")
     return (pk.proto, pk.src, pk.sport, pk.dst, pk.dport, pk.key_id)
 
 
@@ -156,12 +158,16 @@ def _topn_category_label(pk, dimension):
       "if pk.dscp" au lieu de "is not None".
     """
     if dimension == "protocol":
+        logger.debug("_topn_category_label: retour attribut")
         return pk.proto
     if dimension == "port":
+        logger.debug("_topn_category_label: retour conditionnel")
         return f"{pk.proto}/{pk.dport}" if pk.dport is not None else f"{pk.proto} (sans port)"
     if dimension == "ip":
+        logger.debug("_topn_category_label: retour attribut")
         return pk.dst
     if dimension == "dscp":
+        logger.debug("_topn_category_label: retour conditionnel")
         return f"DSCP {pk.dscp}" if pk.dscp is not None else "non marque"
     logger.trace("_topn_category_label: refus, ValueError")
     raise ValueError(f"dimension inconnue pour compute_topn_series: {dimension!r}")

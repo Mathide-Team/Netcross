@@ -68,6 +68,7 @@ class StatRow:
     @property
     def duration_s(self) -> float:
         """Duree en secondes."""
+        logger.debug("duration_s: retour calcul")
         return self.duration_ms / 1000.0
 
 
@@ -108,6 +109,7 @@ def _flow_packets(f: Flow, all_packets: list[Pkt]) -> list[Pkt]:
     # Le filtrage par flux precis (cle exacte) n'est pas faisable sans
     # reappeler flow_key() -- on filtre par appartenance au point et par
     # les timestamps du flux.
+    logger.debug("_flow_packets: retour _time_filter(...)")
     return _time_filter(pkts, f)
 
 
@@ -115,12 +117,15 @@ def _time_filter(pkts: list[Pkt], f: Flow) -> list[Pkt]:
     """Filtre les paquets par fenetre temporelle du flux."""
     logger.debug("_time_filter: pkts={} f={}", summarize(pkts, "pkts"), summarize(f, "f"))
     if not pkts:
+        logger.debug("_time_filter: retour liste")
         return []
     all_ts = list(f.first_ts.values()) + list(f.last_ts.values())
     if not all_ts:
+        logger.debug("_time_filter: retour pkts")
         return pkts
     f_start = min(all_ts)
     f_end = max(all_ts)
+    logger.debug("_time_filter: retour liste")
     return [pk for pk in pkts if f_start <= pk.ts <= f_end]
 
 
@@ -129,15 +134,19 @@ def _flow_duration_ms(f: Flow) -> float:
     logger.debug("_flow_duration_ms: f={}", summarize(f, "f"))
     all_ts = list(f.first_ts.values()) + list(f.last_ts.values())
     if not all_ts:
+        logger.debug("_flow_duration_ms: retour 0.0")
         return 0.0
+    logger.debug("_flow_duration_ms: retour calcul")
     return (max(all_ts) - min(all_ts)) * 1000.0
 
 
 def _flow_total_packets(f: Flow) -> int:
+    logger.debug("_flow_total_packets: retour sum(...)")
     return sum(f.packet_count.values())
 
 
 def _flow_total_bytes(f: Flow) -> int:
+    logger.debug("_flow_total_bytes: retour sum(...)")
     return sum(f.byte_count.values())
 
 
@@ -146,7 +155,9 @@ def _flow_throughput_bps(f: Flow) -> float:
     logger.debug("_flow_throughput_bps: f={}", summarize(f, "f"))
     duration_s = _flow_duration_ms(f) / 1000.0
     if duration_s <= 0:
+        logger.debug("_flow_throughput_bps: retour 0.0")
         return 0.0
+    logger.debug("_flow_throughput_bps: retour calcul")
     return (_flow_total_bytes(f) * 8) / duration_s
 
 
@@ -160,17 +171,24 @@ def _flow_label(f: Flow, group_by: str) -> str:
             sport = key[2]
             dst = key[3] if key[0] != "NAT" else "NAT"
             dport = key[4] if key[0] != "NAT" else key[3]
+            logger.debug("_flow_label: retour valeur")
             return f"{proto} {src}:{sport} -> {dst}:{dport}"
+        logger.debug("_flow_label: retour str(...)")
         return str(key)
     if group_by == "endpoint":
         if f.endpoints:
+            logger.debug("_flow_label: retour valeur")
             return f"{f.endpoints[0]} <-> {f.endpoints[1]}"
+        logger.debug("_flow_label: retour 'endpoints inconnus'")
         return "endpoints inconnus"
     if group_by == "protocol":
         key = f.key
+        logger.debug("_flow_label: retour conditionnel")
         return key[0] if key[0] != "NAT" else key[1]
     if group_by == "segment":
+        logger.debug("_flow_label: retour conditionnel")
         return " -> ".join(f.points) if f.points else "segment inconnu"
+    logger.debug("_flow_label: retour str(...)")
     return str(f.key)
 
 
@@ -184,6 +202,7 @@ def _group_flows(
     for f in flows:
         label = _flow_label(f, group_by)
         groups.setdefault(label, []).append(f)
+    logger.debug("_group_flows: retour groups")
     return groups
 
 
@@ -229,6 +248,7 @@ def _aggregate_group(
 
     flow_keys = [f.key for f in group_flows]
 
+    logger.debug("_aggregate_group: retour StatRow(...)")
     return StatRow(
         label=label,
         group_by=group_by,
@@ -343,6 +363,7 @@ def export_csv(rows: list[StatRow]) -> str:
     ne supporte pas les listes nativement.
     """
     if not rows:
+        logger.debug("export_csv: retour ''")
         return ""
 
     output = io.StringIO()

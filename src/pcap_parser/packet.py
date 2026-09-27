@@ -62,6 +62,7 @@ def _intern(value: str | None) -> str | None:
     a payload_hash/dns_qry_name-valeurs-rares/sip_call_id, ou chaque
     valeur est generalement unique et l'interning n'apporterait rien
     (juste le cout d'une recherche dans la table globale d'interning)."""
+    logger.debug("_intern: retour conditionnel")
     return value if value is None else sys.intern(value)
 
 
@@ -73,6 +74,7 @@ def _byte_entropy(data: bytes) -> float:
     pendant le parsing car Pkt ne conserve pas le payload brut.
     """
     if not data:
+        logger.debug("_byte_entropy: retour 0.0")
         return 0.0
     counts = [0] * 256
     for b in data:
@@ -83,6 +85,7 @@ def _byte_entropy(data: bytes) -> float:
         if c > 0:
             p = c / total
             entropy -= p * math.log2(p)
+    logger.debug("_byte_entropy: retour entropy")
     return entropy
 
 
@@ -777,6 +780,7 @@ def build_packet(ts_seconds: float, layers: dict) -> RawPacket | None:
     # Issue #351 : entropie de Shannon sur les octets du payload
     pentropy = _byte_entropy(payload) if payload else 0.0
 
+    logger.debug("build_packet: retour RawPacket(...)")
     return RawPacket(
         ts=ts_seconds,
         frame_number=frame_number,

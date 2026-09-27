@@ -50,6 +50,7 @@ _DEFAULT_PATH = Path(__file__).with_name("known_fingerprints.json")
 def _load_cached(path: str) -> dict[str, dict]:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
+    logger.debug("_load_cached: retour dict")
     return {"ja4": data.get("ja4", {}), "hassh": data.get("hassh", {})}
 
 
@@ -59,6 +60,7 @@ def load_known_fingerprints(path: str | Path | None = None) -> dict[str, dict]:
     base de fingerprints manquante ne doit jamais faire echouer l'analyse,
     seulement priver l'analyste de l'identification lisible de l'outil."""
     try:
+        logger.debug("load_known_fingerprints: retour _load_cached(...)")
         return _load_cached(str(path or _DEFAULT_PATH))
     except (OSError, json.JSONDecodeError):
         logger.exception("échec dans load_known_fingerprints")
@@ -76,5 +78,7 @@ def identify_tool(fingerprint_type: str, fingerprint: str, known: dict[str, dict
         # Forme enrichie : on n'affiche que le libelle court. Le reste
         # (version complete, methode de verification) sert a documenter la
         # base, pas a encombrer une ligne de rapport.
+        logger.debug("identify_tool: retour booleen")
         return valeur.get("libelle") or valeur.get("outil")
+    logger.debug("identify_tool: retour valeur")
     return valeur

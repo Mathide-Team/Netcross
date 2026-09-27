@@ -90,6 +90,7 @@ class SessionObjects:
         }
         if self.wireshark_expert_events is not None:
             kwargs["wireshark_expert_events"] = self.wireshark_expert_events
+        logger.debug("json_kwargs: retour kwargs")
         return kwargs
 
 
@@ -143,6 +144,7 @@ def build_session_objects(
     compliance = evaluate_compliance(report)
     if wireshark_expert_events is None and all_packets:
         wireshark_expert_events = build_wireshark_expert_events(all_packets)
+    logger.debug("build_session_objects: retour SessionObjects(...)")
     return SessionObjects(
         flows=flow_objs,
         conversations=conversations,
@@ -159,11 +161,14 @@ def _flow_label(flow) -> str:
     sinon la cle brute -- un Flow sans endpoints ne doit pas disparaitre
     du rendu."""
     if flow.endpoints:
+        logger.debug("_flow_label: retour valeur")
         return f"{flow.endpoints[0]} <-> {flow.endpoints[1]}"
+    logger.debug("_flow_label: retour str(...)")
     return str(flow.key)
 
 
 def _total(counter: dict) -> int:
+    logger.debug("_total: retour sum(...)")
     return sum(counter.values())
 
 
@@ -171,7 +176,9 @@ def _truncated(items, top_n):
     """(premieres entrees, nombre de restantes) -- `top_n` None ou <= 0
     desactive le plafond (utile pour un test ou un export)."""
     if top_n is None or top_n <= 0 or len(items) <= top_n:
+        logger.debug("_truncated: retour tuple")
         return list(items), 0
+    logger.debug("_truncated: retour tuple")
     return list(items[:top_n]), len(items) - top_n
 
 
@@ -193,6 +200,7 @@ def _format_flows(objs, top_n) -> list[str]:
         )
     if remaining:
         lines.append(f"  ... et {remaining} autre(s) flux (voir --json-report)")
+    logger.debug("_format_flows: retour lines")
     return lines
 
 
@@ -218,6 +226,7 @@ def _format_events(events, title, top_n) -> list[str]:
             lines.append(f"      Impact : {ev.impact}")
     if remaining:
         lines.append(f"  ... et {remaining} autre(s) evenement(s) (voir --json-report)")
+    logger.debug("_format_events: retour lines")
     return lines
 
 
@@ -237,6 +246,7 @@ def _format_diagnoses(diagnoses, top_n) -> list[str]:
             lines.append(f"      Impact : {diag.impact}")
     if remaining:
         lines.append(f"  ... et {remaining} autre(s) segment(s) (voir --json-report)")
+    logger.debug("_format_diagnoses: retour lines")
     return lines
 
 
@@ -247,6 +257,7 @@ def _compliance_counts(results) -> list[str]:
         counts[res.status] = counts.get(res.status, 0) + 1
     known = [f"{counts[s]} {s}" for s in _COMPLIANCE_STATUS_ORDER if s in counts]
     unknown = [f"{counts[s]} {s}" for s in sorted(counts) if s not in _COMPLIANCE_STATUS_ORDER]
+    logger.debug("_compliance_counts: retour calcul")
     return known + unknown
 
 
@@ -260,6 +271,7 @@ def _format_compliance(results, top_n) -> list[str]:
     # ne passe pas sans derouler toute la liste.
     def _rank(res):
         order = _COMPLIANCE_STATUS_ORDER
+        logger.debug("_rank: retour tuple")
         return (order.index(res.status) if res.status in order else len(order), res.reference.id)
 
     shown, remaining = _truncated(sorted(results, key=_rank), top_n)
@@ -272,6 +284,7 @@ def _format_compliance(results, top_n) -> list[str]:
         )
     if remaining:
         lines.append(f"  ... et {remaining} autre(s) referentiel(s) (voir --json-report)")
+    logger.debug("_format_compliance: retour lines")
     return lines
 
 
@@ -297,6 +310,7 @@ def format_session_objects(objs, top_n=DEFAULT_TOP_N) -> list[str]:
         lines += [*_format_compliance(objs.compliance, top_n), ""]
     if objs.wireshark_expert_events:
         lines += [*_format_events(objs.wireshark_expert_events, "Expertise tshark (signaux bruts)", top_n), ""]
+    logger.debug("format_session_objects: retour lines")
     return lines
 
 

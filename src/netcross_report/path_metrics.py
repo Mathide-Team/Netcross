@@ -82,6 +82,7 @@ class SegmentMetrics:
         """Libelle du segment, identique a celui des Finding
         (`f"{a} -> {b}"`) : le lecteur doit pouvoir rapprocher une ligne de
         ce tableau d'un constat du triage sans traduction mentale."""
+        logger.debug("label: retour valeur")
         return f"{self.upstream} -> {self.downstream}"
 
     @property
@@ -90,6 +91,7 @@ class SegmentMetrics:
         segment non mesure est affiche quand meme (son absence de donnees
         est une information), mais il ne participe pas au classement des
         degradations."""
+        logger.debug("measured: retour booleen")
         return self.samples > 0 or self.loss_count > 0 or bool(self.dscp_changes or self.frag_new)
 
 
@@ -106,6 +108,7 @@ def _topological_points(report) -> list[str]:
     logger.debug("_topological_points: report={}", summarize(report, "report"))
     edges = list(getattr(report, "topology_edges", None) or [])
     if not edges:
+        logger.debug("_topological_points: retour liste")
         return []
     successors: dict[str, list[str]] = {}
     in_degree: dict[str, int] = {}
@@ -124,8 +127,10 @@ def _topological_points(report) -> list[str]:
                 ready.append(nxt)
         ready.sort()
     if len(ordered) != len(in_degree):
+        logger.debug("_topological_points: retour liste")
         return []  # cycle : on ne pretend pas connaitre l'ordre du chemin
     ordered.extend(p for p in report.points if p not in in_degree)
+    logger.debug("_topological_points: retour ordered")
     return ordered
 
 
@@ -138,9 +143,11 @@ def _ordered_pairs(report) -> list[tuple[str, str]]:
     pairs = list(report.pairs)
     order = _topological_points(report)
     if not order:
+        logger.debug("_ordered_pairs: retour pairs")
         return pairs
     rank = {point: i for i, point in enumerate(order)}
     fallback = len(rank)
+    logger.debug("_ordered_pairs: retour sorted(...)")
     return sorted(pairs, key=lambda ab: (rank.get(ab[0], fallback), rank.get(ab[1], fallback)))
 
 
@@ -150,8 +157,10 @@ def _throughput_bps(report, point) -> float | None:
     aucune tranche (option de debit non calculee sur ce run)."""
     buckets = (report.throughput or {}).get(point) or {}
     if not buckets:
+        logger.debug("_throughput_bps: retour None")
         return None
     duration = max(len(buckets), 1) * (report.bucket_seconds or 1.0)
+    logger.debug("_throughput_bps: retour calcul")
     return sum(buckets.values()) * 8.0 / duration
 
 
@@ -185,6 +194,7 @@ def build_path_metrics(report) -> list[SegmentMetrics]:
             seg.hops = int(statistics.median(hop_deltas))
         seg.hop_outliers = report.hop_delta_outliers.get((a, b), 0)
         metrics.append(seg)
+    logger.debug("build_path_metrics: retour metrics")
     return metrics
 
 
@@ -220,8 +230,10 @@ def degradation_summary(metrics) -> str:
     logger.debug("degradation_summary: metrics={}", summarize(metrics, "metrics"))
     ranked = rank_path_segments(metrics)
     if not metrics:
+        logger.debug("degradation_summary: retour 'Aucun segment exploitable : la topolo...'")
         return "Aucun segment exploitable : la topologie n'a pas pu etre deduite de ces captures."
     if not ranked:
+        logger.debug("degradation_summary: retour 'Aucune metrique de qualite mesurable ...'")
         return (
             "Aucune metrique de qualite mesurable sur les segments observes "
             "(ni delai, ni perte, ni remarquage) -- horloges non synchronisees "
@@ -237,4 +249,5 @@ def degradation_summary(metrics) -> str:
         details.append(f"gigue {pire.jitter_ms:.1f} ms")
     if not details:
         details.append("aucune metrique chiffree")
+    logger.debug("degradation_summary: retour calcul")
     return f"Segment le plus degrade : {pire.label} -- " + ", ".join(details) + "."
