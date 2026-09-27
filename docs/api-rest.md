@@ -156,6 +156,31 @@ Dans `GET /analyses/{id}`, les champs indexés par segment (`latency`,
 curl http://localhost:8000/analyses/a1b2c3d4e5f6
 ```
 
+### Options d'analyse (issue #330)
+
+Les deux routes `POST` acceptent, en champs de formulaire, les options de
+la CLI qui changent le résultat :
+
+| Champ | Défaut | Équivalent CLI |
+|---|---|---|
+| `nat_tolerant` | `false` | `--nat-tolerant` |
+| `nat_window_ms` | `200` | `--nat-window-ms` (avec `nat_tolerant`) |
+| `tls` | `false` | `--tls` (clé `tls_findings` du rapport structuré) |
+| `quic` | `false` | `--quic` (clé `quic_findings` ; nécessite `cryptography`) |
+| `redact` | `false` | `--redact` |
+
+Mêmes règles que la CLI : `redact` avec `tls` ou `quic` est refusé (400),
+car ces diagnostics relisent les fichiers d'origine avec les adresses
+réelles ; avec `redact`, le rapport de sécurité n'est pas calculé
+(`security_report_absent` l'indique). Les options retenues sont
+enregistrées dans les métadonnées de l'analyse (`options`).
+
+```bash
+curl -X POST "http://localhost:8000/captures/multi?wait=true" \
+  -F "files=@lan.pcap" -F "files=@dc.pcap" -F "labels=LAN,DC" \
+  -F "nat_tolerant=true" -F "tls=true"
+```
+
 ### Récupérer le rapport structuré (issue #330)
 
 ```bash
