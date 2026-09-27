@@ -107,6 +107,11 @@ def group_packets_by_client(all_packets, client_group):
         for name, ips in client_group.items():
             if pk.src in ips or pk.dst in ips:
                 by_client[name].append(pk)
+    logger.debug(
+        "group_packets_by_client: {} client(s) -> {}",
+        len(by_client),
+        {name: len(pkts) for name, pkts in by_client.items()},
+    )
     return by_client
 
 
@@ -222,6 +227,12 @@ def compare_clients(
             continue
         diffs[name] = diff_reports(ref_report, cr.report, loss_min_pp, latency_min_ms)
 
+    logger.debug(
+        "compare_clients: référence={}, {} client(s) comparé(s), {} écart(s) total(aux)",
+        reference,
+        len(diffs),
+        sum(len(v) for v in diffs.values()),
+    )
     return ClientComparisonResult(reference=reference, clients=clients, diffs=diffs)
 
 
@@ -278,6 +289,7 @@ def write_client_diff_csv(result: ClientComparisonResult, path: str) -> None:
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(["client", "reference", "severite", "categorie", "segment", "message", "avant", "apres"])
+        row_count = 0
         for name, findings in result.diffs.items():
             for f in findings:
                 writer.writerow(
@@ -292,3 +304,5 @@ def write_client_diff_csv(result: ClientComparisonResult, path: str) -> None:
                         "" if f.after is None else f.after,
                     ]
                 )
+                row_count += 1
+    logger.debug("write_client_diff_csv: {} ligne(s) écrite(s) dans {}", row_count, path)
