@@ -29,15 +29,57 @@ Le dépôt suit un modèle `dev → main` :
 - **`main`** : branche stable, toujours déployable. Les PR vers `main`
   sont rejetées par le guard-main.yml si elles ne viennent pas de `dev`.
 - **`dev`** : branche d'intégration. Toutes les feature PRs ciblent `dev`.
-  La branche `dev` est **protégée** : aucune fusion n'est possible tant
-  que la CI (notamment le job « Qualité ») n'est pas verte, et la branche
-  doit être à jour avant la fusion.
+  Sa protection est décrite dans [Protection de `dev`](#protection-de-dev).
 - **`feature/issue-NNN-description`** : une branche par issue, créée
   depuis `dev` :
 
   ```bash
   git checkout -b feature/issue-123-ma-feature dev
   ```
+
+### Protection de `dev`
+
+La règle de protection de `dev` est **versionnée** dans
+[`.github/branch-protection/dev.json`](.github/branch-protection/dev.json)
+(issue #334). C'est la charge utile exacte de l'API GitHub :
+
+- checks obligatoires avant fusion : « Qualité (lint, format,
+  import-linter, tests) », « Tests GTK4 (Xvfb) », « Paquets (deb installé,
+  rpm vérifié) » et « Construction (mkdocs build --strict) ». « Types
+  (mypy) » n'en fait pas partie, car il est volontairement non bloquant
+  (`continue-on-error`, voir `ci.yml`) ;
+- branche à jour exigée avant fusion (`strict`) ;
+- règle appliquée **aussi aux administrateurs** (`enforce_admins`) :
+  l'incident à l'origine de #334 (PR #316 à #327 fusionnées CI rouge)
+  venait d'un compte administrateur ;
+- pas d'historique linéaire imposé : les releases `dev → main` et les
+  réconciliations (#373, #461) sont des merge commits ;
+- ni force-push ni suppression de la branche.
+
+Une protection de branche est un réglage du dépôt : seul un administrateur
+peut l'appliquer ou la modifier, avec :
+
+```bash
+gh api -X PUT repos/MathildeDec/Netcross/branches/dev/protection \
+    --input .github/branch-protection/dev.json
+```
+
+Toute modification passe par une PR sur ce fichier, puis par cette même
+commande. Le workflow « Protection de dev » (push sur `dev`, chaque jour,
+et à la demande) compare la protection réelle au fichier et échoue sur tout
+écart. La suite de tests vérifie de son côté que chaque check requis
+correspond à un job qui tourne sur les PR vers `dev` : renommer un job
+requis sans mettre la règle à jour bloquerait sinon toutes les PR.
+Vérification manuelle :
+
+```bash
+python3 scripts/check_branch_protection.py              # état réel (API GitHub)
+python3 scripts/check_branch_protection.py --hors-ligne # règle <-> workflows
+```
+
+Sans droit d'administration, l'exigence de branche à jour (`strict`) n'est
+pas lisible par l'API : elle est signalée en avertissement, jamais supposée
+conforme.
 
 ### Pull Requests
 

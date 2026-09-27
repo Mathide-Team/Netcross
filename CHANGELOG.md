@@ -75,6 +75,13 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - Page d'accueil de la documentation : la commande « Première analyse »
   (`--capture point_a.pcapng --analyze`) échouait, car `--analyze`
   n'existe pas et `--capture` exige `NOM=chemin`.
+- `CONTRIBUTING.md` décrivait la branche `dev` comme protégée alors
+  qu'aucune protection n'existait (`protected: false`) : c'est ce qui avait
+  permis de fusionner les PR #316 à #327 avec une CI rouge (#334). La règle
+  est désormais versionnée dans `.github/branch-protection/dev.json`, à
+  appliquer par un administrateur, et le workflow « Protection de dev »
+  (`scripts/check_branch_protection.py`) signale tout écart entre ce fichier
+  et la protection réelle.
 - Le workflow « Documentation » échouait à chaque push sur `main` (erreur
   404 au déploiement) : il publiait vers GitHub Pages, qui n'est pas activé
   sur le dépôt. La publication est retirée ; la construction
