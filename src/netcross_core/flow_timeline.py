@@ -176,6 +176,13 @@ def build_flow_timeline(
     # -- RTT estimate ------------------------------------------------------
     timeline.rtt_estimate_ms = _estimate_rtt(sorted_pkts)
 
+    logger.debug(
+        "build_flow_timeline: {} paquet(s), {} phase(s) {}, RTT={}ms",
+        len(sorted_pkts),
+        len(timeline.phases),
+        timeline.phases,
+        round(timeline.rtt_estimate_ms, 2) if timeline.rtt_estimate_ms is not None else "N/A",
+    )
     return timeline
 
 
@@ -229,6 +236,7 @@ def _detect_phases(timings: list[PacketTiming], packets: list[Pkt]) -> list[str]
         if ("F" in flags or "R" in flags) and (not phases or phases[-1] != "teardown"):
             phases.append("teardown")
 
+    logger.debug("_detect_phases: {} phase(s) détectée(s) : {}", len(phases), phases)
     return phases
 
 
@@ -264,8 +272,11 @@ def _estimate_rtt(packets: list[Pkt]) -> float | None:
             if not pk.dns_is_response:
                 dns_req_ts = pk.ts
             elif dns_req_ts is not None:
-                return (pk.ts - dns_req_ts) * 1000.0
+                rtt = (pk.ts - dns_req_ts) * 1000.0
+                logger.debug("_estimate_rtt: RTT DNS={}ms", round(rtt, 2))
+                return rtt
 
+    logger.debug("_estimate_rtt: aucune paire SYN/SYN-ACK, HTTP ou DNS trouvée")
     return None
 
 
@@ -309,4 +320,9 @@ def build_flow_timelines(packets: list[Pkt], window_s: float = 1.0, min_packets:
             }
         )
     flows.sort(key=lambda f: (f["point"], f["start_ts"], f["protocol"], repr(f["endpoints"])))
+    logger.debug(
+        "build_flow_timelines: {} conversation(s) -> {} chronologie(s)",
+        len(groups),
+        len(flows),
+    )
     return {"version": TIMELINES_FORMAT_VERSION, "window_s": window_s, "flows": flows}
