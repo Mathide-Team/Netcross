@@ -757,7 +757,9 @@ def _slice_names(keys: Sequence[tuple[int, int]], raw_names: dict[tuple[int, int
 
     def fallback(key: tuple[int, int]) -> str:
         section, iface = key
-        return f"s{section}-if{iface}" if several_sections else f"if{iface}"
+        name = f"s{section}-if{iface}" if several_sections else f"if{iface}"
+        logger.debug("_slice_names.fallback: retour {}", name)
+        return name
 
     proposed = {key: raw_names.get(key) or fallback(key) for key in keys}
     counts: dict[str, int] = {}
@@ -782,6 +784,7 @@ def list_interfaces(path: str) -> list[InterfaceSlice]:
 
     Leve FileNotFoundError, TsharkNotFoundError ou TsharkError."""
     if not os.path.isfile(path):
+        logger.debug("list_interfaces: si not os.path.isfile(path) -> levée FileNotFoundError")
         raise FileNotFoundError(f"capture introuvable : {path}")
     from pcap_parser.ek_source import _tshark_path
 
@@ -803,6 +806,7 @@ def list_interfaces(path: str) -> list[InterfaceSlice]:
     logger.debug("list_interfaces: {}", " ".join(args))
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
+        logger.debug("list_interfaces: si proc.returncode != 0 -> levée TsharkError")
         raise TsharkError(
             f"tshark a echoue lors de l'inventaire des interfaces (code {proc.returncode}) : {proc.stderr.strip()}",
             returncode=proc.returncode,
@@ -859,6 +863,7 @@ def split_by_interface(path: str, output_dir: str) -> list[InterfaceSlice]:
     targets = [os.path.join(output_dir, f"{stem}_{_UNSAFE_FILENAME_CHARS.sub('_', s.name)}.pcapng") for s in slices]
     existing = [t for t in targets if os.path.exists(t)]
     if existing:
+        logger.debug("split_by_interface: si existing -> levée FileExistsError")
         raise FileExistsError(f"fichier(s) deja present(s), rien n'est ecrase : {', '.join(existing)}")
 
     written: list[str] = []
@@ -874,6 +879,7 @@ def split_by_interface(path: str, output_dir: str) -> list[InterfaceSlice]:
         for target in written:
             with contextlib.suppress(OSError):
                 os.remove(target)
+        logger.debug("split_by_interface: except TsharkError -> relance de l'exception en cours")
         raise
     logger.debug("split_by_interface: {} -> {} fichier(s) dans {}", path, len(result), output_dir)
     return result

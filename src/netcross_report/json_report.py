@@ -242,9 +242,8 @@ def _write(doc: dict, output_path) -> str:
     return output_path
 
 
-def generate_json_report(
+def build_json_report_document(
     r,
-    output_path,
     title="Analyse croisee de captures reseau",
     meta=None,
     findings=None,
@@ -259,10 +258,14 @@ def generate_json_report(
     rule_engine_findings=None,
     names=None,
     security_report=None,
-) -> str:
+) -> dict:
     """
-    r : objet Report (netcross_core.analyse). output_path : chemin du
-    fichier JSON. meta : dict optionnel de metadonnees libres (ex:
+    Document de ``--json-report``, sans l'ecrire : servi tel quel par
+    ``GET /analyses/{id}/report`` de l'API (issue #330), pour qu'une meme
+    capture donne les memes constats, triage et score de sante quelle que
+    soit la surface. ``generate_json_report()`` l'ecrit dans un fichier.
+
+    r : objet Report (netcross_core.analyse). meta : dict optionnel de metadonnees libres (ex:
     {"Ticket": "INC-1234", "Auteur": "Mathilde"}), reporte tel quel.
     findings : liste de Finding deja calculee (synthesis.build_findings(r))
     si l'appelant l'a deja fait (evite un recalcul) ; sinon calculee ici --
@@ -289,11 +292,10 @@ def generate_json_report(
     distincte, meme convention d'absence que les autres objets Session 0.
     """
     logger.debug(
-        "generate_json_report: r={} output_path={} title={} meta={} findings={} tls_findings={} "
+        "build_json_report_document: r={} title={} meta={} findings={} tls_findings={} "
         "quic_findings={} flows={} conversations={} expert_events={} diagnoses={} compliance={} "
         "wireshark_expert_events={} rule_engine_findings={} names={} security_report={}",
         summarize(r, "r"),
-        summarize(output_path, "output_path"),
         summarize(title, "title"),
         summarize(meta, "meta"),
         summarize(findings, "findings"),
@@ -415,6 +417,16 @@ def generate_json_report(
             if rule_list  # omet les regles sans Finding (liste vide)
         }
 
+    logger.debug("build_json_report_document: retour doc={}", summarize(doc, "doc"))
+    return doc
+
+
+def generate_json_report(r, output_path, title="Analyse croisee de captures reseau", **kwargs) -> str:
+    """Ecrit dans ``output_path`` le document de ``build_json_report_document()``
+    (memes arguments nommes : meta, findings, tls_findings...) et retourne
+    le chemin."""
+    logger.debug("generate_json_report: output_path={}", summarize(output_path, "output_path"))
+    doc = build_json_report_document(r, title=title, **kwargs)
     logger.debug("generate_json_report: retour _write(…)")
     return _write(doc, output_path)
 

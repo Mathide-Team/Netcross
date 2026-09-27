@@ -494,6 +494,7 @@ def _expand_split_interfaces(captures):
             point = f"{label}:{s.name}"
             print(f"  {point:<20} section {s.section}, interface {s.interface_id} : {s.packets} paquet(s)")
             expanded.append((point, s.path))
+    logger.debug("_expand_split_interfaces: retour expanded={}", summarize(expanded, "expanded"))
     return expanded
 
 

@@ -39,11 +39,13 @@ class HttpObject:
     @property
     def volume_bytes(self) -> int:
         """Volume applicatif declare par Content-Length, 0 s'il est absent."""
+        logger.debug("HttpObject.volume_bytes: retour self.content_length or 0")
         return self.content_length or 0
 
     @property
     def flow(self) -> tuple:
         """Identifiant directionnel de connexion TCP (hors sequence TCP)."""
+        logger.debug("HttpObject.flow: retour tuple de 4")
         return (self.src, self.sport, self.dst, self.dport)
 
 
@@ -51,6 +53,7 @@ def _connection_key(pk: Pkt) -> tuple:
     """Cle canonique d'une connexion TCP, independante du sens."""
     a = (pk.src, pk.sport)
     b = (pk.dst, pk.dport)
+    logger.debug("_connection_key: retour (a, b) if a <= b else (b, a)")
     return (a, b) if a <= b else (b, a)
 
 
@@ -75,6 +78,7 @@ def extract_http_objects(
     """
     if privacy_mode not in {"metadata", "forensic"}:
         logger.trace("extract_http_objects: refus, ValueError")
+        logger.debug("extract_http_objects: si privacy_mode not in ('metadata', 'forensic') -> levée ValueError")
         raise ValueError("privacy_mode doit etre 'metadata' ou 'forensic'")
 
     pending: dict[tuple, deque[Pkt]] = defaultdict(deque)
@@ -136,6 +140,7 @@ def extract_http_objects(
 
 def objects_to_dicts(objects: list[HttpObject]) -> list[dict]:
     """Serialization JSON/CSV stable, sans corps HTTP."""
+    logger.debug("objects_to_dicts: retour liste")
     return [asdict(obj) for obj in objects]
 
 

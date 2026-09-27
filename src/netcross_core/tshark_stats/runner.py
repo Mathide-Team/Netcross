@@ -15,7 +15,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -62,4 +62,5 @@ def run_tshark_stat(
         raise subprocess.CalledProcessError(completed.returncode, cmd, completed.stdout, completed.stderr)
     if completed.returncode != 0:
         logger.debug("run_tshark_stat: code de retour {} (sortie partielle conservée)", completed.returncode)
+    logger.debug("run_tshark_stat: retour completed.stdout={}", summarize(completed.stdout, "stdout"))
     return completed.stdout

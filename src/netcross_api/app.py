@@ -51,6 +51,9 @@ from netcross_api.store import COMPLETED, FAILED, PENDING, report_document, stor
 from netcross_core import analyse, correlate, parse_capture
 from netcross_core.logging_config import get_logger, summarize
 from netcross_core.security.findings import apply_security_findings, scan_capture_exploits
+from netcross_report.json_report import build_json_report_document
+from netcross_report.security_report import build_security_report
+from netcross_report.synthesis import build_findings
 
 logger = get_logger(__name__)
 # Singleton pour éviter B008 (File() in argument defaults).
@@ -173,9 +176,12 @@ class AnalysisError(Exception):
     quel au client (statut failed, ou 400 avec ?wait=true)."""
 
 
-def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | None, multi: bool) -> tuple[dict, dict]:
-    """Analyse complète (corrélation, sécurité) ; retourne le document JSON
-    du rapport et le résumé. Exécuté hors de la boucle asyncio."""
+def _analyse_captures(
+    captures: list[tuple[str, str]], order_list: list[str] | None, multi: bool
+) -> tuple[dict, dict, dict]:
+    """Analyse complète (corrélation, sécurité) ; retourne le document brut,
+    le résumé et le rapport structuré (celui de ``--json-report``, issue
+    #330). Exécuté hors de la boucle asyncio."""
     all_packets = []
     for label, path in captures:
         try:
@@ -196,6 +202,15 @@ def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | N
         for label, path in captures:
             detections.extend(scan_capture_exploits(label, path))
         apply_security_findings(report, all_packets, detections=detections)
+        # Issue #330 : même document que `netcross --json-report
+        # --security-report` (constats, triage, score de santé) ; le
+        # rapport de sécurité est toujours calculé par l'API.
+        structured = build_json_report_document(
+            report,
+            findings=build_findings(report),
+            security_report=build_security_report(report),
+            meta={"Source": "API REST"},
+        )
     except Exception as exc:
         logger.exception("échec de l'analyse des captures")
         raise AnalysisError(f"Erreur d'analyse: {exc}") from exc
@@ -209,14 +224,14 @@ def _analyse_captures(captures: list[tuple[str, str]], order_list: list[str] | N
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
-    logger.debug("_analyse_captures: retour tuple de 2")
-    return report_document(report), summary
+    logger.debug("_analyse_captures: retour tuple de 3")
+    return report_document(report), summary, structured
 
 
 def _run_job(analysis_id: str, captures: list[tuple[str, str]], order_list: list[str] | None, multi: bool) -> None:
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
-        document, summary = _analyse_captures(captures, order_list, multi)
+        document, summary, structured = _analyse_captures(captures, order_list, multi)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
         store.fail(analysis_id, str(exc))
@@ -224,7 +239,7 @@ def _run_job(analysis_id: str, captures: list[tuple[str, str]], order_list: list
         logger.exception("analyse {} : erreur interne", analysis_id)
         store.fail(analysis_id, f"Erreur interne: {exc}")
     else:
-        store.complete(analysis_id, document, summary)
+        store.complete(analysis_id, document, summary, report=structured)
     finally:
         for _label, path in captures:
             Path(path).unlink(missing_ok=True)
@@ -437,21 +452,28 @@ async def upload_multi_capture(
     return await _dispatch(captures, metadata, order_list, multi=True, wait=wait)
 
 
-def _completed_document(analysis_id: str) -> dict:
-    """Document d'une analyse terminée ; 404 inconnue, 409 pending/failed."""
-    logger.debug("_completed_document: analysis_id={}", summarize(analysis_id, "analysis_id"))
+def _completed_entry(analysis_id: str) -> dict:
+    """Entrée d'une analyse terminée ; 404 inconnue, 409 pending/failed."""
+    logger.debug("_completed_entry: analysis_id={}", summarize(analysis_id, "analysis_id"))
     entry = store.get(analysis_id)
     if entry is None:
-        logger.debug("_completed_document: refus, HTTPException")
+        logger.debug("_completed_entry: refus, HTTPException")
         raise HTTPException(status_code=404, detail=f"Analyse {analysis_id} introuvable")
     if entry["status"] == PENDING:
-        logger.debug("_completed_document: refus, HTTPException")
+        logger.debug("_completed_entry: refus, HTTPException")
         raise HTTPException(
             status_code=409, detail=f"Analyse {analysis_id} en cours (pending) : suivre /analyses/{analysis_id}/status"
         )
     if entry["status"] == FAILED:
-        logger.debug("_completed_document: refus, HTTPException")
+        logger.debug("_completed_entry: refus, HTTPException")
         raise HTTPException(status_code=409, detail=f"Analyse {analysis_id} en echec : {entry['error']}")
+    logger.debug("_completed_entry: retour entry={}", summarize(entry, "entry"))
+    return entry
+
+
+def _completed_document(analysis_id: str) -> dict:
+    """Document brut d'une analyse terminée (voir ``_completed_entry``)."""
+    entry = _completed_entry(analysis_id)
     logger.debug("_completed_document: retour entry['document']")
     return entry["document"]
 
@@ -473,6 +495,30 @@ async def get_analysis(analysis_id: str, _auth: None = Depends(_verify_api_key))
     doc = dict(_completed_document(analysis_id))
     doc["_analysis_id"] = analysis_id
     logger.debug("get_analysis: retour JSONResponse(…)")
+    return JSONResponse(content=doc)
+
+
+@app.get("/analyses/{analysis_id}/report", tags=["analyses"], responses=_ANALYSIS_RESPONSES)
+async def get_analysis_report(analysis_id: str, _auth: None = Depends(_verify_api_key)) -> JSONResponse:
+    """Rapport structuré d'une analyse terminée : le même document que
+    ``netcross --json-report --security-report`` et que l'export JSON de la
+    GUI (``findings``, ``triage``, ``health_score``, ``security_report``...).
+
+    Issue #330 : ``GET /analyses/{analysis_id}`` sert la copie brute des
+    mesures ; cette route sert les constats et le score de santé. 409 pour
+    une analyse enregistrée avant l'ajout de cette route (à relancer).
+    """
+    logger.debug("get_analysis_report(analysis_id={})", analysis_id)
+    entry = _completed_entry(analysis_id)
+    if entry.get("report") is None:
+        logger.debug("get_analysis_report: si rapport absent -> levée HTTPException")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Analyse {analysis_id} enregistree sans rapport structure (version anterieure) : la relancer",
+        )
+    doc = dict(entry["report"])
+    doc["_analysis_id"] = analysis_id
+    logger.debug("get_analysis_report: retour JSONResponse(…)")
     return JSONResponse(content=doc)
 
 
