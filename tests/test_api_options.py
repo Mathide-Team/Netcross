@@ -61,6 +61,12 @@ def test_options_par_defaut_enregistrees():
         "tls": False,
         "quic": False,
         "redact": False,
+        "bucket_ms": 1000.0,
+        "rtp_clock_rate": 8000,
+        "idle_timeout_seconds": None,
+        "detect_duplicates": False,
+        "exclude_duplicates": False,
+        "duplicate_threshold_ms": 1.0,
     }
 
 

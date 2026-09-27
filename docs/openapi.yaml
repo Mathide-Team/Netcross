@@ -32,7 +32,11 @@ paths:
 
         fin et retourne directement le résumé (201). ``nat_tolerant``,
 
-        ``nat_window_ms``, ``tls``, ``quic`` et ``redact`` ont le sens des
+        ``nat_window_ms``, ``tls``, ``quic``, ``redact``, ``bucket_ms``,
+
+        ``rtp_clock_rate``, ``idle_timeout_seconds``, ``detect_duplicates``,
+
+        ``exclude_duplicates`` et ``duplicate_threshold_ms`` ont le sens des
 
         options de même nom de la CLI (issue #330).'
       operationId: upload_capture_captures_post
@@ -510,6 +514,44 @@ components:
             de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
             alors pas calculé'
           default: false
+        bucket_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Bucket Ms
+          description: Fenêtre temporelle du débit en ms (équivalent de --bucket-ms)
+          default: 1000
+        rtp_clock_rate:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rtp Clock Rate
+          description: Horloge RTP en Hz pour la gigue (équivalent de --rtp-clock-rate)
+          default: 8000
+        idle_timeout_seconds:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Idle Timeout Seconds
+          description: Seuil de coupure NAT/pare-feu silencieuse en secondes, défaut
+            du cœur (60 s) si absent (équivalent de --idle-timeout-seconds)
+        detect_duplicates:
+          type: boolean
+          title: Detect Duplicates
+          description: 'true : compte les doublons inter-captures (équivalent de --detect-duplicates)'
+          default: false
+        exclude_duplicates:
+          type: boolean
+          title: Exclude Duplicates
+          description: 'true : exclut les doublons inter-captures de l''analyse (équivalent
+            de --exclude-duplicates, implique detect_duplicates)'
+          default: false
+        duplicate_threshold_ms:
+          type: number
+          minimum: 0.0
+          title: Duplicate Threshold Ms
+          description: Écart maximal en ms entre deux copies d'un même paquet (équivalent
+            de --duplicate-threshold-ms)
+          default: 1.0
       type: object
       required:
       - file
@@ -562,6 +604,44 @@ components:
             de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
             alors pas calculé'
           default: false
+        bucket_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Bucket Ms
+          description: Fenêtre temporelle du débit en ms (équivalent de --bucket-ms)
+          default: 1000
+        rtp_clock_rate:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rtp Clock Rate
+          description: Horloge RTP en Hz pour la gigue (équivalent de --rtp-clock-rate)
+          default: 8000
+        idle_timeout_seconds:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Idle Timeout Seconds
+          description: Seuil de coupure NAT/pare-feu silencieuse en secondes, défaut
+            du cœur (60 s) si absent (équivalent de --idle-timeout-seconds)
+        detect_duplicates:
+          type: boolean
+          title: Detect Duplicates
+          description: 'true : compte les doublons inter-captures (équivalent de --detect-duplicates)'
+          default: false
+        exclude_duplicates:
+          type: boolean
+          title: Exclude Duplicates
+          description: 'true : exclut les doublons inter-captures de l''analyse (équivalent
+            de --exclude-duplicates, implique detect_duplicates)'
+          default: false
+        duplicate_threshold_ms:
+          type: number
+          minimum: 0.0
+          title: Duplicate Threshold Ms
+          description: Écart maximal en ms entre deux copies d'un même paquet (équivalent
+            de --duplicate-threshold-ms)
+          default: 1.0
       type: object
       required:
       - files
