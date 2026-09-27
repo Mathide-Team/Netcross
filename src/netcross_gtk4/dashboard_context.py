@@ -78,6 +78,7 @@ def _flow_protocol(flow: Flow) -> str | None:
     if key[0] == "NAT" and len(key) >= 2:
         logger.debug("_flow_protocol: clé NAT, protocole {}", key[1])
         return key[1]
+    logger.debug("_flow_protocol: retour key[0]")
     return key[0]
 
 
@@ -181,13 +182,17 @@ class DashboardSnapshot:
 
 def _flow_matches(flow: Flow, sel: DashboardSelection) -> bool:
     if sel.protocol is not None and _flow_protocol(flow) != sel.protocol:
+        logger.debug("_flow_matches: si sel.protocol is not None and _flow_protocol(flow) != sel.pr… -> retour False")
         return False
     if sel.endpoint is not None:
         eps = flow.endpoints or ()
         if sel.endpoint not in eps:
+            logger.debug("_flow_matches: si sel.endpoint not in eps -> retour False")
             return False
     if sel.flow_key is not None and flow.key != sel.flow_key:
+        logger.debug("_flow_matches: si sel.flow_key is not None and flow.key != sel.flow_key -> retour False")
         return False
+    logger.debug("_flow_matches: retour not (sel.point is not None and sel.point not in f…")
     return not (sel.point is not None and sel.point not in flow.points)
 
 
@@ -195,11 +200,16 @@ def _event_matches(ev: Any, sel: DashboardSelection) -> bool:
     if sel.protocol is not None:
         proto = getattr(ev, "protocol", None)
         if proto is not None and proto != sel.protocol:
+            logger.debug("_event_matches: si proto is not None and proto != sel.protocol -> retour False")
             return False
     if sel.point is not None:
         segment = getattr(ev, "segment", None)
         if segment is not None and segment != sel.point and sel.point not in (segment or ""):
+            logger.debug(
+                "_event_matches: si segment is not None and segment != sel.point and (sel.point… -> retour False"
+            )
             return False
+    logger.debug("_event_matches: retour True")
     return True
 
 
@@ -413,12 +423,14 @@ def _port(flow: Flow, side: int) -> str:
     une chaine (\"?\" si indeterminable) -- affichage uniquement."""
     key = flow.key
     if not key:
+        logger.debug("_port: si not key -> retour '?'")
         return "?"
     if key[0] == "NAT":
         logger.debug("_port: clé NAT, port illisible")
         return "?"  # cle NAT : pas de port lisible
     # strict : (proto, src, sport, dst, dport, key_id)
     try:
+        logger.debug("_port: retour str(…)")
         return str(key[2] if side == 0 else key[4])
     except IndexError:
         # repli attendu (cle plus courte que la forme stricte) : affichage "?"

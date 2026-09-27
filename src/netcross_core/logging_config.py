@@ -51,8 +51,11 @@ premier ``enable``, quel que soit l'ordre des imports de l'appelant.
 
 from __future__ import annotations
 
+import enum
 import os
+import re
 import sys
+from collections.abc import Sized
 
 from loguru import logger as _logger
 
@@ -202,3 +205,38 @@ def get_logger(name: str):
     if not _CONFIGURED:
         configure_logging()
     return _logger.bind(name=name)
+
+
+# -- Résumés pour les traces debug (issue #441) ------------------------------
+
+_SECRET_NAME_RE = re.compile(r"pass|secret|token|cred|auth|api_?key|private|cookie|signature", re.IGNORECASE)
+_URL_USERINFO_RE = re.compile(r"(://)[^/@\s]+@")
+_MAX_STR = 80
+
+
+def summarize(value: object, name: str = "") -> str:
+    """Résumé court et sans secret d'une valeur, pour un message de debug.
+
+    Conventions de #441 : jamais d'objet entier dans un log. Les scalaires
+    sont rendus tels quels, les chaînes courtes aussi (identifiants d'URL
+    masqués), les chaînes longues et octets par leur taille, les
+    collections par leur type et leur nombre d'éléments, tout le reste par
+    son type. Un paramètre dont le nom évoque un secret (mot de passe,
+    jeton, clé...) est toujours masqué.
+    """
+    if name and _SECRET_NAME_RE.search(name):
+        return "***"
+    if value is None or isinstance(value, (bool, int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        text = _URL_USERINFO_RE.sub(r"\1***@", value)
+        return repr(text) if len(text) <= _MAX_STR else f"<str {len(text)} car.>"
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return f"<{type(value).__name__} {len(value)} octets>"
+    if isinstance(value, os.PathLike):
+        return summarize(os.fspath(value))
+    if isinstance(value, enum.Enum):
+        return f"{type(value).__name__}.{value.name}"
+    if isinstance(value, Sized):
+        return f"<{type(value).__name__} {len(value)}>"
+    return f"<{type(value).__name__}>"

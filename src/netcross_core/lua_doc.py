@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -204,6 +204,7 @@ class ResultatRecherche:
 
     @property
     def est_attribut(self) -> bool:
+        logger.debug("ResultatRecherche.est_attribut: retour self.genre == GENRE_ATTRIBUT")
         return self.genre == GENRE_ATTRIBUT
 
 
@@ -213,6 +214,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     Une base creee avec un autre schema (``PRAGMA user_version``) est
     videe et recreee : son contenu est de toute facon regenerable.
     """
+    logger.debug("connect: db_path={}", summarize(db_path, "db_path"))
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA foreign_keys = ON")
     version = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -221,6 +223,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
             conn.execute(f"DROP TABLE IF EXISTS {table}")  # noqa: S608 -- noms de tables constants
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.executescript(_SCHEMA)
+    logger.debug("connect: retour conn={}", summarize(conn, "conn"))
     return conn
 
 
@@ -267,6 +270,7 @@ def _insert_methode(conn: sqlite3.Connection, classe_id: int, cls_name: str, m: 
         _FTS_INSERT,
         (cls_name, m.get("nom", ""), m.get("signature", ""), m.get("description", ""), genre, methode_id),
     )
+    logger.debug("_insert_methode: fin")
 
 
 def load_json(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, int]:
@@ -332,6 +336,7 @@ def load_json(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, int]:
         counts["attributs"],
         meta["version_wireshark"],
     )
+    logger.debug("load_json: retour counts={}", summarize(counts, "counts"))
     return counts
 
 
@@ -341,28 +346,33 @@ def load_json_file(conn: sqlite3.Connection, json_path: str | Path) -> dict[str,
     L'empreinte sha256 du fichier est gardee dans ``meta.json_sha256``
     pour que :func:`ensure_db` sache quand reconstruire la base.
     """
+    logger.debug("load_json_file: conn={} json_path={}", summarize(conn, "conn"), summarize(json_path, "json_path"))
     raw = Path(json_path).read_bytes()
     counts = load_json(conn, json.loads(raw))
     with conn:
         conn.execute(
             "INSERT OR REPLACE INTO meta(cle, valeur) VALUES ('json_sha256', ?)", (hashlib.sha256(raw).hexdigest(),)
         )
+    logger.debug("load_json_file: retour counts={}", summarize(counts, "counts"))
     return counts
 
 
 def json_candidates() -> list[Path]:
     """Emplacements du JSON, par priorite : $NETCROSS_LUA_API_JSON, depot, paquet deb/rpm."""
+    logger.debug("json_candidates()")
     here = Path(__file__).resolve()
     candidats = [
         here.parents[2] / "data" / "lua_api.json",  # depot : src/netcross_core/lua_doc.py -> data/
         here.parents[1] / "data" / "lua_api.json",  # paquet : /usr/share/netcross/data/
     ]
     env = os.environ.get(ENV_JSON)
+    logger.debug("json_candidates: retour [Path(env).expanduser(), *candidats] if env else …")
     return [Path(env).expanduser(), *candidats] if env else candidats
 
 
 def find_json() -> Path | None:
     """Premier JSON existant parmi :func:`json_candidates`, ou None."""
+    logger.debug("find_json: retour next(…)")
     return next((p for p in json_candidates() if p.is_file()), None)
 
 
@@ -380,22 +390,26 @@ def ensure_db(db_path: str | Path, json_path: str | Path) -> sqlite3.Connection:
     if get_meta(conn).get("json_sha256") != attendu:
         logger.debug("Construction de la banque Lua {} depuis {}", db_path, json_path)
         load_json_file(conn, json_path)
+    logger.debug("ensure_db: retour conn={}", summarize(conn, "conn"))
     return conn
 
 
 def get_meta(conn: sqlite3.Connection) -> dict[str, str]:
     """Retourne les metadonnees (version Wireshark, date de generation...)."""
+    logger.debug("get_meta: retour dict(…)")
     return dict(conn.execute("SELECT cle, valeur FROM meta").fetchall())
 
 
 def list_classes(conn: sqlite3.Connection) -> list[str]:
     """Liste les noms de classes, tries."""
+    logger.debug("list_classes: retour liste")
     return [r[0] for r in conn.execute("SELECT nom FROM classes ORDER BY nom")]
 
 
 def _fts_query(terme: str, operateur: str = " ") -> str:
     """Transforme un texte libre en requete FTS5 sure (prefixe sur chaque mot)."""
     mots = [m.replace('"', "") for m in terme.split()]
+    logger.debug("_fts_query: retour operateur.join(…)")
     return operateur.join(f'"{m}"*' for m in mots if m)
 
 
@@ -406,8 +420,15 @@ def search(conn: sqlite3.Connection, terme: str, limit: int = 20) -> list[Result
     lequel suffit. Les correspondances sur le nom pesent plus que sur la
     description.
     """
+    logger.debug(
+        "search: conn={} terme={} limit={}",
+        summarize(conn, "conn"),
+        summarize(terme, "terme"),
+        summarize(limit, "limit"),
+    )
     query = _fts_query(terme)
     if not query:
+        logger.debug("search: si not query -> retour liste vide")
         return []
     mots = [m.lower() for m in terme.split()]
     marques = ", ".join("?" for _ in mots)
@@ -420,6 +441,7 @@ def search(conn: sqlite3.Connection, terme: str, limit: int = 20) -> list[Result
     rows = conn.execute(sql, (query, *mots, *mots, limit)).fetchall()
     if not rows and len(mots) > 1:
         rows = conn.execute(sql, (_fts_query(terme, " OR "), *mots, *mots, limit)).fetchall()
+    logger.debug("search: retour liste")
     return [ResultatRecherche(r[0], r[1], r[2], r[3], r[4], int(r[5])) for r in rows]
 
 
@@ -435,8 +457,10 @@ def _load_methode(conn: sqlite3.Connection, row: tuple[Any, ...]) -> Methode:
 
     def _col(table: str, colonne: str) -> list[str]:
         sql = f"SELECT {colonne} FROM {table} WHERE methode_id = ? ORDER BY id"  # noqa: S608 -- constantes
+        logger.debug("_load_methode._col: retour liste")
         return [r[0] for r in conn.execute(sql, (methode_id,))]
 
+    logger.debug("_load_methode: retour Methode(…)")
     return Methode(
         classe,
         nom,
@@ -463,10 +487,12 @@ _ATTRIBUT_SELECT = (
 
 def get_class(conn: sqlite3.Connection, nom: str) -> FicheClasse | None:
     """Fiche complete d'une classe (insensible a la casse), ou None si inconnue."""
+    logger.debug("get_class: conn={} nom={}", summarize(conn, "conn"), summarize(nom, "nom"))
     row = conn.execute(
         "SELECT id, nom, module, description FROM classes WHERE nom = ? COLLATE NOCASE", (nom,)
     ).fetchone()
     if row is None:
+        logger.debug("get_class: si row is None -> retour None")
         return None
     classe_id, nom_reel, module, description = row
     methodes = [
@@ -479,16 +505,19 @@ def get_class(conn: sqlite3.Connection, nom: str) -> FicheClasse | None:
     exemples = [
         r[0] for r in conn.execute("SELECT code FROM exemples_classe WHERE classe_id = ? ORDER BY id", (classe_id,))
     ]
+    logger.debug("get_class: retour FicheClasse(…)")
     return FicheClasse(nom_reel, module, description, exemples, methodes, attributs)
 
 
 def get_methode(conn: sqlite3.Connection, methode_id: int) -> Methode | None:
     """Fiche complete d'une methode par identifiant."""
     row = conn.execute(_METHODE_SELECT + "WHERE m.id = ?", (methode_id,)).fetchone()
+    logger.debug("get_methode: retour _load_methode(conn, row) if row else None")
     return _load_methode(conn, row) if row else None
 
 
 def get_attribut(conn: sqlite3.Connection, attribut_id: int) -> Attribut | None:
     """Attribut par identifiant."""
     row = conn.execute(_ATTRIBUT_SELECT + "WHERE a.id = ?", (attribut_id,)).fetchone()
+    logger.debug("get_attribut: retour Attribut(*row) if row else None")
     return Attribut(*row) if row else None

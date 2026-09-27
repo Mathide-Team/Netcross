@@ -25,7 +25,7 @@ import statistics
 from dataclasses import dataclass, field
 
 from netcross_core.expert_model import EvidenceLink, PacketEvidence
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 
 logger = get_logger(__name__)
@@ -61,22 +61,27 @@ class DiffFinding:
 
 
 def _pct(n: float, d: float) -> float:
+    logger.debug("_pct: retour n / d * 100.0 if d else 0.0")
     return (n / d * 100.0) if d else 0.0
 
 
 def _mean(values: list[float]) -> float | None:
+    logger.debug("_mean: retour statistics.mean(values) if values else None")
     return statistics.mean(values) if values else None
 
 
 def _p95(values: list[float]) -> float | None:
     if not values:
+        logger.debug("_p95: si not values -> retour None")
         return None
     s = sorted(values)
     idx = min(len(s) - 1, round(0.95 * (len(s) - 1)))
+    logger.debug("_p95: retour s[idx]")
     return s[idx]
 
 
 def _fmt(v: float | None, unit: str = "") -> str:
+    logger.debug("_fmt: retour 'n/a' if v is None else f'(v:.1f)(unit)'")
     return "n/a" if v is None else f"{v:.1f}{unit}"
 
 
@@ -96,11 +101,13 @@ def _evidence(point: str, texts, frames: list[int | None] | None = None) -> list
     (Session 35, pilote PMTUD ; Session 37, etendu aux huit autres
     categories deja porteuses d'un EvidenceLink textuel sur DiffFinding)."""
     if not frames:
+        logger.debug("_evidence: si not frames -> retour liste")
         return [EvidenceLink(point, t) for t in texts]
     links = []
     for t, fn in zip(texts, frames):
         packet = PacketEvidence(point, fn) if fn is not None else None
         links.append(EvidenceLink(point, t, packet=packet))
+    logger.debug("_evidence: retour links={}", summarize(links, "links"))
     return links
 
 
@@ -127,15 +134,22 @@ def _http_error_evidence(examples: list[str], status_class: int, frames: list[in
             texts.append(ex)
             if frames is not None and i < len(frames):
                 filtered_frames.append(frames[i])
+    logger.debug("_http_error_evidence: retour tuple de 2")
     return texts, filtered_frames
 
 
 def _common_points(baseline: Report, current: Report) -> tuple[list[str], list[str], list[str]]:
     """Renvoie (points_communs, presents_seulement_avant, presents_seulement_apres)."""
+    logger.debug(
+        "_common_points: baseline={} current={}",
+        summarize(baseline, "baseline"),
+        summarize(current, "current"),
+    )
     b, c = set(baseline.points), set(current.points)
     common = sorted(b & c)
     only_before = sorted(b - c)
     only_after = sorted(c - b)
+    logger.debug("_common_points: retour tuple de 3")
     return common, only_before, only_after
 
 
@@ -157,10 +171,25 @@ def _compare_rate(
     evite le bruit sur des ecarts de 0.1% qui n'ont aucune signification
     operationnelle.
     """
+    logger.debug(
+        "_compare_rate: findings={} category={} segment={} before_n={} before_d={} after_n={} "
+        "after_d={} min_pp={} label={} evidence={}",
+        summarize(findings, "findings"),
+        summarize(category, "category"),
+        summarize(segment, "segment"),
+        summarize(before_n, "before_n"),
+        summarize(before_d, "before_d"),
+        summarize(after_n, "after_n"),
+        summarize(after_d, "after_d"),
+        summarize(min_pp, "min_pp"),
+        summarize(label, "label"),
+        summarize(evidence, "evidence"),
+    )
     before_rate = _pct(before_n, before_d)
     after_rate = _pct(after_n, after_d)
     delta = after_rate - before_rate
     if abs(delta) < min_pp:
+        logger.debug("_compare_rate: si abs(delta) < min_pp -> retour")
         return
     severity = "regression" if delta > 0 else "amelioration"
     findings.append(
@@ -175,6 +204,7 @@ def _compare_rate(
             evidence=evidence or [],
         )
     )
+    logger.debug("_compare_rate: fin")
 
 
 def _compare_count(
@@ -196,11 +226,27 @@ def _compare_count(
     +300%) est significatif, un passage de 400 a 403 (delta=3, +0.75%)
     ne l'est pas.
     """
+    logger.debug(
+        "_compare_count: findings={} category={} segment={} before={} after={} min_delta={} "
+        "rel_threshold={} label={} higher_is_worse={} evidence={}",
+        summarize(findings, "findings"),
+        summarize(category, "category"),
+        summarize(segment, "segment"),
+        summarize(before, "before"),
+        summarize(after, "after"),
+        summarize(min_delta, "min_delta"),
+        summarize(rel_threshold, "rel_threshold"),
+        summarize(label, "label"),
+        summarize(higher_is_worse, "higher_is_worse"),
+        summarize(evidence, "evidence"),
+    )
     delta = after - before
     if abs(delta) < min_delta:
+        logger.debug("_compare_count: si abs(delta) < min_delta -> retour")
         return
     rel = abs(delta) / before if before else float("inf")
     if rel < rel_threshold:
+        logger.debug("_compare_count: si rel < rel_threshold -> retour")
         return
     got_worse = delta > 0 if higher_is_worse else delta < 0
     severity = "regression" if got_worse else "amelioration"
@@ -215,6 +261,7 @@ def _compare_count(
             evidence=evidence or [],
         )
     )
+    logger.debug("_compare_count: fin")
 
 
 def _compare_latency(
@@ -225,6 +272,15 @@ def _compare_latency(
     min_ms: float = 5.0,
     rel_threshold: float = 0.2,
 ) -> None:
+    logger.debug(
+        "_compare_latency: findings={} segment={} before={} after={} min_ms={} rel_threshold={}",
+        summarize(findings, "findings"),
+        summarize(segment, "segment"),
+        summarize(before, "before"),
+        summarize(after, "after"),
+        summarize(min_ms, "min_ms"),
+        summarize(rel_threshold, "rel_threshold"),
+    )
     b_mean, a_mean = _mean(before), _mean(after)
     if b_mean is None or a_mean is None:
         if before and not after:
@@ -247,10 +303,12 @@ def _compare_latency(
                     sample_size=len(after),
                 )
             )
+        logger.debug("_compare_latency: si b_mean is None or a_mean is None -> retour")
         return
     delta = a_mean - b_mean
     rel = abs(delta) / b_mean if b_mean else float("inf")
     if abs(delta) < min_ms or rel < rel_threshold:
+        logger.debug("_compare_latency: si abs(delta) < min_ms or rel < rel_threshold -> retour")
         return
     severity = "regression" if delta > 0 else "amelioration"
     b_p95, a_p95 = _p95(before), _p95(after)
@@ -266,6 +324,7 @@ def _compare_latency(
             sample_size=len(after),
         )
     )
+    logger.debug("_compare_latency: fin")
 
 
 def diff_reports(
@@ -835,6 +894,7 @@ def diff_reports(
                 continue
             key = s["label"].split(" (SSRC=")[0]
             out[key] = s
+        logger.debug("diff_reports._rtp_by_label: retour out")
         return out
 
     b_rtp, a_rtp = _rtp_by_label(baseline), _rtp_by_label(current)
@@ -882,6 +942,7 @@ def diff_reports(
             )
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f.severity, 9), f.category, f.segment))
+    logger.debug("diff_reports: retour findings={}", summarize(findings, "findings"))
     return findings
 
 
@@ -893,6 +954,7 @@ def print_diff_report(findings: list[DiffFinding]) -> None:
 
     if not findings:
         print("\nAucun ecart significatif detecte entre les deux runs.")
+        logger.debug("print_diff_report: si not findings -> retour")
         return
 
     counts = {sev: sum(1 for f in findings if f.severity == sev) for sev in SEVERITY_ORDER}
@@ -913,9 +975,11 @@ def print_diff_report(findings: list[DiffFinding]) -> None:
             }[f.severity]
             print(f"\n{title}")
         print(f"  [{f.category:14s}] {f.segment:20s} : {f.message}")
+    logger.debug("print_diff_report: fin")
 
 
 def write_diff_csv(findings: list[DiffFinding], path: str) -> None:
+    logger.debug("write_diff_csv: findings={} path={}", summarize(findings, "findings"), summarize(path, "path"))
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(["severite", "categorie", "segment", "message", "avant", "apres"])
@@ -930,3 +994,4 @@ def write_diff_csv(findings: list[DiffFinding], path: str) -> None:
                     "" if f.after is None else f.after,
                 ]
             )
+    logger.debug("write_diff_csv: fin")

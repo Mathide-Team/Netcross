@@ -42,7 +42,7 @@ from netcross_core.batch import (
     inventory_from_packets,
     plan_batch,
 )
-from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger
+from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
 from netcross_core.security import findings as security_findings
 from netcross_report.security_report import build_security_report, print_security_report
 
@@ -57,6 +57,11 @@ def list_captures(folder: str, recursive: bool = False) -> tuple[list[str], list
     """Renvoie (captures, ignores) tries par chemin. Les fichiers ignores
     (extension non reconnue) sont remontes pour etre cites dans l'index :
     rien ne disparait sans trace."""
+    logger.debug(
+        "list_captures: folder={} recursive={}",
+        summarize(folder, "folder"),
+        summarize(recursive, "recursive"),
+    )
     captures: list[str] = []
     ignored: list[str] = []
     walker: Iterator[tuple[str, list[str]]]
@@ -73,12 +78,14 @@ def list_captures(folder: str, recursive: bool = False) -> tuple[list[str], list
                 captures.append(path)
             else:
                 ignored.append(path)
+    logger.debug("list_captures: retour tuple de 2")
     return sorted(captures), sorted(ignored)
 
 
 def make_labels(paths: list[str]) -> dict[str, str]:
     """Etiquette lisible et unique par capture (nom de fichier sans
     extension, suffixe _2, _3... en cas de collision)."""
+    logger.debug("make_labels: paths={}", summarize(paths, "paths"))
     labels: dict[str, str] = {}
     used: set[str] = set()
     for path in paths:
@@ -94,6 +101,7 @@ def make_labels(paths: list[str]) -> dict[str, str]:
             n += 1
         used.add(label)
         labels[path] = label
+    logger.debug("make_labels: retour labels={}", summarize(labels, "labels"))
     return labels
 
 
@@ -105,16 +113,20 @@ def build_inventory(label: str, path: str) -> CaptureInventory:
     except Exception as exc:  # noqa: BLE001 -- une capture illisible ne doit pas arreter le lot
         logger.exception(f"échec dans build_inventory: {exc}")
         msg = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+        logger.debug("build_inventory: except Exception -> retour CaptureInventory(…)")
         return CaptureInventory(label=label, path=path, error=msg[:200])
+    logger.debug("build_inventory: retour inventory_from_packets(…)")
     return inventory_from_packets(label, path, packets)
 
 
 def _cache_path(output: str, label: str) -> str:
+    logger.debug("_cache_path: retour os.path.join(…)")
     return os.path.join(output, CACHE_DIR, "inventaire", f"{label}.json")
 
 
 def _fingerprint(path: str) -> list:
     st = os.stat(path)
+    logger.debug("_fingerprint: retour liste")
     return [st.st_size, int(st.st_mtime)]
 
 
@@ -124,21 +136,36 @@ def load_cached_inventory(output: str, label: str, path: str) -> CaptureInventor
         with open(cache, encoding="utf-8") as fh:
             data = json.load(fh)
         if data.get("fingerprint") != _fingerprint(path) or data["inventory"]["path"] != path:
+            logger.debug(
+                "load_cached_inventory: si data.get('fingerprint') != _fingerprint(path) or data['inve… -> retour None"
+            )
             return None
+        logger.debug("load_cached_inventory: retour CaptureInventory.from_dict(…)")
         return CaptureInventory.from_dict(data["inventory"])
     except (OSError, ValueError, KeyError, TypeError):
         logger.exception("échec dans load_cached_inventory")
+        logger.debug("load_cached_inventory: except (OSError, ValueError, KeyError, TypeErr… -> retour None")
         return None
 
 
 def save_cached_inventory(output: str, inv: CaptureInventory) -> None:
+    logger.debug("save_cached_inventory: output={} inv={}", summarize(output, "output"), summarize(inv, "inv"))
     cache = _cache_path(output, inv.label)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     with open(cache, "w", encoding="utf-8") as fh:
         json.dump({"fingerprint": _fingerprint(inv.path), "inventory": inv.to_dict()}, fh)
+    logger.debug("save_cached_inventory: fin")
 
 
 def collect_inventories(paths, labels, output, jobs=1, skip_existing=False) -> list[CaptureInventory]:
+    logger.debug(
+        "collect_inventories: paths={} labels={} output={} jobs={} skip_existing={}",
+        summarize(paths, "paths"),
+        summarize(labels, "labels"),
+        summarize(output, "output"),
+        summarize(jobs, "jobs"),
+        summarize(skip_existing, "skip_existing"),
+    )
     results: dict[str, CaptureInventory] = {}
     todo = []
     for path in paths:
@@ -158,12 +185,19 @@ def collect_inventories(paths, labels, output, jobs=1, skip_existing=False) -> l
         print(f"  inventaire {inv.label} : {'ECHEC -- ' + inv.error if inv.error else f'{inv.packet_count} paquet(s)'}")
         if inv.error is None:
             save_cached_inventory(output, inv)
+    logger.debug("collect_inventories: retour liste")
     return [results[p] for p in paths]
 
 
 def analyse_and_write(members: list[CaptureInventory], out_path: str, security: bool) -> dict:
     """Analyse (croisee si plusieurs membres) et ecrit le rapport texte.
     Renvoie un resume pour la synthese : {"findings": {severite: n}}."""
+    logger.debug(
+        "analyse_and_write: members={} out_path={} security={}",
+        summarize(members, "members"),
+        summarize(out_path, "out_path"),
+        summarize(security, "security"),
+    )
     all_packets = []
     for m in members:
         all_packets.extend(parse_capture(m.label, m.path, raise_on_error=True))
@@ -178,6 +212,7 @@ def analyse_and_write(members: list[CaptureInventory], out_path: str, security: 
             for f in report.security_findings:
                 sev = str(f.get("severity") or "faible")
                 counts[sev] = counts.get(sev, 0) + 1
+    logger.debug("analyse_and_write: retour dictionnaire")
     return {"findings": counts}
 
 
@@ -217,10 +252,19 @@ def run_analyses(plan: BatchPlan, output: str, security: bool, skip_existing: bo
             logger.exception("analyse %s en echec", key)
             errors.append(f"analyse {key} en echec : {exc}")
             print(f"  {name} : ECHEC -- {exc}", file=sys.stderr)
+    logger.debug("run_analyses: retour tuple de 4")
     return group_reports, capture_reports, summaries, errors
 
 
 def build_synthesis(plan, summaries, errors, ignored, security) -> list[str]:
+    logger.debug(
+        "build_synthesis: plan={} summaries={} errors={} ignored={} security={}",
+        summarize(plan, "plan"),
+        summarize(summaries, "summaries"),
+        summarize(errors, "errors"),
+        summarize(ignored, "ignored"),
+        summarize(security, "security"),
+    )
     lines = []
     total_pkts = sum(inv.packet_count for g in plan.groups for inv in g.members) + sum(
         iso.capture.packet_count for iso in plan.isolated
@@ -241,10 +285,12 @@ def build_synthesis(plan, summaries, errors, ignored, security) -> list[str]:
         shown = ", ".join(os.path.basename(p) for p in ignored[:5])
         more = f", ... (+{len(ignored) - 5})" if len(ignored) > 5 else ""
         lines.append(f"{len(ignored)} fichier(s) ignore(s) (extension non reconnue) : {shown}{more}")
+    logger.debug("build_synthesis: retour lines={}", summarize(lines, "lines"))
     return lines
 
 
 def main(argv=None):
+    logger.debug("main: argv={}", summarize(argv, "argv"))
     ap = argparse.ArgumentParser(
         description="Expertise toutes les captures d'un dossier et tente l'analyse croisee des captures "
         "qui semblent observer le meme evenement (issue #277)."
@@ -341,6 +387,7 @@ def main(argv=None):
     print(f"\nIndex du lot ecrit dans {index_path}")
     if plan.failures or errors:
         sys.exit(2)
+    logger.debug("main: fin")
 
 
 if __name__ == "__main__":

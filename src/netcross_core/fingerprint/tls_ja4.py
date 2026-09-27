@@ -33,7 +33,7 @@ from __future__ import annotations
 import hashlib
 import struct
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -66,18 +66,22 @@ _VERSION_CODES = {
 
 
 def _is_grease(value: int) -> bool:
+    logger.debug("_is_grease: retour value in _GREASE")
     return value in _GREASE
 
 
 def _read_u8(data: bytes, off: int) -> tuple[int, int]:
+    logger.debug("_read_u8: retour tuple de 2")
     return data[off], off + 1
 
 
 def _read_u16(data: bytes, off: int) -> tuple[int, int]:
+    logger.debug("_read_u16: retour tuple de 2")
     return struct.unpack_from(">H", data, off)[0], off + 2
 
 
 def _read_u24(data: bytes, off: int) -> tuple[int, int]:
+    logger.debug("_read_u24: retour tuple de 2")
     return int.from_bytes(data[off : off + 3], "big"), off + 3
 
 
@@ -99,9 +103,11 @@ def parse_client_hello(payload: bytes) -> dict | None:
     `supported_versions` (list[int], ordre d'origine).
     """
     try:
+        logger.debug("parse_client_hello: retour _parse_client_hello(…)")
         return _parse_client_hello(payload)
     except (IndexError, struct.error, UnicodeError):
         logger.exception("échec dans parse_client_hello")
+        logger.debug("parse_client_hello: except (IndexError, struct.error, UnicodeError) -> retour None")
         return None
 
 
@@ -121,13 +127,16 @@ def _parse_client_hello(payload: bytes) -> dict | None:
         if body and body[0] == _CLIENT_HELLO_TYPE:
             hs = _parse_client_hello_body(body, record_version)
             if hs is not None:
+                logger.debug("_parse_client_hello: si hs is not None -> retour hs={}", summarize(hs, "hs"))
                 return hs
         off = body_end
+    logger.debug("_parse_client_hello: retour None")
     return None
 
 
 def _parse_client_hello_body(body: bytes, record_version: int) -> dict | None:
     if len(body) < 4:
+        logger.debug("_parse_client_hello_body: si len(body) < 4 -> retour None")
         return None
     _hs_type, off = _read_u8(body, 0)
     _hs_len, off = _read_u24(body, off)
@@ -170,6 +179,7 @@ def _parse_client_hello_body(body: bytes, record_version: int) -> dict | None:
             elif ext_type == _EXT_SUPPORTED_VERSIONS:
                 supported_versions = _parse_supported_versions(ext_data)
 
+    logger.debug("_parse_client_hello_body: retour dictionnaire")
     return {
         "record_version": record_version,
         "legacy_version": legacy_version,
@@ -183,15 +193,18 @@ def _parse_client_hello_body(body: bytes, record_version: int) -> dict | None:
 
 
 def _is_grease_at(data: bytes, off: int) -> bool:
+    logger.debug("_is_grease_at: retour _is_grease(…)")
     return _is_grease(struct.unpack_from(">H", data, off)[0])
 
 
 def _parse_u16_list(data: bytes) -> list[int]:
+    logger.debug("_parse_u16_list: retour liste")
     return [struct.unpack_from(">H", data, i)[0] for i in range(0, len(data) - 1, 2) if not _is_grease_at(data, i)]
 
 
 def _parse_alpn(ext_data: bytes) -> list[str]:
     if len(ext_data) < 2:
+        logger.debug("_parse_alpn: si len(ext_data) < 2 -> retour liste vide")
         return []
     protocols: list[str] = []
     off = 2  # ALPN protocol_name_list length (redondant avec ext_len - 2)
@@ -200,13 +213,16 @@ def _parse_alpn(ext_data: bytes) -> list[str]:
         off += 1
         protocols.append(ext_data[off : off + plen].decode("ascii", errors="replace"))
         off += plen
+    logger.debug("_parse_alpn: retour protocols={}", summarize(protocols, "protocols"))
     return protocols
 
 
 def _parse_supported_versions(ext_data: bytes) -> list[int]:
     if not ext_data:
+        logger.debug("_parse_supported_versions: si not ext_data -> retour liste vide")
         return []
     n = ext_data[0]  # liste (client) prefixee par sa longueur en 1 octet
+    logger.debug("_parse_supported_versions: retour _parse_u16_list(…)")
     return _parse_u16_list(ext_data[1 : 1 + n])
 
 
@@ -219,6 +235,7 @@ def _ja4_version_code(client_hello: dict) -> str:
     pas cette extension)."""
     versions = [v for v in client_hello["supported_versions"] if v in _VERSION_CODES]
     chosen = max(versions) if versions else client_hello["legacy_version"]
+    logger.debug("_ja4_version_code: retour _VERSION_CODES.get(…)")
     return _VERSION_CODES.get(chosen, "00")
 
 
@@ -227,12 +244,15 @@ def _ja4_alpn_code(alpn: list[str]) -> str:
     valeur ALPN proposee ("h2" -> "h2", "http/1.1" -> "h1"), "00" si
     aucune extension ALPN."""
     if not alpn or not alpn[0]:
+        logger.debug("_ja4_alpn_code: si not alpn or not alpn[0] -> retour '00'")
         return "00"
     first = alpn[0]
+    logger.debug("_ja4_alpn_code: retour f'(first[0])(first[-1])' if len(first) > 1 else f…")
     return f"{first[0]}{first[-1]}" if len(first) > 1 else f"{first[0]}{first[0]}"
 
 
 def _truncated_sha256(text: str) -> str:
+    logger.debug("_truncated_sha256: retour hashlib.sha256(text.encode('ascii', errors='repla…")
     return hashlib.sha256(text.encode("ascii", errors="replace")).hexdigest()[:12]
 
 
@@ -294,6 +314,7 @@ def compute_ja4(client_hello: dict, *, transport: str = "t") -> str:
     c_input = f"{ext_part}_{sigalg_part}" if sigalg_part else ext_part
     c = _truncated_sha256(c_input) if c_input else "0" * 12
 
+    logger.debug("compute_ja4: retour chaîne formatée")
     return f"{a}_{b}_{c}"
 
 
@@ -304,6 +325,7 @@ def readable_client_hello(client_hello: dict) -> str:
     ciphers = ",".join(f"{c:#06x}" for c in client_hello["cipher_suites"])
     extensions = ",".join(f"{e:#06x}" for e in client_hello["extensions"])
     alpn = ",".join(client_hello["alpn"]) or "-"
+    logger.debug("readable_client_hello: retour chaîne formatée")
     return f"ciphers=[{ciphers}] extensions=[{extensions}] alpn=[{alpn}] sni={client_hello['sni']}"
 
 
@@ -312,5 +334,7 @@ def identify(payload: bytes) -> tuple[str, str] | None:
     si `payload` porte un ClientHello TLS decodable, None sinon."""
     client_hello = parse_client_hello(payload)
     if client_hello is None:
+        logger.debug("identify: si client_hello is None -> retour None")
         return None
+    logger.debug("identify: retour tuple de 2")
     return compute_ja4(client_hello), readable_client_hello(client_hello)

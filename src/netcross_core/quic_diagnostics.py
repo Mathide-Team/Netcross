@@ -42,7 +42,7 @@ import struct
 from dataclasses import dataclass
 
 import pcap_parser
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.tls_diagnostics import parse_client_hello
 
 logger = get_logger(__name__)
@@ -98,6 +98,7 @@ class QuicEvent:
 def _hkdf_extract(salt: bytes, ikm: bytes) -> bytes:
     h = hmac.HMAC(salt, hashes.SHA256())
     h.update(ikm)
+    logger.debug("_hkdf_extract: retour h.finalize(…)")
     return h.finalize()
 
 
@@ -110,12 +111,14 @@ def _hkdf_expand(prk: bytes, info: bytes, length: int) -> bytes:
         h.update(t + info + bytes([i]))
         t = h.finalize()
         okm += t
+    logger.debug("_hkdf_expand: retour okm[:length]")
     return okm[:length]
 
 
 def _hkdf_expand_label(secret: bytes, label: str, context: bytes, length: int) -> bytes:
     full_label = b"tls13 " + label.encode("ascii")
     hkdf_label = struct.pack("!H", length) + bytes([len(full_label)]) + full_label + bytes([len(context)]) + context
+    logger.debug("_hkdf_expand_label: retour _hkdf_expand(…)")
     return _hkdf_expand(secret, hkdf_label, length)
 
 
@@ -124,6 +127,7 @@ def derive_initial_secrets(dcid: bytes) -> tuple[bytes, bytes]:
     initial_secret = _hkdf_extract(QUIC_V1_INITIAL_SALT, dcid)
     client_secret = _hkdf_expand_label(initial_secret, "client in", b"", 32)
     server_secret = _hkdf_expand_label(initial_secret, "server in", b"", 32)
+    logger.debug("derive_initial_secrets: retour tuple de 2")
     return client_secret, server_secret
 
 
@@ -132,6 +136,7 @@ def derive_packet_protection_keys(secret: bytes) -> tuple[bytes, bytes, bytes]:
     key = _hkdf_expand_label(secret, "quic key", b"", 16)
     iv = _hkdf_expand_label(secret, "quic iv", b"", 12)
     hp = _hkdf_expand_label(secret, "quic hp", b"", 16)
+    logger.debug("derive_packet_protection_keys: retour tuple de 3")
     return key, iv, hp
 
 
@@ -141,14 +146,17 @@ def derive_packet_protection_keys(secret: bytes) -> tuple[bytes, bytes, bytes]:
 def _read_varint(b: bytes, i: int) -> tuple[int, int] | None:
     """Varint QUIC (RFC 9000 16) : 2 bits de tete indiquent la longueur (1/2/4/8)."""
     if i >= len(b):
+        logger.debug("_read_varint: si i >= len(b) -> retour None")
         return None
     first = b[i]
     length = 1 << (first >> 6)
     if i + length > len(b):
+        logger.debug("_read_varint: si i + length > len(b) -> retour None")
         return None
     value = first & 0x3F
     for j in range(1, length):
         value = (value << 8) | b[i + j]
+    logger.debug("_read_varint: retour tuple de 2")
     return value, i + length
 
 
@@ -157,47 +165,62 @@ def _parse_long_header(payload: bytes) -> dict | None:
     levee de protection) : version, DCID, SCID, token, longueur, et
     l'offset ou commence le champ Packet Number (protege)."""
     if len(payload) < 7 or (payload[0] & 0xC0) != 0xC0:
+        logger.debug("_parse_long_header: si len(payload) < 7 or payload[0] & 192 != 192 -> retour None")
         return None  # pas un en-tete long QUIC (form=1, fixed=1)
     if (payload[0] & 0x30) != 0x00:
+        logger.debug("_parse_long_header: si payload[0] & 48 != 0 -> retour None")
         return None  # pas un paquet Initial (type=00 dans les 2 bits suivants)
 
     version = int.from_bytes(payload[1:5], "big")
     if version != QUIC_V1:
+        logger.trace("_parse_long_header: version QUIC 0x{:08x} non geree, paquet ignore", version)
+        logger.debug("_parse_long_header: si version != QUIC_V1 -> retour None")
         return None  # seule la v1 (RFC 9001) est geree -- voir limites en tete de fichier
 
     i = 5
     dcid_len = payload[i]
     i += 1
     if dcid_len > 20 or i + dcid_len > len(payload):
+        logger.debug("_parse_long_header: si dcid_len > 20 or i + dcid_len > len(payload) -> retour None")
         return None
     dcid = payload[i : i + dcid_len]
     i += dcid_len
 
     if i >= len(payload):
+        logger.debug("_parse_long_header: si i >= len(payload) -> retour None")
         return None
     scid_len = payload[i]
     i += 1
     if scid_len > 20 or i + scid_len > len(payload):
+        logger.debug("_parse_long_header: si scid_len > 20 or i + scid_len > len(payload) -> retour None")
         return None
     i += scid_len  # SCID non utilise pour la derivation, juste saute
 
     token_len_r = _read_varint(payload, i)
     if token_len_r is None:
+        logger.debug("_parse_long_header: si token_len_r is None -> retour None")
         return None
     token_len, i = token_len_r
     if i + token_len > len(payload):
+        logger.debug("_parse_long_header: si i + token_len > len(payload) -> retour None")
         return None
     i += token_len
 
     length_r = _read_varint(payload, i)
     if length_r is None:
+        logger.debug("_parse_long_header: si length_r is None -> retour None")
         return None
     remaining_len, i = length_r
     pn_offset = i
 
     if pn_offset + remaining_len > len(payload) or remaining_len < 4:
+        logger.trace("_parse_long_header: longueur annoncee {} incoherente ({} octets)", remaining_len, len(payload))
+        logger.debug(
+            "_parse_long_header: si pn_offset + remaining_len > len(payload) or remaining_len <… -> retour None"
+        )
         return None  # incoherent : pas assez de place pour PN(<=4)+charge utile+tag(16)
 
+    logger.debug("_parse_long_header: retour dictionnaire")
     return {
         "version": version,
         "dcid": dcid,
@@ -213,6 +236,8 @@ def _remove_header_protection(payload: bytearray, pn_offset: int, hp_key: bytes)
     -- c'est ce dernier qui fait foi (voir _decrypt_initial)."""
     sample_start = pn_offset + 4
     if sample_start + 16 > len(payload):
+        logger.trace("_remove_header_protection: echantillon hors du paquet ({} octets)", len(payload))
+        logger.debug("_remove_header_protection: si sample_start + 16 > len(payload) -> retour None")
         return None
     sample = bytes(payload[sample_start : sample_start + 16])
     encryptor = Cipher(algorithms.AES(hp_key), modes.ECB()).encryptor()
@@ -221,9 +246,11 @@ def _remove_header_protection(payload: bytearray, pn_offset: int, hp_key: bytes)
     payload[0] ^= mask[0] & 0x0F
     pn_length = (payload[0] & 0x03) + 1
     if pn_offset + pn_length > len(payload):
+        logger.debug("_remove_header_protection: si pn_offset + pn_length > len(payload) -> retour None")
         return None
     for i in range(pn_length):
         payload[pn_offset + i] ^= mask[1 + i]
+    logger.debug("_remove_header_protection: retour pn_length={}", summarize(pn_length, "pn_length"))
     return pn_length
 
 
@@ -240,6 +267,7 @@ def _decrypt_initial(payload: bytes, client_secret: bytes, header_info: dict) ->
 
     pn_length = _remove_header_protection(buf, pn_offset, hp)
     if pn_length is None:
+        logger.debug("_decrypt_initial: si pn_length is None -> retour None")
         return None
 
     pn_bytes = bytes(buf[pn_offset : pn_offset + pn_length])
@@ -249,6 +277,7 @@ def _decrypt_initial(payload: bytes, client_secret: bytes, header_info: dict) ->
     end = pn_offset + header_info["remaining_len"]
     ciphertext = bytes(buf[pn_offset + pn_length : end])
     if len(ciphertext) < 16:
+        logger.debug("_decrypt_initial: si len(ciphertext) < 16 -> retour None")
         return None
 
     nonce = bytearray(iv)
@@ -257,9 +286,12 @@ def _decrypt_initial(payload: bytes, client_secret: bytes, header_info: dict) ->
         nonce[i] ^= pn_padded[i]
 
     try:
+        logger.debug("_decrypt_initial: retour AESGCM(key).decrypt(…)")
         return AESGCM(key).decrypt(bytes(nonce), ciphertext, header)
     except InvalidTag:
-        logger.exception("erreur: InvalidTag")
+        # resultat normal (voir docstring), a chaque paquet : TRACE, sans traceback
+        logger.trace("_decrypt_initial: tag AEAD invalide, paquet {} non dechiffrable", packet_number)
+        logger.debug("_decrypt_initial: except InvalidTag -> retour None")
         return None
 
 
@@ -270,6 +302,7 @@ def _extract_client_hello_from_crypto(plaintext: bytes) -> bytes | None:
     while i < len(plaintext):
         type_r = _read_varint(plaintext, i)
         if type_r is None:
+            logger.debug("_extract_client_hello_from_crypto: si type_r is None -> retour None")
             return None
         frame_type, i = type_r
         if frame_type in _FRAME_NO_BODY:
@@ -277,30 +310,43 @@ def _extract_client_hello_from_crypto(plaintext: bytes) -> bytes | None:
         if frame_type == 0x06:  # CRYPTO
             offset_r = _read_varint(plaintext, i)
             if offset_r is None:
+                logger.debug("_extract_client_hello_from_crypto: si offset_r is None -> retour None")
                 return None
             offset, i = offset_r
             length_r = _read_varint(plaintext, i)
             if length_r is None:
+                logger.debug("_extract_client_hello_from_crypto: si length_r is None -> retour None")
                 return None
             length, i = length_r
             if i + length > len(plaintext):
+                logger.debug("_extract_client_hello_from_crypto: si i + length > len(plaintext) -> retour None")
                 return None
             if offset != 0:
+                logger.trace("_extract_client_hello_from_crypto: CRYPTO a l'offset {}, ClientHello fragmente", offset)
+                logger.debug("_extract_client_hello_from_crypto: si offset != 0 -> retour None")
                 return None  # ClientHello fragmente sur plusieurs paquets : hors perimetre
+            logger.debug("_extract_client_hello_from_crypto: si frame_type == 6 -> retour plaintext[i:i + length]")
             return plaintext[i : i + length]
         # autre type de frame (ACK, etc.) : pas de parseur generique pour
         # sauter son corps proprement, on s'arrete la plutot que deviner
+        logger.trace("_extract_client_hello_from_crypto: trame 0x{:02x} avant CRYPTO, arret", frame_type)
+        logger.debug("_extract_client_hello_from_crypto: boucle tant que i < len(plaintext) -> retour None")
         return None
+    logger.debug("_extract_client_hello_from_crypto: retour None")
     return None
 
 
 def _parse_tls_handshake_from_crypto(crypto_data: bytes) -> dict | None:
     if len(crypto_data) < 4 or crypto_data[0] != 0x01:  # 1 = client_hello
+        logger.debug("_parse_tls_handshake_from_crypto: si len(crypto_data) < 4 or crypto_data[0] != 1 -> retour None")
         return None
     body_len = int.from_bytes(crypto_data[1:4], "big")
     body = crypto_data[4 : 4 + body_len]
     if len(body) < body_len:
+        logger.trace("_parse_tls_handshake_from_crypto: ClientHello incomplet ({}/{} octets)", len(body), body_len)
+        logger.debug("_parse_tls_handshake_from_crypto: si len(body) < body_len -> retour None")
         return None  # ClientHello incomplet dans ce paquet (fragmente) : hors perimetre
+    logger.debug("_parse_tls_handshake_from_crypto: retour parse_client_hello(…)")
     return parse_client_hello(body)
 
 
@@ -311,6 +357,7 @@ def parse_quic_capture(label: str, path: str) -> list[QuicEvent]:
     cas, jamais de donnee inventee)."""
     events: list[QuicEvent] = []
     raw_packets = pcap_parser.parse_capture(path, raise_on_error=False)
+    logger.debug("parse_quic_capture: point {}, {} paquet(s) lus depuis {}", label, len(raw_packets), path)
 
     for raw in raw_packets:
         if raw.proto != "UDP" or not raw.payload:
@@ -357,6 +404,13 @@ def parse_quic_capture(label: str, path: str) -> list[QuicEvent]:
             )
         )
 
+    logger.debug(
+        "parse_quic_capture: point {}, {} Initial QUIC v1 dont {} non dechiffrable(s), {} avec SNI",
+        label,
+        len(events),
+        sum(1 for ev in events if not ev.decryptable),
+        sum(1 for ev in events if ev.sni),
+    )
     return events
 
 
@@ -377,7 +431,14 @@ def diagnose_quic(events: list[QuicEvent], points_order: list[str] | None = None
         if not e.decryptable:
             decrypt_failures[e.point] = decrypt_failures.get(e.point, 0) + 1
 
+    logger.debug(
+        "diagnose_quic: {} evenement(s), {} connexion(s) (DCID), echecs de dechiffrement {}",
+        len(events),
+        len(by_dcid),
+        decrypt_failures,
+    )
     if not points_order:
+        logger.debug("diagnose_quic: sans ordre des points, seuls les echecs de dechiffrement sont rapportes")
         for p, n in decrypt_failures.items():
             findings.append(
                 TlsFinding(
@@ -388,6 +449,7 @@ def diagnose_quic(events: list[QuicEvent], points_order: list[str] | None = None
                     f"(version non geree, ou paquet hors sequence)",
                 )
             )
+        logger.debug("diagnose_quic: si not points_order -> retour findings={}", summarize(findings, "findings"))
         return findings
 
     for per_point in by_dcid.values():
@@ -431,15 +493,18 @@ def diagnose_quic(events: list[QuicEvent], points_order: list[str] | None = None
             )
         )
 
+    logger.debug("diagnose_quic: {} constat(s)", len(findings))
     return findings
 
 
 def print_quic_diagnostics(findings) -> None:
+    logger.debug("print_quic_diagnostics: {} constat(s)", len(findings))
     print("=" * 70)
     print("DIAGNOSTIC QUIC/HTTP3 -- ClientHello vus par point (SNI)")
     print("=" * 70)
     if not findings:
         print("  aucun trafic QUIC Initial v1 detecte")
+        logger.debug("print_quic_diagnostics: si not findings -> retour")
         return
     sev_label = {
         "anomalie": "anomalie   ",
@@ -448,3 +513,4 @@ def print_quic_diagnostics(findings) -> None:
     }
     for f in findings:
         print(f"  [{sev_label.get(f.severity, f.severity):12s}] {f.segment:20s} : {f.message}")
+    logger.debug("print_quic_diagnostics: fin")

@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 
 logger = get_logger(__name__)
 
@@ -176,6 +176,7 @@ class AlarmEngine:
     """
 
     def __init__(self, configs: list[AlarmConfig]):
+        logger.debug("AlarmEngine.__init__: configs={}", summarize(configs, "configs"))
         self._configs = configs
         # État par (config_index, segment) — segment résolu dynamiquement
         # au premier feed() si AlarmConfig.segment est None.

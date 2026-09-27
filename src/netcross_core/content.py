@@ -74,6 +74,7 @@ def extract_http_objects(
     a partir des segments TCP.
     """
     if privacy_mode not in {"metadata", "forensic"}:
+        logger.trace("extract_http_objects: refus, ValueError")
         raise ValueError("privacy_mode doit etre 'metadata' ou 'forensic'")
 
     pending: dict[tuple, deque[Pkt]] = defaultdict(deque)

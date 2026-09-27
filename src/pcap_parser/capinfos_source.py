@@ -95,6 +95,9 @@ def _parse_capture_comment(stdout: str) -> str | None:
     ek_source.py, testes independamment de tout sous-processus reel."""
     for line in stdout.splitlines():
         if line.startswith(_COMMENT_PREFIX):
+            logger.debug(
+                "_parse_capture_comment: si line.startswith(_COMMENT_PREFIX) -> retour line[len(_COMMENT_PREFIX):].st…"
+            )
             return line[len(_COMMENT_PREFIX) :].strip() or None
     logger.debug("_parse_capture_comment: aucun commentaire")
     return None
@@ -126,6 +129,7 @@ def read_capture_comment(path: str) -> str | None:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         logger.warning("read_capture_comment: capinfos -k {} impossible ({})", path, exc)
+        logger.debug("read_capture_comment: except (OSError, subprocess.TimeoutExpired) -> retour None")
         return None
     logger.debug("read_capture_comment: {} code {}", path, proc.returncode)
     return _parse_capture_comment(proc.stdout)
@@ -182,12 +186,14 @@ class CaptureInfo:
         if not values:
             logger.debug("dropped_by_interface: aucune statistique d'interface (ISB) dans la capture")
             return None
+        logger.debug("CaptureInfo.dropped_by_interface: retour sum(…)")
         return sum(values)
 
     @property
     def dropped_by_os(self) -> int | None:
         """Idem pour les paquets perdus par le systeme d'exploitation."""
         values = [i.dropped_by_os for i in self.interfaces if i.dropped_by_os is not None]
+        logger.debug("CaptureInfo.dropped_by_os: retour sum(values) if values else None")
         return sum(values) if values else None
 
     @property
@@ -216,22 +222,27 @@ def _parse_table_report(stdout: str) -> dict[str, str] | None:
     lines = [line for line in stdout.split("\n") if line.strip()]
     logger.debug("_parse_table_report: {} ligne(s) non vide(s)", len(lines))
     if len(lines) < 2:
+        logger.debug("_parse_table_report: si len(lines) < 2 -> retour None")
         return None
     header, row = lines[0].split("\t"), lines[1].split("\t")
     if len(header) != len(row):
         logger.debug("_parse_table_report: en-tête {} colonne(s) / ligne {} colonne(s)", len(header), len(row))
     if len(header) != len(row):
+        logger.debug("_parse_table_report: si len(header) != len(row) -> retour None")
         return None
+    logger.debug("_parse_table_report: retour dict(…)")
     return dict(zip(header, row, strict=True))
 
 
 def _text(value: str | None) -> str | None:
+    logger.debug("_text: retour None if value is None or value.strip() in _NO_VAL…")
     return None if value is None or value.strip() in _NO_VALUE else value.strip()
 
 
 def _integer(value: str | None) -> int | None:
     text = _text(value)
     try:
+        logger.debug("_integer: retour int(text) if text is not None else None")
         return int(text) if text is not None else None
     except ValueError:
         logger.debug("_integer: valeur capinfos non entière {!r}", text)
@@ -241,6 +252,7 @@ def _integer(value: str | None) -> int | None:
 def _number(value: str | None) -> float | None:
     text = _text(value)
     try:
+        logger.debug("_number: retour float(text) if text is not None else None")
         return float(text) if text is not None else None
     except ValueError:
         logger.debug("_number: valeur capinfos non numérique {!r}", text)
@@ -249,6 +261,7 @@ def _number(value: str | None) -> float | None:
 
 def _boolean(value: str | None) -> bool | None:
     text = _text(value)
+    logger.debug("_boolean: retour None if text is None else text.lower() == 'true'")
     return None if text is None else text.lower() == "true"
 
 
@@ -296,6 +309,7 @@ def read_capture_info(path: str) -> CaptureInfo | None:
     logger.debug("read_capture_info: {}", path)
     capinfos = _capinfos_path()
     if capinfos is None:
+        logger.debug("read_capture_info: si capinfos is None -> retour None")
         return None
     try:
         proc = subprocess.run(
@@ -307,14 +321,17 @@ def read_capture_info(path: str) -> CaptureInfo | None:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         logger.warning("read_capture_info: capinfos {} impossible ({})", path, exc)
+        logger.debug("read_capture_info: except (OSError, subprocess.TimeoutExpired) -> retour None")
         return None
     fields = _parse_table_report(proc.stdout)
     logger.debug("read_capture_info: capinfos code {}, rapport lisible={}", proc.returncode, fields is not None)
     if fields is None:
+        logger.debug("read_capture_info: si fields is None -> retour None")
         return None
     try:
         structure = read_structure(path)
     except (OSError, ValueError, struct.error) as exc:
         logger.warning("read_capture_info: structure de {} illisible ({}), interfaces ignorées", path, exc)
         structure = None
+    logger.debug("read_capture_info: retour _build_capture_info(…)")
     return _build_capture_info(path, fields, structure)
