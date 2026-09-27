@@ -63,4 +63,5 @@ def parse_protocol_hierarchy(text: str) -> list[ProtocolHierarchyStat]:
                 byte_count=byte_count,
             )
         )
+    logger.debug("parse_protocol_hierarchy: {} protocole(s)", len(out))
     return out
