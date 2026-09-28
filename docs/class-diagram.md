@@ -36,8 +36,8 @@ flowchart TD
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"40 imports"| netcross_core
     CLI -->|"6 imports"| pcap_parser
-    netcross_gtk4 -->|"13 imports"| netcross_report
-    netcross_gtk4 -->|"54 imports"| netcross_core
+    netcross_gtk4 -->|"14 imports"| netcross_report
+    netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
     netcross_api -->|"3 imports"| netcross_report
     netcross_api -->|"9 imports"| netcross_core
@@ -3891,6 +3891,8 @@ classDiagram
         +float bucket_ms
         +int rtp_rate
         +bool nat_tolerant
+        +float nat_window_ms
+        +float? idle_timeout_seconds
         +bool parallel
         +bool auto_topology
         +bool triage
@@ -3988,6 +3990,7 @@ classDiagram
     }
     class MainWindow {
         <<Gtk.ApplicationWindow>>
+        +load_names_table(path)
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
         +on_export_csv(_btn)
@@ -4085,6 +4088,8 @@ classDiagram
         +float bucket_ms
         +int rtp_rate
         +bool nat_tolerant
+        +float nat_window_ms
+        +float? idle_timeout_seconds
         +bool parallel
         +bool auto_topology
         +float loss_min_pp
@@ -4092,6 +4097,8 @@ classDiagram
         +bool redact
         +bool tls
         +bool quic
+        +bool triage
+        +int triage_topn
     }
     class DiffResult {
         <<dataclass>>
