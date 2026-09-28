@@ -278,6 +278,8 @@ def test_run_tshark_stat_code_non_nul(monkeypatch):
     with pytest.raises(subprocess.CalledProcessError):
         runner.run_tshark_stat("x.pcap", "io,stat,1")
     assert runner.run_tshark_stat("x.pcap", "io,stat,1") == "tableau partiel\n"
+
+
 # -- Issue #718 : mediane et valeurs illisibles du temps de reponse -----------
 
 
