@@ -33,16 +33,17 @@ geree est precisement le defaut que la regle de tracabilite du projet vise.
 from __future__ import annotations
 
 import os
+
 import pytest
 
 from netcross_core.models import Report
 from netcross_report.charts import (
     chart_latency,
     chart_loss,
+    chart_sequence_diagram,
     chart_severity_summary,
     chart_throughput,
     chart_topology,
-    chart_sequence_diagram,
 )
 from netcross_report.synthesis import build_findings
 

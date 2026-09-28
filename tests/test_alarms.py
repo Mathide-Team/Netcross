@@ -307,7 +307,6 @@ def test_relever_apres_clear_possible():
     assert len(raised) == 2  # deux cycles de lever/clear/re-lever
 
 
-
 # -- Issue #752 : couverture ligne 320-321 de alarms.py -----------
 
 

@@ -569,16 +569,19 @@ def test_extract_tls_handshake_sans_tls_retourne_none():
 
 def _make_self_signed_rsa_cert():
     """Genere un certificat RSA auto-signe pour les tests."""
-    from cryptography import x509
-    from cryptography.x509.oid import NameOID
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
     import datetime
 
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -594,16 +597,19 @@ def _make_self_signed_rsa_cert():
 
 def _make_self_signed_ec_cert():
     """Genere un certificat EC auto-signe pour les tests."""
-    from cryptography import x509
-    from cryptography.x509.oid import NameOID
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
     import datetime
 
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
     key = ec.generate_private_key(ec.SECP256R1())
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, "ec.example.com"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "ec.example.com"),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -719,17 +725,21 @@ def test_extract_tls_handshake_valeurs_nulles():
 
 def test_certificate_details_sans_san():
     """Ligne 425 : _certificate_details avec certificat sans SAN."""
-    from pcap_parser.protocols import _certificate_details
-    from cryptography import x509
-    from cryptography.x509.oid import NameOID
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
     import datetime
 
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    from pcap_parser.protocols import _certificate_details
+
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, "nosan.example.com"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "nosan.example.com"),
+        ]
+    )
     # Pas de SAN dans ce certificat
     cert = (
         x509.CertificateBuilder()
@@ -750,17 +760,20 @@ def test_certificate_details_sans_san():
 
 def test_public_key_summary_ed25519():
     """Lignes 373-383 : _public_key_summary avec cle Ed25519."""
-    from pcap_parser.protocols import _public_key_summary
-    from cryptography import x509
-    from cryptography.x509.oid import NameOID
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import ed25519
     import datetime
 
+    from cryptography import x509
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.x509.oid import NameOID
+
+    from pcap_parser.protocols import _public_key_summary
+
     key = ed25519.Ed25519PrivateKey.generate()
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, "ed25519.example.com"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "ed25519.example.com"),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -778,17 +791,20 @@ def test_public_key_summary_ed25519():
 
 def test_signature_hash_eddsa():
     """Lignes 391-393 : _signature_hash avec EdDSA (pas de hash separe)."""
-    from pcap_parser.protocols import _signature_hash
-    from cryptography import x509
-    from cryptography.x509.oid import NameOID
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import ed25519
     import datetime
 
+    from cryptography import x509
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.x509.oid import NameOID
+
+    from pcap_parser.protocols import _signature_hash
+
     key = ed25519.Ed25519PrivateKey.generate()
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, "eddsa.example.com"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "eddsa.example.com"),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)

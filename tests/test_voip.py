@@ -191,7 +191,7 @@ def test_build_calls_sans_invite_utilise_premier_paquet():
 
     # Un seul paquet SIP sans INVITE
     pkt = _sip("A", 1.0, "200 OK", "1 200")
-    calls, unassigned = build_calls([pkt], [])
+    calls, _unassigned = build_calls([pkt], [])
     # Le call doit exister avec le premier paquet comme invite
     if calls:
         assert calls[0].call_id
@@ -215,7 +215,7 @@ def test_build_calls_rtp_hors_fenetre_ambigu():
         {"first_ts": 1.5, "points": {"A": 1.5}, "mos": 4.0, "label": "stream1"},
         {"first_ts": 10.0, "points": {"A": 10.0}, "mos": 4.0, "label": "stream2"},
     ]
-    calls, unassigned = build_calls(pkts, rtp_streams)
+    _calls, unassigned = build_calls(pkts, rtp_streams)
     # Le stream1 doit etre associe au call 1
     # Le stream2 (ts=10.0) est hors fenetre -> non assigne
     assert isinstance(unassigned, dict)

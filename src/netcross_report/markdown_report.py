@@ -73,9 +73,7 @@ def _metrics_table(r) -> str:
         rst = r.rst_count.get(p, 0)
         zero_w = r.zero_window.get(p, 0)
         ttl_unstable = r.ttl_unstable.get(p, 0)
-        lines.append(
-            f"| {p} | {seen} | {loss} | {retrans} | {rst} | {zero_w} | {ttl_unstable} |"
-        )
+        lines.append(f"| {p} | {seen} | {loss} | {retrans} | {rst} | {zero_w} | {ttl_unstable} |")
     return "\n".join(lines)
 
 
@@ -83,28 +81,22 @@ def _topology_section(r) -> str:
     """Section topologie déduite."""
     lines = ["## Topologie déduite\n"]
     if r.topology_edges:
-        lines.append(
-            "| Source -> Destination | Confiance | Flux communs | Votes TTL | Couverture |"
-        )
+        lines.append("| Source -> Destination | Confiance | Flux communs | Votes TTL | Couverture |")
         lines.append("|----------------------|-----------|--------------|-----------|------------|")
         for u, d, info in r.topology_edges:
             conf = info.get("confidence", 0) * 100
             flows = info.get("common_flows", 0)
             votes = info.get("votes", "")
             coverage = info.get("coverage", 1.0) * 100
-            lines.append(
-                f"| {u} -> {d} | {conf:.0f}% | {flows} | {votes} | {coverage:.0f}% |"
-            )
+            lines.append(f"| {u} -> {d} | {conf:.0f}% | {flows} | {votes} | {coverage:.0f}% |")
     else:
         lines.append("Aucune relation directionnelle fiable déduite.\n")
         if r.topology_isolated:
             lines.append("\n**Points isolés** (sans relation directionnelle claire) :\n")
-            for p in r.topology_isolated:
-                lines.append(f"- {p}")
+            lines.extend(f"- {p}" for p in r.topology_isolated)
     if r.topology_ambiguous:
         lines.append("\n**Relations ambiguës** :\n")
-        for pair in r.topology_ambiguous:
-            lines.append(f"- {pair[0]} <-> {pair[1]}")
+        lines.extend(f"- {pair[0]} <-> {pair[1]}" for pair in r.topology_ambiguous)
     return "\n".join(lines)
 
 
@@ -115,10 +107,9 @@ def _checksum_section(r) -> str:
     lines = ["## Intégrité de capture : checksums IP/TCP/UDP\n"]
     lines.append("| Point | Trame | Protocole | Checksum |")
     lines.append("|-------|-------|-----------|----------|")
-    for err in r.checksum_errors:
-        lines.append(
-            f"| {err.point} | {err.frame_number} | {err.protocol} | `{err.checksum}` |"
-        )
+    lines.extend(
+        f"| {err.point} | {err.frame_number} | {err.protocol} | `{err.checksum}` |" for err in r.checksum_errors
+    )
     lines.append(f"\n**Total : {len(r.checksum_errors)} checksum(s) invalide(s)**")
     return "\n".join(lines)
 
@@ -149,8 +140,7 @@ def _security_section(security_report) -> str:
             host = svc.get("host", "—")
             port = svc.get("port", "—")
             fingerprints = ", ".join(
-                f"{fp.get('type', '?')}:{fp.get('hash', '?')}"
-                for fp in svc.get("fingerprints", [])
+                f"{fp.get('type', '?')}:{fp.get('hash', '?')}" for fp in svc.get("fingerprints", [])
             )
             lines.append(f"| {host} | {port} | {fingerprints or '—'} |")
 
@@ -178,11 +168,11 @@ def _session_objects_section(session_objects) -> str:
         lines.append("### Événements d'expertise\n")
         lines.append("| Source | Sévérité | Groupe | Message |")
         lines.append("|--------|-----------|--------|---------|")
-        for ev in session_objects.expert_events[:20]:
-            lines.append(
-                f"| {getattr(ev, 'source', '—')} | {getattr(ev, 'severity', '—')} | "
-                f"{getattr(ev, 'group', '—')} | {getattr(ev, 'message', '—')} |"
-            )
+        lines.extend(
+            f"| {getattr(ev, 'source', '—')} | {getattr(ev, 'severity', '—')} | "
+            f"{getattr(ev, 'group', '—')} | {getattr(ev, 'message', '—')} |"
+            for ev in session_objects.expert_events[:20]
+        )
         if len(session_objects.expert_events) > 20:
             lines.append(f"\n*…et {len(session_objects.expert_events) - 20} autre(s)*")
 
@@ -190,15 +180,17 @@ def _session_objects_section(session_objects) -> str:
         lines.append("\n### Diagnostics par segment\n")
         lines.append("| Segment | Verdict |")
         lines.append("|---------|---------|")
-        for d in session_objects.diagnoses[:20]:
-            lines.append(f"| {getattr(d, 'segment', '—')} | {getattr(d, 'verdict', '—')} |")
+        lines.extend(
+            f"| {getattr(d, 'segment', '—')} | {getattr(d, 'verdict', '—')} |" for d in session_objects.diagnoses[:20]
+        )
 
     if session_objects.compliance:
         lines.append("\n### Conformité\n")
         lines.append("| Référentiel | Statut |")
         lines.append("|-------------|--------|")
-        for c in session_objects.compliance[:20]:
-            lines.append(f"| {getattr(c, 'framework', '—')} | {getattr(c, 'status', '—')} |")
+        lines.extend(
+            f"| {getattr(c, 'framework', '—')} | {getattr(c, 'status', '—')} |" for c in session_objects.compliance[:20]
+        )
 
     return "\n".join(lines)
 
@@ -255,8 +247,7 @@ def build_markdown_report_document(
     lines.append(f"**Points de capture** : {', '.join(r.points) if r.points else '—'}")
     lines.append(f"**Paires analysées** : {', '.join(f'{a} -> {b}' for a, b in r.pairs) if r.pairs else '—'}")
     if meta:
-        for k, v in meta.items():
-            lines.append(f"**{k}** : {v}")
+        lines.extend(f"**{k}** : {v}" for k, v in meta.items())
     lines.append("")
 
     # -- Score de santé --
@@ -270,8 +261,7 @@ def build_markdown_report_document(
         lines.append("## Triage — par où commencer\n")
         lines.append("| Segment | Score | Confiance | Catégories |")
         lines.append("|---------|-------|-----------|------------|")
-        for seg in ranked[:15]:
-            lines.append(_triage_row(seg))
+        lines.extend(_triage_row(seg) for seg in ranked[:15])
         if len(ranked) > 15:
             lines.append(f"\n*…et {len(ranked) - 15} autre(s) segment(s)*")
         lines.append("")
@@ -281,8 +271,7 @@ def build_markdown_report_document(
         lines.append("## Constats\n")
         lines.append("| Sévérité | Catégorie | Segment | Message |")
         lines.append("|----------|-----------|---------|---------|")
-        for f in findings:
-            lines.append(_finding_row(f))
+        lines.extend(_finding_row(f) for f in findings)
         lines.append("")
 
     # -- Métriques par point --
@@ -340,14 +329,12 @@ def build_markdown_report_document(
     # -- TLS / QUIC --
     if tls_findings:
         lines.append("## Diagnostics TLS\n")
-        for f in tls_findings:
-            lines.append(f"- **{f.severity}** — {f.segment} : {f.message}")
+        lines.extend(f"- **{f.severity}** — {f.segment} : {f.message}" for f in tls_findings)
         lines.append("")
 
     if quic_findings:
         lines.append("## Diagnostics QUIC\n")
-        for f in quic_findings:
-            lines.append(f"- **{f.severity}** — {f.segment} : {f.message}")
+        lines.extend(f"- **{f.severity}** — {f.segment} : {f.message}" for f in quic_findings)
         lines.append("")
 
     # -- Rapport de sécurité --
@@ -368,17 +355,14 @@ def build_markdown_report_document(
         for rule_id, rule_findings in rule_engine_findings.items():
             if rule_findings:
                 lines.append(f"### {rule_id}\n")
-                for f in rule_findings:
-                    lines.append(f"- **{f.severity}** — {f.category} / {f.segment} : {f.message}")
+                lines.extend(f"- **{f.severity}** — {f.category} / {f.segment} : {f.message}" for f in rule_findings)
                 lines.append("")
 
     # -- Annotations --
     if r.capture_comments or r.packet_comments:
         lines.append("## Commentaires pcapng\n")
-        for c in r.capture_comments:
-            lines.append(f"- [section] {c}")
-        for c in r.packet_comments:
-            lines.append(f"- [paquet] {c}")
+        lines.extend(f"- [section] {c}" for c in r.capture_comments)
+        lines.extend(f"- [paquet] {c}" for c in r.packet_comments)
         lines.append("")
 
     return "\n".join(lines)

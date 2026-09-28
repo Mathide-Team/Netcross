@@ -526,14 +526,14 @@ def test_start_une_interface_utilise_l_interface_comme_label(monkeypatch):
     assert engine.state.running is False
 
 
-
 # -- Issue #759 : couverture lignes 245, 253->255 de live_diff.py ----------
 
 
 def test_consume_arrete_sur_stop_event():
     """Ligne 245 : _consume s'arrete quand stop_event est set."""
-    from netcross_core.live_diff import LiveDiffEngine, LiveDiffConfig
     from conftest import make_pkt
+
+    from netcross_core.live_diff import LiveDiffConfig, LiveDiffEngine
 
     config = LiveDiffConfig(eval_interval_seconds=999)
     engine = LiveDiffEngine(config)
@@ -550,8 +550,9 @@ def test_consume_arrete_sur_stop_event():
 def test_consume_exception_avec_running_false():
     """Branche 253->255 : exception dans _consume avec running=False
     (saute le self.state.running = False)."""
-    from netcross_core.live_diff import LiveDiffEngine, LiveDiffConfig
     from conftest import make_pkt
+
+    from netcross_core.live_diff import LiveDiffConfig, LiveDiffEngine
 
     config = LiveDiffConfig(eval_interval_seconds=999)
     engine = LiveDiffEngine(config)
@@ -562,12 +563,8 @@ def test_consume_exception_avec_running_false():
         yield make_pkt(point="A", sport=1)
         raise RuntimeError("boom")
 
-    try:
+    with pytest.raises(RuntimeError, match="boom"):
         engine._consume(bad_packets())
-        assert False, "devrait lever RuntimeError"
-    except RuntimeError:
-        pass
 
     # running reste False (n'a pas ete re-set a False car deja False)
     assert engine.state.running is False
-

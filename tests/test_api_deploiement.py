@@ -243,6 +243,7 @@ def test_sans_db_path_rien_n_est_ecrit(monkeypatch, tmp_path):
 def test_jsonable_dataclass(tmp_path, _api):
     """Lignes 60-61 : jsonable convertit un dataclass en dict."""
     from dataclasses import dataclass
+
     from netcross_api.store import jsonable
 
     @dataclass
@@ -285,6 +286,7 @@ def test_run_job_erreur_interne_ne_restre_pas_pending(monkeypatch):
     """Lignes 341-343 : _run_job avec une exception non-AnalysisError
     appelle store.fail() et ne reste pas pending."""
     import sys
+
     from netcross_api.app import _run_job
     from netcross_api.store import AnalysesStore
 
@@ -311,7 +313,8 @@ def test_run_job_analysis_error_appelle_fail(monkeypatch):
     """Lignes 308-313 et 339-340 : _run_job avec AnalysisError appelle
     store.fail() avec le message d'erreur."""
     import sys
-    from netcross_api.app import _run_job, AnalysisError
+
+    from netcross_api.app import AnalysisError, _run_job
     from netcross_api.store import AnalysesStore
 
     store = AnalysesStore()

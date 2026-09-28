@@ -2428,7 +2428,7 @@ def main():
             flag
             for flag, given in (
                 ("--pdf-report", args.pdf_report),
-            ("--md-report", args.md_report),
+                ("--md-report", args.md_report),
                 ("--json-report", args.json_report),
                 ("--flow-timeline", args.flow_timeline),
                 ("--tshark-stats", args.tshark_stats),
@@ -2473,7 +2473,7 @@ def main():
             flag
             for flag, given in (
                 ("--pdf-report", args.pdf_report),
-            ("--md-report", args.md_report),
+                ("--md-report", args.md_report),
                 ("--json-report", args.json_report),
                 ("--flow-timeline", args.flow_timeline),
                 ("--tshark-stats", args.tshark_stats),
@@ -2581,7 +2581,7 @@ def main():
             flag
             for flag, given in (
                 ("--pdf-report", args.pdf_report),
-            ("--md-report", args.md_report),
+                ("--md-report", args.md_report),
                 ("--json-report", args.json_report),
                 ("--flow-timeline", args.flow_timeline),
                 ("--tshark-stats", args.tshark_stats),

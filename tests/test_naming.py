@@ -266,6 +266,7 @@ def test_load_json_list_pas_dict(tmp_path):
     """Lignes 183, 188-190 : NameTable.load avec JSON qui n'est ni liste
     ni dict avec 'entries' -- leve ValueError."""
     import pytest
+
     path = tmp_path / "names.json"
     path.write_text(json.dumps("just a string"), encoding="utf-8")
     with pytest.raises(ValueError, match="liste"):

@@ -18,6 +18,7 @@ import errno
 import smtplib
 import urllib.error
 import urllib.request
+from typing import ClassVar
 
 import pytest
 
@@ -157,7 +158,7 @@ def test_courriel_sans_destinataire_leve_valueerror():
 class _SMTPSimple:
     """SMTP simule qui note ce qui est appele."""
 
-    instances: list = []
+    instances: ClassVar[list] = []
 
     def __init__(self, host, port, timeout):
         self.appels = []

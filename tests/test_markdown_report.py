@@ -95,9 +95,7 @@ def test_markdown_report_inclut_findings_fournis():
 
 def test_markdown_report_inclut_topology():
     r = _report()
-    r.topology_edges = [
-        ("A", "B", {"confidence": 0.9, "common_flows": 15, "votes": "4-1", "coverage": 0.85})
-    ]
+    r.topology_edges = [("A", "B", {"confidence": 0.9, "common_flows": 15, "votes": "4-1", "coverage": 0.85})]
     md = build_markdown_report_document(r)
     assert "Topologie" in md
     assert "A -> B" in md

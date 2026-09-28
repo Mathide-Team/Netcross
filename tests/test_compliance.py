@@ -84,6 +84,7 @@ def test_evaluate_compliance_defaut_utilise_default_references():
 
 class _FakeReport:
     """Fake report avec les attributs optionnels utilises par les metriques."""
+
     def __init__(self, **kw):
         for k, v in kw.items():
             setattr(self, k, v)

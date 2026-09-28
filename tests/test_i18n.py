@@ -349,5 +349,6 @@ def test_requested_languages_retourne_none_si_vide(monkeypatch):
     """Lignes 64-65 : requested_languages retourne None si ni language
     ni NETCROSS_LANG ne sont definis."""
     import netcross_core.i18n as i18n
+
     monkeypatch.delenv(i18n.ENV_LANG, raising=False)
     assert i18n.requested_languages() is None

@@ -164,12 +164,14 @@ def test_captures_simple_lit_l_etiquette_du_formulaire():
 
 def _fake_capture_file():
     import io
+
     return io.BytesIO(b"fake")
 
 
 def test_multi_capture_sans_filename_retourne_400():
     """Lignes 564-565 : upload multi avec un fichier sans nom retourne 400."""
     from fastapi.testclient import TestClient
+
     from netcross_api.app import app
 
     client = TestClient(app)
@@ -184,6 +186,7 @@ def test_multi_capture_sans_filename_retourne_400():
 def test_quic_sans_cryptography_leve_analysis_error(monkeypatch):
     """Lignes 238-240 : QUIC sans le paquet cryptography leve AnalysisError."""
     import sys
+
     # Bloquer l'import de quic_diagnostics pour simuler cryptography absent
     monkeypatch.setitem(sys.modules, "netcross_core.quic_diagnostics", None)
     # Une analyse avec quic=true doit echouer proprement
