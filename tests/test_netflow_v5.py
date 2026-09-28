@@ -19,6 +19,7 @@ import pytest
 from netcross_core.netflow import (
     NetflowV5Error,
     flow_record_to_pkt,
+    flow_records_to_pkts,
     iter_netflow_v5_file,
     parse_netflow_v5_packet,
 )
@@ -243,3 +244,27 @@ def test_flow_record_to_pkt_unknown_protocol_falls_back_to_number():
     pkt = flow_record_to_pkt(flow)
 
     assert pkt.proto == "47"
+
+
+def test_flow_records_to_pkts_converts_each_flow_in_order():
+    packet = _build_packet([{"src_port": 1, "protocol": 6}, {"src_port": 2, "protocol": 17}])
+    flows = parse_netflow_v5_packet(packet, exporter="10.0.0.254")
+
+    pkts = flow_records_to_pkts(flows)
+
+    assert [p.sport for p in pkts] == [1, 2]
+    assert [p.proto for p in pkts] == ["TCP", "UDP"]
+    assert all(p.point == "10.0.0.254" for p in pkts)
+
+
+def test_flow_records_to_pkts_custom_point_applies_to_all_flows():
+    packet = _build_packet([{}, {}])
+    flows = parse_netflow_v5_packet(packet, exporter="10.0.0.254")
+
+    pkts = flow_records_to_pkts(flows, point="NETFLOW-ROUTER-A")
+
+    assert [p.point for p in pkts] == ["NETFLOW-ROUTER-A", "NETFLOW-ROUTER-A"]
+
+
+def test_flow_records_to_pkts_empty_list_returns_empty_list():
+    assert flow_records_to_pkts([]) == []
