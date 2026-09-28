@@ -85,6 +85,19 @@ def test_sidecar_illisible_point_en_lecture_seule(tmp_path, contenu):
     store.add("serveur", 1, "x")  # les autres points restent annotables
 
 
+def test_point_inconnu_leve_keyerror_sans_rien_ecrire(tmp_path):
+    """Annoter ou retirer une annotation d'un point qui n'est pas dans les
+    captures leve KeyError (`_path`), sans rien persister (#746)."""
+    caps = _captures(tmp_path)
+    store = AnnotationStore.load(caps)
+    with pytest.raises(KeyError, match="point inconnu : fantome"):
+        store.add("fantome", 1, "x")
+    with pytest.raises(KeyError, match="point inconnu : fantome"):
+        store.remove("fantome", 1, "x")
+    assert "fantome" not in store.by_label
+    assert all(read_annotations(path) == [] for _label, path in caps)
+
+
 @pytest.mark.parametrize(("texte", "attendu"), [("12", 12), (" #7 ", 7)])
 def test_parse_frame_number(texte, attendu):
     assert parse_frame_number(texte) == attendu
