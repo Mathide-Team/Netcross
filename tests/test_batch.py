@@ -407,3 +407,95 @@ def test_fmt_gap_minutes():
 
     result = _fmt_gap(120.0)
     assert "min" in result
+
+
+# -- Issue #728 : branches restantes de cross_capture_batch_cli.py ------------
+
+
+def test_list_captures_recursif_ignore_le_cache(tmp_path):
+    """Ligne 74 : le dossier de cache du lot n'est jamais reparcouru."""
+    (tmp_path / "a.pcap").write_bytes(b"")
+    cache = tmp_path / cli.CACHE_DIR / "inventaire"
+    cache.mkdir(parents=True)
+    (cache / "b.pcap").write_bytes(b"")
+    captures, _ignored = cli.list_captures(str(tmp_path), recursive=True)
+    assert captures == [str(tmp_path / "a.pcap")]
+
+
+def test_cache_d_inventaire_perime(tmp_path):
+    """Lignes 139-142 : empreinte differente -> cache ignore."""
+    capture = tmp_path / "a.pcap"
+    capture.write_bytes(b"x")
+    cache = tmp_path / cli.CACHE_DIR / "inventaire" / "A.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text(json.dumps({"fingerprint": [0, 0], "inventory": {"path": str(capture)}}), encoding="utf-8")
+    assert cli.load_cached_inventory(str(tmp_path), "A", str(capture)) is None
+
+
+def test_collect_inventories_en_parallele(monkeypatch):
+    """Lignes 178-179 : jobs > 1 et plusieurs captures -> pool de processus."""
+    vus = []
+
+    class _Pool:
+        def __init__(self, max_workers):
+            vus.append(max_workers)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def map(self, fn, *iterables):
+            return map(fn, *iterables)
+
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(cli, "ProcessPoolExecutor", _Pool)
+    monkeypatch.setattr(cli, "build_inventory", lambda label, path: SimpleNamespace(label=label, error="illisible"))
+    res = cli.collect_inventories(["p1", "p2"], {"p1": "A", "p2": "B"}, "out", jobs=3)
+    assert [inv.label for inv in res] == ["A", "B"]
+    assert vus == [3]
+
+
+def test_analyse_and_write_compte_les_constats(tmp_path, monkeypatch):
+    """Lignes 213-214 : constats de securite comptes par severite (repli
+    "faible" si absente)."""
+    from types import SimpleNamespace
+
+    rapport = SimpleNamespace(security_findings=[])
+
+    def _constats(report, packets):
+        report.security_findings = [{"severity": "critique"}, {"severity": None}, {}]
+
+    monkeypatch.setattr(cli, "parse_capture", lambda label, path, raise_on_error: [])
+    monkeypatch.setattr(cli, "correlate", lambda pkts: [])
+    monkeypatch.setattr(cli, "analyse", lambda *a: rapport)
+    monkeypatch.setattr(cli, "print_report", lambda r: print("rapport"))
+    monkeypatch.setattr(cli.security_findings, "apply_security_findings", _constats)
+    monkeypatch.setattr(cli, "build_security_report", lambda r: r)
+    monkeypatch.setattr(cli, "print_security_report", lambda r: print("securite"))
+    membres = [SimpleNamespace(label="A", path="a.pcap")]
+    res = cli.analyse_and_write(membres, str(tmp_path / "r.txt"), security=True)
+    assert res == {"findings": {"critique": 1, "faible": 2}}
+    assert (tmp_path / "r.txt").read_text(encoding="utf-8") == "rapport\nsecurite\n"
+
+
+def test_build_synthesis_rapports_graves():
+    """Ligne 276 : rapports avec constats critiques/eleves listes."""
+    from types import SimpleNamespace
+
+    plan = SimpleNamespace(groups=[], isolated=[])
+    resumes = {"r2": {"findings": {"elevee": 1}}, "r1": {"findings": {"critique": 2}}, "r3": {"findings": {}}}
+    lignes = cli.build_synthesis(plan, resumes, [], [], True)
+    assert "2 rapport(s) avec constats de severite critique/elevee : r1, r2" in lignes
+
+
+def test_main_sans_echec_se_termine_normalement(dossier, monkeypatch, capsys):
+    """Ligne 390 : lot sans capture illisible -> pas de sys.exit."""
+    src, out = dossier
+    (src / "casse.pcap").unlink()
+    monkeypatch.setattr(sys, "argv", ["cross_capture_batch_cli.py", "--input", str(src), "--output", str(out)])
+    cli.main()
+    assert (out / "index.txt").is_file()
+    assert "Index du lot ecrit dans" in capsys.readouterr().out
