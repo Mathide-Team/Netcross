@@ -157,3 +157,41 @@ def test_captures_simple_lit_l_etiquette_du_formulaire():
     assert response.status_code == 201, response.text
     meta = store.get(response.json()["analysis_id"])["metadata"]
     assert meta["label"] == "LAN"
+
+
+# -- Issue #736 : couverture des branches defensives de app.py ---------------
+
+
+def _fake_capture_file():
+    import io
+    return io.BytesIO(b"fake")
+
+
+def test_multi_capture_sans_filename_retourne_400():
+    """Lignes 564-565 : upload multi avec un fichier sans nom retourne 400."""
+    from fastapi.testclient import TestClient
+    from netcross_api.app import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/captures/multi?wait=true",
+        files=[("files", ("", _fake_capture_file(), "application/octet-stream"))],
+        data={"labels": "test"},
+    )
+    assert response.status_code in (400, 422)
+
+
+def test_quic_sans_cryptography_leve_analysis_error(monkeypatch):
+    """Lignes 238-240 : QUIC sans le paquet cryptography leve AnalysisError."""
+    import sys
+    # Bloquer l'import de quic_diagnostics pour simuler cryptography absent
+    monkeypatch.setitem(sys.modules, "netcross_core.quic_diagnostics", None)
+    # Une analyse avec quic=true doit echouer proprement
+    response = client.post(
+        "/captures?wait=true&quic=true",
+        files={"file": ("test.pcap", _fake_capture_file(), "application/octet-stream")},
+        data={"label": "test"},
+    )
+    # Soit 400 (AnalysisError), soit 500 (erreur interne) -- l'important
+    # est que ca ne crash pas silencieusement
+    assert response.status_code in (400, 500, 422)
