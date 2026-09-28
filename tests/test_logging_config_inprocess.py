@@ -5,7 +5,10 @@ des sous-processus (le logging est un etat global) : coverage ne mesure pas
 ces sous-processus, d'ou un module a 81 %. Ces tests couvrent les memes
 chemins dans le processus de pytest, avec un etat global isole et restaure :
 
-- `stderr` est remplace par un tampon pour lire ce que loguru ecrit ;
+- ce que loguru ecrit sur `stderr` est lu via `capsys` (un simple
+  `monkeypatch.setattr(sys, "stderr", ...)` pose dans la fixture ne tient
+  pas : la capture de pytest remet son propre `sys.stderr` au debut de la
+  phase d'appel du test) ;
 - l'environnement NETCROSS_* est vide au depart ;
 - a la fin, les handlers poses par le test sont retires et la
   configuration d'origine (niveau, handler stderr) est reposee.
@@ -15,8 +18,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import io
-import sys
 
 import pytest
 from loguru import logger as _logger
@@ -32,19 +33,28 @@ def _fermer_handlers() -> None:
     lc._HANDLER_IDS.clear()
 
 
+class _SortieErreur:
+    """Accumule le stderr capture par capsys, lu comme un StringIO."""
+
+    def __init__(self, capsys) -> None:
+        self._capsys = capsys
+        self._texte = ""
+
+    def getvalue(self) -> str:
+        self._texte += self._capsys.readouterr().err
+        return self._texte
+
+
 @pytest.fixture
-def logging_isole(monkeypatch):
+def logging_isole(monkeypatch, capsys):
     """Rend (module, tampon stderr) avec un etat de logging isole."""
     for var in ("NETCROSS_LOG_LEVEL", "NETCROSS_DEBUG", "NETCROSS_LOG_FILE"):
         monkeypatch.delenv(var, raising=False)
     etat_configure, etat_niveau = lc._CONFIGURED, lc._LEVEL
-    tampon = io.StringIO()
-    monkeypatch.setattr(sys, "stderr", tampon)
+    yield lc, _SortieErreur(capsys)
 
-    yield lc, tampon
-
-    # stderr/environnement d'origine d'abord : le handler repose ci-dessous
-    # doit s'attacher au vrai stderr, pas au tampon du test.
+    # Environnement d'origine d'abord : le handler repose ci-dessous doit
+    # suivre la configuration reelle, pas celle du test.
     monkeypatch.undo()
     _fermer_handlers()
     if etat_configure:
@@ -80,7 +90,7 @@ def test_configure_logging_idempotent_sans_force(logging_isole):
     module.configure_logging("DEBUG")  # deja configure : sans effet
 
     assert module._LEVEL == "INFO"
-    assert module._HANDLER_IDS == identifiants
+    assert identifiants == module._HANDLER_IDS
 
 
 def test_configure_logging_force_remplace_les_handlers(logging_isole):
@@ -92,7 +102,7 @@ def test_configure_logging_force_remplace_les_handlers(logging_isole):
 
     assert module._LEVEL == "DEBUG"
     assert len(module._HANDLER_IDS) == 1
-    assert module._HANDLER_IDS != anciens
+    assert anciens != module._HANDLER_IDS
     assert "tracing debug actif : niveau=DEBUG" in tampon.getvalue()
 
 
