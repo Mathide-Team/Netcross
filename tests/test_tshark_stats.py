@@ -106,6 +106,37 @@ def test_parse_protocol_hierarchy_extrait_profondeur_et_compteurs():
     assert by_proto["dns"].byte_count == 3200
 
 
+@pytest.mark.parametrize(
+    "texte",
+    [
+        "",  # sortie vide
+        "\n   \n",  # lignes blanches uniquement
+        "===\nProtocol Hierarchy Statistics\nFilter: \n===\n",  # en-tetes seuls, aucune donnee
+        "frame\n",  # un seul jeton : pas de compteur
+        "frame eth ip\n",  # deux jetons ou plus mais aucun chiffre
+    ],
+)
+def test_parse_protocol_hierarchy_sans_ligne_de_donnees_donne_liste_vide(texte):
+    assert parse_protocol_hierarchy(texte) == []
+
+
+def test_parse_protocol_hierarchy_ignore_les_lignes_sans_donnees_au_milieu_des_donnees():
+    texte = (
+        "===\n"
+        "Protocol Hierarchy Statistics\n"
+        "Filter:\n"
+        "\n"
+        "frame                      frames:10 bytes:1000\n"
+        "  pas de chiffre ici\n"  # deux jetons et plus, sans aucun chiffre : ignoree
+        "  isole\n"  # un seul jeton : ignoree
+        "  eth                      frames:10 bytes:1000\n"
+        "===\n"
+    )
+    nodes = parse_protocol_hierarchy(texte)
+    assert [n.protocol for n in nodes] == ["frame", "eth"]
+    assert [n.depth for n in nodes] == [0, 0]  # l'indentation de 2 espaces < _INDENT
+
+
 # -- io stat ----------------------------------------------------------------
 
 

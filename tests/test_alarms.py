@@ -305,3 +305,22 @@ def test_relever_apres_clear_possible():
 
     raised = [e for e in engine.events if e.state == "raised"]
     assert len(raised) == 2  # deux cycles de lever/clear/re-lever
+
+
+# -- Issue #752 : couverture ligne 320-321 de alarms.py -----------
+
+
+def test_is_cleared_avec_value_none_retourne_false():
+    """Lignes 320-321 : _is_cleared retourne False si value is None
+    (clear_threshold defini mais valeur absente)."""
+    from netcross_core.alarms import AlarmConfig, AlarmEngine
+
+    cfg = AlarmConfig(
+        rule_id="test",
+        trigger_threshold=10,
+        clear_threshold=5,
+    )
+    engine = AlarmEngine([cfg])
+    # clear_threshold is not None, value is None -> return False
+    result = engine._is_cleared(cfg, True, None)  # signal_present=True, value=None
+    assert result is False

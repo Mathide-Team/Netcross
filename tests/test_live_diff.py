@@ -524,3 +524,47 @@ def test_start_une_interface_utilise_l_interface_comme_label(monkeypatch):
     assert seen["stop_event"] is engine._stop_event
     assert engine.state.packets_in_window[0].point == "eth0"
     assert engine.state.running is False
+
+
+# -- Issue #759 : couverture lignes 245, 253->255 de live_diff.py ----------
+
+
+def test_consume_arrete_sur_stop_event():
+    """Ligne 245 : _consume s'arrete quand stop_event est set."""
+    from conftest import make_pkt
+
+    from netcross_core.live_diff import LiveDiffConfig, LiveDiffEngine
+
+    config = LiveDiffConfig(eval_interval_seconds=999)
+    engine = LiveDiffEngine(config)
+    engine.state.running = True
+    engine._stop_event.set()  # stop_event actif des le depart
+
+    pkts = iter([make_pkt(point="A", sport=1), make_pkt(point="B", sport=1)])
+    engine._consume(pkts)
+
+    # Le premier paquet n'est jamais ajoute car break avant _add_packet
+    assert len(engine.state.packets_in_window) == 0
+
+
+def test_consume_exception_avec_running_false():
+    """Branche 253->255 : exception dans _consume avec running=False
+    (saute le self.state.running = False)."""
+    from conftest import make_pkt
+
+    from netcross_core.live_diff import LiveDiffConfig, LiveDiffEngine
+
+    config = LiveDiffConfig(eval_interval_seconds=999)
+    engine = LiveDiffEngine(config)
+    engine.state.running = False  # deja False -> saute la ligne 254
+
+    # Provoque une exception en passant un iterateur qui leve
+    def bad_packets():
+        yield make_pkt(point="A", sport=1)
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        engine._consume(bad_packets())
+
+    # running reste False (n'a pas ete re-set a False car deja False)
+    assert engine.state.running is False

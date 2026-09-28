@@ -14,7 +14,7 @@ ici fait donc échouer la CI.
 
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
-| CLI | `cross_capture_analyzer_cli.py` (107 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
+| CLI | `cross_capture_analyzer_cli.py` (108 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 8 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation |
 
@@ -83,6 +83,7 @@ actif, non réglable.
 | Rapport texte | oui (page Résultats) | sortie standard | non |
 | PDF | oui (« Exporter en PDF ») | `--pdf-report` | non |
 | JSON structuré | oui (« Exporter en JSON », mêmes clés que la CLI) | `--json-report` | `GET /analyses/{analysis_id}/report` (mêmes clés) ; `GET /analyses/{analysis_id}` sert le format brut, voir ci-dessous |
+| Markdown | non | `--md-report` | non |
 | CSV du détail par flux | oui (« Exporter en CSV ») | `--detail-csv` | non |
 | Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | non |
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
