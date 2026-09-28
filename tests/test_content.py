@@ -153,3 +153,45 @@ def test_http_object_invalid_privacy_mode():
         assert "privacy_mode" in str(exc)
     else:
         raise AssertionError("ValueError attendu")
+
+
+# -- Issue #692 : repli d'association, plafond et serialisation --------------
+
+
+def _req(uri, seq, ts):
+    return _pkt(ts=ts, seq=seq, http_is_request=True, http_method="GET", http_uri=uri)
+
+
+def _resp(uri, seq, ts):
+    return _pkt(
+        ts=ts,
+        src="10.0.0.2",
+        dst="10.0.0.1",
+        sport=80,
+        dport=50000,
+        seq=seq,
+        http_is_response=True,
+        http_uri=uri,
+        http_status_code=200,
+    )
+
+
+def test_reponse_sans_requete_homonyme_prend_la_plus_ancienne():
+    """Ligne 108 : aucune requete en attente n'a le meme URI -> la plus
+    ancienne est associee."""
+    objs = extract_http_objects([_req("/a", 1, 1.0), _resp("/autre", 2, 1.1)])
+    assert len(objs) == 1
+    assert objs[0].method == "GET"
+
+
+def test_plafond_max_objects_et_serialisation():
+    """Lignes 129-130 : max_objects arrete l'inventaire ; lignes 48-49 :
+    identifiant de connexion ; lignes 143-144 : serialisation en dicts."""
+    from netcross_core.content import objects_to_dicts
+
+    pkts = [_req("/a", 1, 1.0), _resp("/a", 2, 1.1), _req("/b", 3, 2.0), _resp("/b", 4, 2.1)]
+    objs = extract_http_objects(pkts, max_objects=1)
+    assert len(objs) == 1
+    assert objs[0].flow == (objs[0].src, objs[0].sport, objs[0].dst, objs[0].dport)
+    dicts = objects_to_dicts(objs)
+    assert dicts[0]["uri"] == objs[0].uri
