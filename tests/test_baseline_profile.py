@@ -303,3 +303,43 @@ def test_load_all_baselines_db_vide_retourne_liste_vide():
 def test_load_all_baselines_db_inexistante_retourne_liste_vide():
     profiles = load_all_baselines("/nonexistent/path.db")
     assert profiles == []
+
+
+# -- Issue #689 : branches restantes ------------------------------------------
+
+
+def test_percentile_liste_vide():
+    """Lignes 77-78 : aucune valeur -> 0.0."""
+    from netcross_core.baseline_profile import _percentile
+
+    assert _percentile([], 50) == 0.0
+
+
+def test_finding_counts_illisible_ignore():
+    """Lignes 141-143 : JSON invalide -> seules les metriques de base."""
+    from netcross_core.baseline_profile import _extract_metrics_from_row
+
+    row = {"health_score": 70, "total_findings": 2, "finding_counts": "{pas du json"}
+    assert _extract_metrics_from_row(row) == {"health_score": 70.0, "total_findings": 2.0}
+
+
+def test_base_vide_filtre_label_et_table_absente():
+    """Ligne 199 : base sans execution -> None ; lignes 238-239 : filtre par
+    label ; ligne 244 : limite ; lignes 247-251 : table absente -> liste vide."""
+    from netcross_core.baseline_profile import load_all_baselines, load_baseline_from_db
+
+    with tempfile.TemporaryDirectory() as d:
+        vide = str(Path(d) / "vide.db")
+        _create_test_db(vide, [])
+        assert load_baseline_from_db(vide) is None
+
+        pleine = str(Path(d) / "pleine.db")
+        _create_test_db(pleine, [{"label": "site-a", "health_score": 90}, {"label": "site-b", "health_score": 10}])
+        profils = {p.metric: p for p in load_all_baselines(pleine, label="site-a")}
+        assert profils["health_score"].values == [90.0]
+        (dernier,) = [p for p in load_all_baselines(pleine, limit=1) if p.metric == "health_score"]
+        assert dernier.values == [10.0]
+
+        sans_table = str(Path(d) / "sans_table.db")
+        sqlite3.connect(sans_table).close()
+        assert load_all_baselines(sans_table) == []
