@@ -314,10 +314,8 @@ def _extract_ftp(packets: list[Pkt]) -> list[ExtractedFile]:
             continue
         if pkt.proto != "TCP":
             continue
-        # FTP est identifié par bannière ou par port
-        is_ftp = bool(pkt.service_banners) and any(b.protocol == "ftp" for b in pkt.service_banners)
-        if not is_ftp and pkt.dport not in (20, 21) and pkt.sport not in (20, 21):
-            continue
+        # FTP est identifié par son port : le filtre _FTP_PORTS ci-dessus
+        # garantit déjà un port 20 ou 21 (la bannière n'ajoute rien).
 
         hash_md5, hash_sha256 = _hash_payload(pkt.payload_hash)
         files.append(
