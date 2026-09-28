@@ -185,3 +185,14 @@ def test_context_apparait_dans_le_titre(tmp_path):
     result = render_line(s, path)
     assert result == path
     assert os.path.getsize(path) > 0
+
+
+# -- Issue #750 : couverture lignes 96-98 de metric_charts.py (values vide) --
+
+
+def test_values_vide_leve_value_error(tmp_path):
+    """Lignes 96-98 : MetricSeries.validate() leve ValueError si values
+    est vide."""
+    s = _series(values=[])
+    with pytest.raises(ValueError, match="vide"):
+        s.validate()
