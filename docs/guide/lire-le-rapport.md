@@ -65,6 +65,18 @@ Chaque constat indique :
 
 ## Les sections principales
 
+Avec une seule capture, les sections qui comparent des points entre eux
+(topologie, points sans relation directionnelle, pertes, trafic hors
+chemin, latence, sauts de routeur, changements QoS entre points) ne sont
+pas affichées. Elles sont remplacées par une seule ligne :
+
+```text
+-- Capture unique : sections multi-points omises (topologie, pertes, latence, sauts de routeur, QoS entre points) --
+```
+
+Les autres sections (TCP, DNS, HTTP, TLS, VLAN, fragmentation...) restent
+présentes.
+
 | Section | Ce qu'elle dit | À quoi faire attention |
 |---|---|---|
 | Topologie déduite | L'ordre des points sur le chemin, avec un niveau de confiance | Une confiance faible ou « ambigu » : fournir `--order` |
