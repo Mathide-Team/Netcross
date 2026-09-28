@@ -319,3 +319,137 @@ def test_live_refuse(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         cli.main()
     assert "indisponibles avec --live" in capsys.readouterr().err
+
+
+# -- Issue #717 : branches restantes de netcross_core/extract/contents.py -----
+
+
+def test_inventaire_ignore_les_sous_dossiers_et_to_dict(tmp_path):
+    """Ligne 129 : un sous-dossier n'est pas un document ; lignes 55-56 :
+    serialisation d'un ExtractedDocument."""
+    from netcross_core.extract.contents import inventory_documents
+
+    (tmp_path / "sous-dossier").mkdir()
+    (tmp_path / "rapport.txt").write_text("bonjour", encoding="utf-8")
+    docs = inventory_documents("LAN", "http", tmp_path)
+    assert [d.path.endswith("rapport.txt") for d in docs] == [True]
+    assert docs[0].to_dict()["size"] == 7
+
+
+def test_export_documents_delai_depasse_puis_dossier_vide_supprime(tmp_path, monkeypatch):
+    """Lignes 161-164 : un protocole en delai depasse est signale, les autres
+    continuent ; ligne 174 : le dossier du point, reste vide, est supprime."""
+    import subprocess
+
+    from netcross_core.extract import contents
+
+    def _faux_run(cmd, **kwargs):
+        if cmd[-1].startswith("http,"):
+            raise subprocess.TimeoutExpired(cmd, 1)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(contents.subprocess, "run", _faux_run)
+    docs, errors = export_documents([("LAN", "lan.pcap")], tmp_path, protocols=("http",), timeout=1)
+    assert docs == []
+    assert errors == ["documents [LAN] http : delai depasse (1 s)"]
+
+    docs, errors = export_documents([("DC", "dc.pcap")], tmp_path, protocols=("smb",), timeout=1)
+    assert (docs, errors) == ([], [])
+    assert not (tmp_path / "documents" / "DC").exists()
+
+
+def test_run_extraction_lecteur_par_defaut_documents_et_export_refuse(tmp_path, monkeypatch):
+    """Lignes 218-222 : lecteur pcap_parser par defaut ; lignes 234-236 :
+    export refuse (ValueError) note sur le flux ; ligne 239 : extraction
+    des documents ; lignes 287-288 : section Documents du rendu."""
+    import pcap_parser
+    from netcross_core.extract import contents
+
+    lus = []
+
+    def _parse(path, raise_on_error=True):
+        lus.append((path, raise_on_error))
+        return _raw(audio_stream())
+
+    def _refus(stream, out):
+        raise ValueError("codec non exportable")
+
+    doc = contents.ExtractedDocument("LAN", "http", str(tmp_path / "a.pdf"), 3, "0" * 64, "pdf")
+    monkeypatch.setattr(pcap_parser, "parse_capture", _parse)
+    monkeypatch.setattr(contents, "export_stream", _refus)
+    monkeypatch.setattr(contents, "export_documents", lambda captures, out, tshark_bin: ([doc], []))
+    res = run_extraction([("LAN", "lan.pcap")], out_dir=str(tmp_path / "x"), kinds=("audio", "documents"))
+    assert lus == [("lan.pcap", False)]
+    assert "codec non exportable" in res.media[0].note
+    assert res.documents == [doc]
+    texte = "\n".join(format_extraction(res))
+    assert "Documents extraits : 1" in texte
+    assert "a.pdf (3 o, pdf)" in texte
+
+
+def test_format_extraction_sans_flux_media():
+    """Ligne 266 : aucun flux RTP -> message explicite."""
+    from netcross_core.extract.contents import ContentExtraction
+
+    lignes = format_extraction(ContentExtraction(None, ()))
+    assert "Aucun flux RTP audio/video identifie." in lignes
+
+
+# -- Issue #724 : branches restantes de netcross_core/extract/media.py --------
+
+
+def test_en_tete_rtp_extension_tronquee_et_bourrage_excessif():
+    """Lignes 153-154 : extension annoncee mais tronquee ; lignes 160-161 :
+    bourrage plus long que la charge utile."""
+    tronque = bytes([0x90, 0]) + b"\x00" * 10 + b"\xbe\xde"
+    assert parse_rtp_header(tronque) is None
+    bourrage = bytes([0xA0, 0]) + b"\x00" * 10 + b"\x00\x00\x20"
+    assert parse_rtp_header(bourrage) is None
+
+
+def test_sdp_adresse_au_niveau_media_et_datagramme_vide():
+    """Ligne 196 : ligne c= apres m= (adresse propre au media) ; ligne 218 :
+    un datagramme sans charge utile est ignore."""
+    sdp = (
+        b"INVITE sip:b@x SIP/2.0\r\nContent-Type: application/sdp\r\n\r\n"
+        b"v=0\r\nc=IN IP4 10.0.0.9\r\nm=audio 50000 RTP/AVP 0\r\nc=IN IP4 10.0.0.2\r\n"
+        b"a=rtpmap:0 PCMU/8000\r\n"
+    )
+    carte = parse_sdp(sdp)
+    assert any(addr_port[0] == "10.0.0.2" for addr_port in carte)
+    assert collect_streams([("LAN", 1.0, A, 40000, B, 50000, b"")]) == []
+
+
+def test_numeros_etendus_liste_vide():
+    """Lignes 261-262 : aucun paquet -> aucun numero etendu."""
+    from netcross_core.extract.media import _extended
+
+    assert _extended([]) == []
+
+
+def test_write_wav_refuse_un_codec_non_g711(tmp_path):
+    """Lignes 422-424 : seul G.711 est decode en WAV."""
+    from netcross_core.extract.media import write_wav
+
+    (st,) = collect_streams(audio_stream(pt=111))
+    with pytest.raises(ValueError, match="non decode"):
+        write_wav(st, tmp_path / "x.wav")
+
+
+def test_depaquetage_h264_paquet_vide_et_stap_a_tronque():
+    """Lignes 457-458 : charge utile vide sautee ; ligne 472 : STAP-A dont
+    la taille annoncee depasse le paquet."""
+    nal = bytes([0x65]) + b"\x11" * 4
+    stap = bytes([0x78]) + (2).to_bytes(2, "big") + b"\x67\x42" + (50).to_bytes(2, "big") + b"\x68"
+    flux = depacketize_h264([(0, b""), (1, nal), (2, stap)])
+    assert flux == b"\x00\x00\x00\x01" + nal + b"\x00\x00\x00\x01\x67\x42"
+
+
+def test_export_stream_video_non_h264_refusee(tmp_path):
+    """Lignes 505-507 : flux video d'un codec non pris en charge."""
+    import dataclasses
+
+    (st,) = collect_streams(_video())
+    vp8 = dataclasses.replace(st, codec="VP8")
+    with pytest.raises(ValueError, match="video VP8 non exporte"):
+        export_stream(vp8, tmp_path)
