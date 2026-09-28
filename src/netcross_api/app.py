@@ -50,6 +50,7 @@ from netcross_api.models import (
 )
 from netcross_api.store import COMPLETED, FAILED, PENDING, report_document, store
 from netcross_core import analyse, correlate, parse_capture
+from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
 from netcross_core.logging_config import get_logger, summarize
 from netcross_core.security.findings import apply_security_findings, scan_capture_exploits
 from netcross_report.json_report import build_json_report_document
@@ -78,6 +79,30 @@ _REDACT_FORM = Form(
     default=False,
     description="true : anonymise les adresses IP/MAC avant analyse (équivalent de --redact) ; "
     "incompatible avec tls/quic, et le rapport de sécurité n'est alors pas calculé",
+)
+# Issue #330 (suite) : réglages de l'analyse déjà présents en GUI et en CLI.
+_BUCKET_MS_FORM = Form(default=1000, gt=0, description="Fenêtre temporelle du débit en ms (équivalent de --bucket-ms)")
+_RTP_CLOCK_FORM = Form(
+    default=8000, gt=0, description="Horloge RTP en Hz pour la gigue (équivalent de --rtp-clock-rate)"
+)
+_IDLE_TIMEOUT_FORM = Form(
+    default=None,
+    gt=0,
+    description="Seuil de coupure NAT/pare-feu silencieuse en secondes, défaut du cœur (60 s) si absent "
+    "(équivalent de --idle-timeout-seconds)",
+)
+_DETECT_DUPLICATES_FORM = Form(
+    default=False, description="true : compte les doublons inter-captures (équivalent de --detect-duplicates)"
+)
+_EXCLUDE_DUPLICATES_FORM = Form(
+    default=False,
+    description="true : exclut les doublons inter-captures de l'analyse (équivalent de --exclude-duplicates, "
+    "implique detect_duplicates)",
+)
+_DUPLICATE_THRESHOLD_FORM = Form(
+    default=DEFAULT_DUPLICATE_THRESHOLD_MS,
+    ge=0,
+    description="Écart maximal en ms entre deux copies d'un même paquet (équivalent de --duplicate-threshold-ms)",
 )
 _WAIT_QUERY = Query(
     default=False,
@@ -197,9 +222,17 @@ class ApiAnalysisOptions:
     tls: bool = False
     quic: bool = False
     redact: bool = False
+    bucket_ms: float = 1000.0
+    rtp_clock_rate: int = 8000
+    idle_timeout_seconds: float | None = None
+    detect_duplicates: bool = False
+    exclude_duplicates: bool = False
+    duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS
 
 
-def _options(nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, redact: bool) -> ApiAnalysisOptions:
+def _options(
+    nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, redact: bool, **reglages
+) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
     qui relisent les fichiers d'origine (adresses réelles)."""
     if redact and (tls or quic):
@@ -209,7 +242,7 @@ def _options(nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, re
             detail="redact n'est pas disponible avec tls/quic : ces diagnostics relisent les fichiers "
             "d'origine, avec les adresses réelles (même règle que la CLI)",
         )
-    options = ApiAnalysisOptions(nat_tolerant, nat_window_ms, tls, quic, redact)
+    options = ApiAnalysisOptions(nat_tolerant, nat_window_ms, tls, quic, redact, **reglages)
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
 
@@ -276,9 +309,26 @@ def _analyse_captures(
             from netcross_core.redact import redact_packets
 
             redact_packets(all_packets)
-        flows = correlate(all_packets, options.nat_tolerant, options.nat_window_ms)
+        # Doublons : même enchaînement que la CLI (détection, puis retrait de
+        # la liste pour que tout l'aval voie la même population).
+        duplicate_counts = None
+        if options.detect_duplicates or options.exclude_duplicates:
+            duplicate_counts = detect_cross_capture_duplicates(all_packets, options.duplicate_threshold_ms)
+        if options.exclude_duplicates:
+            all_packets = [pk for pk in all_packets if not pk.is_duplicate]
+        flows = correlate(all_packets, options.nat_tolerant, options.nat_window_ms, options.exclude_duplicates)
         points_order = order_list if multi else [captures[0][0]]
-        report = analyse(flows, points_order=points_order, all_packets=all_packets, nat_tolerant=options.nat_tolerant)
+        report = analyse(
+            flows,
+            points_order=points_order,
+            all_packets=all_packets,
+            bucket_seconds=options.bucket_ms / 1000.0,
+            nat_tolerant=options.nat_tolerant,
+            rtp_clock_rate=options.rtp_clock_rate,
+            idle_timeout_seconds=options.idle_timeout_seconds,
+            exclude_duplicates=options.exclude_duplicates,
+            duplicate_counts=duplicate_counts,
+        )
         security_report = None
         if not options.redact:
             # CVE-2 : scanner les exploits sur chaque fichier. Pas avec redact :
@@ -410,6 +460,12 @@ async def upload_capture(
     tls: bool = _TLS_FORM,
     quic: bool = _QUIC_FORM,
     redact: bool = _REDACT_FORM,
+    bucket_ms: float = _BUCKET_MS_FORM,
+    rtp_clock_rate: int = _RTP_CLOCK_FORM,
+    idle_timeout_seconds: float | None = _IDLE_TIMEOUT_FORM,
+    detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
+    exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
+    duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -418,10 +474,24 @@ async def upload_capture(
     Réponse 202 ``{"status": "pending"}`` : suivre ``status_url`` jusqu'à
     ``completed`` (ou ``failed`` avec ``error``). ``?wait=true`` attend la
     fin et retourne directement le résumé (201). ``nat_tolerant``,
-    ``nat_window_ms``, ``tls``, ``quic`` et ``redact`` ont le sens des
+    ``nat_window_ms``, ``tls``, ``quic``, ``redact``, ``bucket_ms``,
+    ``rtp_clock_rate``, ``idle_timeout_seconds``, ``detect_duplicates``,
+    ``exclude_duplicates`` et ``duplicate_threshold_ms`` ont le sens des
     options de même nom de la CLI (issue #330).
     """
-    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    options = _options(
+        nat_tolerant,
+        nat_window_ms,
+        tls,
+        quic,
+        redact,
+        bucket_ms=bucket_ms,
+        rtp_clock_rate=rtp_clock_rate,
+        idle_timeout_seconds=idle_timeout_seconds,
+        detect_duplicates=detect_duplicates,
+        exclude_duplicates=exclude_duplicates,
+        duplicate_threshold_ms=duplicate_threshold_ms,
+    )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Nom de fichier manquant")
@@ -535,6 +605,12 @@ async def upload_multi_capture(
     tls: bool = _TLS_FORM,
     quic: bool = _QUIC_FORM,
     redact: bool = _REDACT_FORM,
+    bucket_ms: float = _BUCKET_MS_FORM,
+    rtp_clock_rate: int = _RTP_CLOCK_FORM,
+    idle_timeout_seconds: float | None = _IDLE_TIMEOUT_FORM,
+    detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
+    exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
+    duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -547,7 +623,19 @@ async def upload_multi_capture(
     ou ``/status``) détaille les pertes et le délai de chaque segment.
     Options d'analyse : comme ``POST /captures`` (issue #330).
     """
-    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    options = _options(
+        nat_tolerant,
+        nat_window_ms,
+        tls,
+        quic,
+        redact,
+        bucket_ms=bucket_ms,
+        rtp_clock_rate=rtp_clock_rate,
+        idle_timeout_seconds=idle_timeout_seconds,
+        detect_duplicates=detect_duplicates,
+        exclude_duplicates=exclude_duplicates,
+        duplicate_threshold_ms=duplicate_threshold_ms,
+    )
     if not files or len(files) < 2:
         logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Au moins 2 fichiers sont requis pour l'analyse multi-points")
