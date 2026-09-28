@@ -77,3 +77,73 @@ def test_evaluate_compliance_defaut_utilise_default_references():
     r = Report(points=["A"])
     results = evaluate_compliance(r)
     assert len(results) == len(DEFAULT_REFERENCES)
+
+
+# -- Issue #706 : couverture des metriques de compliance ---------------------
+
+
+class _FakeReport:
+    """Fake report avec les attributs optionnels utilises par les metriques."""
+    def __init__(self, **kw):
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+
+def test_metric_throughput_mbps_avec_donnees():
+    """Lignes 72-80 : _metric_throughput_mbps avec des donnees valides."""
+    from netcross_core.compliance import _metric_throughput_mbps
+
+    r = _FakeReport(
+        total_bytes={"A": 1_000_000, "B": 500_000},
+        capture_duration={"A": 1.0, "B": 2.0},
+    )
+    result = _metric_throughput_mbps(r)
+    assert result > 0
+
+
+def test_metric_throughput_mbps_sans_donnees():
+    """Lignes 72-80 : _metric_throughput_mbps retourne 0.0 si duration <= 0."""
+    from netcross_core.compliance import _metric_throughput_mbps
+
+    r = _FakeReport(
+        total_bytes={"A": 1000},
+        capture_duration={"A": 0.0},
+    )
+    result = _metric_throughput_mbps(r)
+    assert result == 0.0
+
+
+def test_metric_latency_ms_avec_donnees():
+    """Lignes 85-92 : _metric_latency_ms avec des valeurs positives."""
+    from netcross_core.compliance import _metric_latency_ms
+
+    r = _FakeReport(latency_ms={("A", "B"): 10.0, ("B", "A"): 20.0})
+    result = _metric_latency_ms(r)
+    assert result == 15.0
+
+
+def test_metric_latency_ms_sans_donnees():
+    """Lignes 85-92 : _metric_latency_ms retourne 0.0 sans valeurs."""
+    from netcross_core.compliance import _metric_latency_ms
+
+    r = _FakeReport(latency_ms={})
+    result = _metric_latency_ms(r)
+    assert result == 0.0
+
+
+def test_metric_jitter_ms_avec_donnees():
+    """Ligne 96-103 : _metric_jitter_ms avec des valeurs positives."""
+    from netcross_core.compliance import _metric_jitter_ms
+
+    r = _FakeReport(jitter_ms={("A", "B"): 5.0, ("B", "A"): 3.0})
+    result = _metric_jitter_ms(r)
+    assert result == 4.0
+
+
+def test_metric_jitter_ms_sans_donnees():
+    """Ligne 96-103 : _metric_jitter_ms retourne 0.0 sans valeurs."""
+    from netcross_core.compliance import _metric_jitter_ms
+
+    r = _FakeReport(jitter_ms={})
+    result = _metric_jitter_ms(r)
+    assert result == 0.0
