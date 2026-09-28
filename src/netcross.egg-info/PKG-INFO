@@ -17,6 +17,7 @@ Requires-Dist: import-linter>=2.13; extra == "dev"
 Requires-Dist: pre-commit>=4.0; extra == "dev"
 Requires-Dist: mypy>=1.10; extra == "dev"
 Requires-Dist: stix2-validator<3.3,>=3.2; extra == "dev"
+Requires-Dist: pyyaml>=6.0; extra == "dev"
 Provides-Extra: api
 Requires-Dist: fastapi>=0.100; extra == "api"
 Requires-Dist: uvicorn>=0.20; extra == "api"

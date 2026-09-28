@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (108 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 8 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation |
+| API | 11 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -80,11 +80,11 @@ actif, non réglable.
 
 | Sortie | GUI | CLI | API |
 |---|---|---|---|
-| Rapport texte | oui (page Résultats) | sortie standard | non |
-| PDF | oui (« Exporter en PDF ») | `--pdf-report` | non |
+| Rapport texte | oui (page Résultats) | sortie standard | `GET /analyses/{id}/text` (issue #670) |
+| PDF | oui (« Exporter en PDF ») | `--pdf-report` | `GET /analyses/{id}/pdf?topn=N` (issue #670) |
 | JSON structuré | oui (« Exporter en JSON », mêmes clés que la CLI) | `--json-report` | `GET /analyses/{analysis_id}/report` (mêmes clés) ; `GET /analyses/{analysis_id}` sert le format brut, voir ci-dessous |
 | Markdown | non | `--md-report` | non |
-| CSV du détail par flux | oui (« Exporter en CSV ») | `--detail-csv` | non |
+| CSV du détail par flux | oui (« Exporter en CSV ») | `--detail-csv` | `GET /analyses/{id}/detail.csv` (issue #670) |
 | Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | non |
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
 | Diagramme de séquence | non | `--sequence-diagram` | non |
@@ -220,6 +220,9 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /analyses/{analysis_id}/report` | Rapport structuré, identique à `--json-report` |
 | `GET /analyses/{analysis_id}/status` | État d'une analyse en tâche de fond |
 | `GET /analyses/{analysis_id}/security` | Constats de sécurité |
+| `GET /analyses/{analysis_id}/text` | Rapport texte (issue #670) |
+| `GET /analyses/{analysis_id}/pdf` | Rapport PDF, `topn` (issue #670) |
+| `GET /analyses/{analysis_id}/detail.csv` | CSV du détail par flux (issue #670) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,

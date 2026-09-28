@@ -324,6 +324,181 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/text:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Text
+      description: 'Rapport texte d''une analyse terminée (équivalent de la sortie
+        console
+
+        de la CLI, issue #670).
+
+
+        409 si l''analyse a été relue depuis SQLite après un redémarrage
+
+        (les objets vivants nécessaires ne sont pas persistés).'
+      operationId: get_analysis_text_analyses__analysis_id__text_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/plain: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/pdf:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Pdf
+      description: 'Rapport PDF d''une analyse terminée (équivalent de ``--pdf-report``,
+
+        issue #670).
+
+
+        ``topn`` contrôle le nombre de catégories affichées par graphique
+
+        temporel Top-N (équivalent de ``--topn-charts``, défaut 5).
+
+
+        409 si l''analyse a été relue depuis SQLite après un redémarrage.'
+      operationId: get_analysis_pdf_analyses__analysis_id__pdf_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: topn
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50
+          minimum: 1
+          description: Nombre de catégories par graphique Top-N
+          default: 5
+          title: Topn
+        description: Nombre de catégories par graphique Top-N
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/pdf: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/detail.csv:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Csv
+      description: 'CSV du détail par flux d''une analyse terminée (équivalent de
+
+        ``--detail-csv``, issue #670).
+
+
+        409 si l''analyse a été relue depuis SQLite après un redémarrage.'
+      operationId: get_analysis_csv_analyses__analysis_id__detail_csv_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses:
     get:
       tags:

@@ -7,5 +7,6 @@ netcross_ai_models_cli
 netcross_api
 netcross_core
 netcross_gtk4
+netcross_lua_doc_cli
 netcross_report
 pcap_parser
