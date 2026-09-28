@@ -34,7 +34,14 @@ paths:
 
         ``nat_window_ms``, ``tls``, ``quic`` et ``redact`` ont le sens des
 
-        options de même nom de la CLI (issue #330).'
+        options de même nom de la CLI (issue #330).
+
+
+        Issue #672 : ``max_packets``, ``sample``, ``test_net_external``, ``names``,
+
+        ``known_destinations`` et ``known_hosts`` sont les équivalents des options
+
+        CLI de même nom (fichiers joints pour les trois derniers).'
       operationId: upload_capture_captures_post
       security:
       - APIKeyHeader: []
@@ -112,7 +119,7 @@ paths:
 
         ou ``/status``) détaille les pertes et le délai de chaque segment.
 
-        Options d''analyse : comme ``POST /captures`` (issue #330).'
+        Options d''analyse : comme ``POST /captures`` (issue #330, #672).'
       operationId: upload_multi_capture_captures_multi_post
       security:
       - APIKeyHeader: []
@@ -685,6 +692,45 @@ components:
             de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
             alors pas calculé'
           default: false
+        max_packets:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Packets
+          description: Limiter l'analyse aux N premiers paquets (équivalent de --max-packets)
+        sample:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sample
+          description: 'Échantillonnage 1/N (ex: 1/50) — équivalent de --sample'
+        test_net_external:
+          type: boolean
+          title: Test Net External
+          description: 'true : plages TEST-NET traitées comme externes (équivalent
+            de --test-net-external)'
+          default: false
+        names:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Names
+          description: Table des noms logiques (JSON/YAML) — équiv. --names
+        known_destinations:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Known Destinations
+          description: Destinations connues (JSON, liste d'IP) — équiv. --known-destinations
+        known_hosts:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Known Hosts
+          description: Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts
       type: object
       required:
       - file
@@ -737,6 +783,45 @@ components:
             de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
             alors pas calculé'
           default: false
+        max_packets:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Packets
+          description: Limiter l'analyse aux N premiers paquets (équivalent de --max-packets)
+        sample:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sample
+          description: 'Échantillonnage 1/N (ex: 1/50) — équivalent de --sample'
+        test_net_external:
+          type: boolean
+          title: Test Net External
+          description: 'true : plages TEST-NET traitées comme externes (équivalent
+            de --test-net-external)'
+          default: false
+        names:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Names
+          description: Table des noms logiques (JSON/YAML) — équiv. --names
+        known_destinations:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Known Destinations
+          description: Destinations connues (JSON, liste d'IP) — équiv. --known-destinations
+        known_hosts:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Known Hosts
+          description: Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts
       type: object
       required:
       - files

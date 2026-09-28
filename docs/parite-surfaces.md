@@ -49,9 +49,9 @@ actif, non réglable.
 | Fenêtre temporelle du débit | oui | `--bucket-ms` | non |
 | Cadence RTP | oui | `--rtp-clock-rate` | non |
 | Seuil de coupure NAT/pare-feu silencieuse | oui (« Coupure silencieuse (s) », 0 = défaut 60 s) | `--idle-timeout-seconds` | non |
-| Limiter ou échantillonner les paquets | non | `--max-packets`, `--sample` | non |
-| Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | non |
-| Plages TEST-NET traitées comme externes | non | `--test-net-external` | non |
+| Limiter ou échantillonner les paquets | non | `--max-packets`, `--sample` | `max_packets`, `sample` (issue #672) |
+| Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | `names` (fichier joint, issue #672) |
+| Plages TEST-NET traitées comme externes | non | `--test-net-external` | `test_net_external` (issue #672) |
 | Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` (table de correspondance : CLI seule) | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) |
 
 ## Diagnostics et triage
@@ -63,7 +63,7 @@ actif, non réglable.
 | Diagnostic QUIC/HTTP3 | oui (« Diagnostic QUIC/HTTP3 ») | `--quic` | `quic` (clé `quic_findings` de `/report`) |
 | Rapport de sécurité (détecteurs, signatures d'exploit, CVE) | oui (« Rapport de securite ») | `--security-report` | auto (toujours exécuté, sauf avec `redact`), `GET /analyses/{analysis_id}/security` |
 | Base CVE complète (NVD) | non (base embarquée seule) | `--cve-db` | non (base embarquée seule) |
-| Destinations et hôtes connus (sécurité) | non | `--known-destinations`, `--known-hosts` | non |
+| Destinations et hôtes connus (sécurité) | non | `--known-destinations`, `--known-hosts` | `known_destinations`, `known_hosts` (fichiers joints, issue #672) |
 | Moteur de règles | non | `--rule-engine` | non |
 | Section expertise détaillée | non | `--expert-section` | non |
 | Qualité média (VoIP/vidéo) | non | `--media-quality` | non |
