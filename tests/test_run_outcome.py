@@ -311,3 +311,16 @@ def test_une_liste_vide_de_diagnostics_reste_une_liste_vide():
     o = analysis_outcome("single", _Rapport(), [], [], "t", tls_findings=[])
     assert o.tls_findings == []
     assert o.tls_findings is not None
+
+
+# -- Issue #743 : build_flow_objects avec un iterable quelconque --------------
+
+
+def test_build_flow_objects_iterable_converti_en_liste():
+    """Lignes 192-193 : un iterable qui n'est ni dict ni liste (tuple,
+    generateur) est converti en liste."""
+    from netcross_gtk4.run_outcome import build_flow_objects
+
+    sentinelle = object()
+    assert build_flow_objects((sentinelle,)) == [sentinelle]
+    assert build_flow_objects(x for x in [sentinelle]) == [sentinelle]

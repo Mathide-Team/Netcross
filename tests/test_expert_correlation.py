@@ -7,12 +7,14 @@ EK synthetiques dont la structure a ete relevee avec un vrai tshark 4.2.2
 (`_ws_malformed` de premier niveau, `_ws_expert` sous dns/http).
 """
 
+import pytest
 from conftest import make_pkt
 
 from netcross_core.analysis import analyse
 from netcross_core.correlate import correlate
 from netcross_core.security.expert_correlation import (
     CorrelationThresholds,
+    _protocol_hint,
     app_anomaly,
     apply_expert_correlation,
     correlate_expert_alerts,
@@ -315,3 +317,25 @@ def test_build_packet_union_l4_et_applicatif():
     )
     layers.pop("udp")
     assert build_packet(1.0, layers).expert_flags == (LOST, "tls_tls_record_length_invalid")
+
+
+# --- _protocol_hint : indices portes par le paquet, port hors table (#753) ---
+
+
+@pytest.mark.parametrize(
+    ("flags", "attendu"),
+    [
+        ({"dns_txn_id": 0x1234}, "DNS"),
+        ({"dns_qry_name": "example.org"}, "DNS"),
+        ({"http_is_request": True}, "HTTP"),
+        ({"http_is_response": True}, "HTTP"),
+        ({"tls_client_hello": True}, "TLS"),
+        ({"tls_server_hello": True}, "TLS"),
+        ({"tls_application_data": True}, "TLS"),
+    ],
+)
+def test_protocol_hint_utilise_les_indices_de_couche_avant_le_port(flags, attendu):
+    """Ports 40000 -> 40001, absents de la table des ports : seul l'indice de
+    couche applicative peut produire DNS, HTTP ou TLS."""
+    pk = make_pkt(sport=40000, dport=40001, **flags)
+    assert _protocol_hint(pk) == attendu

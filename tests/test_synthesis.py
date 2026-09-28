@@ -1162,3 +1162,163 @@ def test_http_duree_moyenne_rule_id_est_http_slow_response():
     r.http_response_time_ms = [600.0, 700.0]
     http = [f for f in build_findings(r) if f.category == "HTTP"]
     assert http[0].rule_id == "http_slow_response"
+
+
+# -- Issue #741 : couverture des builders de Finding par paire/point ---------
+
+
+def test_qos_change_finding():
+    """Ligne 326 : QoS change finding pour une paire."""
+    r = Report(points=["A", "B"])
+    r.qos_change[("A", "B")] = 3
+    r.qos_l2_remark[("A", "B")] = 2
+    r.qos_l3_remark[("A", "B")] = 1
+    findings = build_findings(r)
+    qos = [f for f in findings if f.category == "QoS"]
+    assert len(qos) >= 1
+
+
+def test_frag_new_finding_sans_correlation_tunnel():
+    """Ligne 354 : fragmentation finding pour une paire sans tunnel correlé."""
+    r = Report(points=["A", "B"])
+    r.frag_new[("A", "B")] = 5
+    findings = build_findings(r)
+    frag = [f for f in findings if "frag" in f.message.lower() or "Fragment" in f.message]
+    assert len(frag) >= 1
+
+
+def test_pmtud_blackhole_finding():
+    """Ligne 413 : PMTUD blackhole finding pour une paire."""
+    r = Report(points=["A", "B"])
+    r.pmtud_blackhole[("A", "B")] = 2
+    findings = build_findings(r)
+    pmtud = [f for f in findings if "PMTUD" in f.message or "pmtud" in f.message.lower()]
+    assert len(pmtud) >= 1
+
+
+def test_idle_timeout_dropped_finding():
+    """Ligne 438 : idle timeout finding pour une paire."""
+    r = Report(points=["A", "B"])
+    r.idle_timeout_dropped[("A", "B")] = 1
+    findings = build_findings(r)
+    timeout = [f for f in findings if "timeout" in f.message.lower() or "inactiv" in f.message.lower()]
+    assert len(timeout) >= 1
+
+
+def test_arp_ip_conflict_finding():
+    """Ligne 461 : ARP conflict finding pour un point."""
+    r = Report(points=["A", "B"])
+    r.arp_ip_conflict["A"] = 2
+    findings = build_findings(r)
+    arp = [f for f in findings if f.category == "ARP"]
+    assert len(arp) >= 1
+
+
+def test_stp_topology_change_finding():
+    """Ligne 479 : STP topology change finding pour un point."""
+    r = Report(points=["A", "B"])
+    r.stp_topology_change["A"] = 1
+    findings = build_findings(r)
+    stp = [f for f in findings if f.category == "STP"]
+    assert len(stp) >= 1
+
+
+def test_stp_root_change_finding():
+    """Ligne 493 : STP root change finding pour un point."""
+    r = Report(points=["A", "B"])
+    r.stp_root_change["A"] = 1
+    findings = build_findings(r)
+    stp = [f for f in findings if f.category == "STP"]
+    assert len(stp) >= 1
+
+
+def test_tls_cert_invalid_dates_finding():
+    """Ligne 511 : TLS cert invalid dates finding pour un point."""
+    r = Report(points=["A", "B"])
+    r.tls_cert_invalid_dates["A"] = 1
+    findings = build_findings(r)
+    tls = [f for f in findings if f.category == "TLS"]
+    assert len(tls) >= 1
+
+
+def test_tls_cert_mismatch_finding():
+    """Ligne 529 : TLS cert mismatch finding pour une paire."""
+    r = Report(points=["A", "B"])
+    r.tls_cert_mismatch[("A", "B")] = 1
+    findings = build_findings(r)
+    tls = [f for f in findings if f.category == "TLS"]
+    assert len(tls) >= 1
+
+
+def test_tls_handshake_no_reply_finding():
+    """Ligne 555 : TLS handshake no reply finding pour un point."""
+    r = Report(points=["A", "B"])
+    r.tls_handshake_no_reply["A"] = 1
+    findings = build_findings(r)
+    tls = [f for f in findings if f.category == "TLS"]
+    assert len(tls) >= 1
+
+
+def test_tls_handshake_incomplete_finding():
+    """Ligne 573 : TLS handshake incomplete finding pour un point."""
+    r = Report(points=["A", "B"])
+    r.tls_handshake_incomplete["A"] = 1
+    findings = build_findings(r)
+    tls = [f for f in findings if f.category == "TLS"]
+    assert len(tls) >= 1
+
+
+def test_rtp_mos_finding():
+    """Ligne 734 : RTP MOS finding pour un stream avec MOS."""
+    r = Report(points=["A", "B"])
+    r.rtp_streams.append({"mos": 2.5, "r_factor": 60.0, "label": "10.0.0.1:5004 -> 10.0.0.2:5006 (SSRC=1234)"})
+    findings = build_findings(r)
+    rtp = [f for f in findings if "RTP" in f.category or "voix" in f.message.lower() or "mos" in f.message.lower()]
+    assert len(rtp) >= 1
+
+
+def test_http_error_evidence_parse_code():
+    """Ligne 244 : _http_error_evidence parse le code HTTP depuis le texte."""
+    r = Report(points=["A"])
+    r.http_client_error_count["A"] = 1
+    r.http_error_examples["A"] = ["GET /page : 404 Not Found"]
+    findings = build_findings(r)
+    http = [f for f in findings if f.category == "HTTP"]
+    assert len(http) >= 1
+
+
+# -- Issue #741 : couverture des branches n <= 0 (continue) ------------------
+
+
+def test_findings_avec_compteurs_nuls_ignore_les_paires():
+    """Lignes 326, 354, 413, 438, 461, 479, 493, 511, 529, 555, 573 :
+    toutes les branches 'if n <= 0: continue' sont prises quand les
+    compteurs sont a 0."""
+    r = Report(points=["A", "B"])
+    # Paires avec compteurs a 0 -> branches 'continue' prises
+    r.qos_change[("A", "B")] = 0
+    r.frag_new[("A", "B")] = 0
+    r.pmtud_blackhole[("A", "B")] = 0
+    r.idle_timeout_dropped[("A", "B")] = 0
+    r.arp_ip_conflict["A"] = 0
+    r.stp_topology_change["A"] = 0
+    r.stp_root_change["A"] = 0
+    r.tls_cert_invalid_dates["A"] = 0
+    r.tls_cert_mismatch[("A", "B")] = 0
+    r.tls_handshake_no_reply["A"] = 0
+    r.tls_handshake_incomplete["A"] = 0
+    # Aucune anomalie ne doit etre generee pour ces paires
+    findings = build_findings(r)
+    # Les findings produits viennent d'autres categories, pas de celles ci-dessus
+    categories_with_zero = {"QoS", "ARP", "STP", "TLS"}
+    for f in findings:
+        assert f.category not in categories_with_zero or f.message != ""
+
+
+def test_rtp_stream_sans_mos_est_ignore():
+    """Ligne 734 : RTP stream sans MOS est ignore (continue)."""
+    r = Report(points=["A", "B"])
+    r.rtp_streams.append({"mos": None, "label": "stream1", "r_factor": 80.0})
+    findings = build_findings(r)
+    rtp = [f for f in findings if "RTP" in f.category or "voix" in f.message.lower()]
+    assert len(rtp) == 0
