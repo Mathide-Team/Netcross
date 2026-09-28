@@ -235,3 +235,103 @@ def test_sans_db_path_rien_n_est_ecrit(monkeypatch, tmp_path):
     assert not memoire.persistent
     memoire.complete(memoire.create_pending(), {}, {})
     assert list(tmp_path.glob("*.db")) == []
+
+
+# -- Issue #719 : couverture des branches defensives de store.py --------------
+
+
+def test_jsonable_dataclass(tmp_path, _api):
+    """Lignes 60-61 : jsonable convertit un dataclass en dict."""
+    from dataclasses import dataclass
+
+    from netcross_api.store import jsonable
+
+    @dataclass
+    class FakeData:
+        name: str
+        count: int
+
+    result = jsonable(FakeData(name="test", count=42))
+    assert result == {"name": "test", "count": 42}
+
+
+def test_jsonable_primitive_and_str(tmp_path, _api):
+    """Lignes 68-69 : jsonable retourne la valeur pour les primitives
+    et str() pour les autres types."""
+    from netcross_api.store import jsonable
+
+    assert jsonable(None) is None
+    assert jsonable(42) == 42
+    assert jsonable("hello") == "hello"
+    assert jsonable(True) is True
+    # Un type non-primitive -> str()
+    assert jsonable(object())  # retourne une string non vide
+
+
+def test_update_analyse_inconnue_ignoree(_api):
+    """Lignes 142-144 : _update sur une analyse inconnue est ignoree."""
+    from netcross_api.store import AnalysesStore
+
+    store = AnalysesStore()
+    # Aucune exception ne doit etre levee
+    store._update("inexistant", status="completed")
+    # L'analyse inexistante n'a pas ete creee
+    assert store.get("inexistant") is None
+
+
+# -- Issue #736 : couverture des handlers d'erreur de app.py ----------------
+
+
+def test_run_job_erreur_interne_ne_restre_pas_pending(monkeypatch):
+    """Lignes 341-343 : _run_job avec une exception non-AnalysisError
+    appelle store.fail() et ne reste pas pending."""
+    import sys
+
+    from netcross_api.app import _run_job
+    from netcross_api.store import AnalysesStore
+
+    store = AnalysesStore()
+    app_module = sys.modules["netcross_api.app"]
+    monkeypatch.setattr(app_module, "store", store)
+
+    # Forcer _analyse_captures a lever une exception non-AnalysisError
+    def raise_runtime(*a, **kw):
+        raise RuntimeError("bug interne")
+
+    monkeypatch.setattr(app_module, "_analyse_captures", raise_runtime)
+
+    analysis_id = store.create_pending()
+    _run_job(analysis_id, [], None, False)
+
+    result = store.get(analysis_id)
+    assert result is not None
+    assert result.get("status") == "failed"
+    assert "Erreur interne" in result.get("error", "")
+
+
+def test_run_job_analysis_error_appelle_fail(monkeypatch):
+    """Lignes 308-313 et 339-340 : _run_job avec AnalysisError appelle
+    store.fail() avec le message d'erreur."""
+    import sys
+
+    from netcross_api.app import AnalysisError, _run_job
+    from netcross_api.store import AnalysesStore
+
+    store = AnalysesStore()
+    app_module = sys.modules["netcross_api.app"]
+    monkeypatch.setattr(app_module, "store", store)
+
+    # Forcer _analyse_captures a lever AnalysisError
+    def raise_analysis(*a, **kw):
+        raise AnalysisError("erreur d'analyse")
+
+    monkeypatch.setattr(app_module, "_analyse_captures", raise_analysis)
+
+    # Creer l'analyse dans le store avant _run_job
+    analysis_id = store.create_pending()
+    _run_job(analysis_id, [], None, False)
+
+    result = store.get(analysis_id)
+    assert result is not None
+    assert result.get("status") == "failed"
+    assert "erreur d'analyse" in result.get("error", "")

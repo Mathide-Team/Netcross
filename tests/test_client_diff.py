@@ -207,3 +207,23 @@ def test_write_client_diff_csv(tmp_path):
     assert all(row["client"] == "PosteB" for row in rows)
     assert all(row["reference"] == "PosteA" for row in rows)
     assert any(row["severite"] == "regression" for row in rows)
+
+
+# -- Issue #734 : affichage console de la signature DHCP ----------------------
+
+
+def test_print_signature_affiche_dhcp_vendor_class(capsys):
+    """Lignes 243-244 : _print_signature affiche la vendor class DHCP."""
+    from collections import Counter
+    from types import SimpleNamespace
+
+    from netcross_core.client_diff import _print_signature
+
+    sig = SimpleNamespace(
+        dhcp_vendor_classes=Counter({"MSFT 5.0": 3, "android-dhcp-13": 1}),
+        sip_user_agents=Counter(),
+    )
+    _print_signature(sig)
+    out = capsys.readouterr().out
+    assert "DHCP vendor class" in out
+    assert "MSFT 5.0 (3)" in out

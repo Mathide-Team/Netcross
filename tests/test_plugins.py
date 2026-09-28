@@ -121,6 +121,31 @@ def test_valeur_de_retour_non_liste():
     assert runs[0]["status"] == "erreur" and "liste de constats attendue" in runs[0]["reason"]
 
 
+def test_constats_du_coeur_absents_initialises_en_liste_vide():
+    """Un rapport sans `security_findings` (None) reçoit une liste vide, puis les constats du plugin (#745)."""
+    r = Report()
+    r.security_findings = None
+    runs = run_detectors([Det("maison", [GOOD])], [], r)
+    assert runs[0]["status"] == "ok"
+    assert r.security_findings == [{**GOOD, "plugin": "maison"}]
+
+
+def test_detecteur_renvoyant_none_equivaut_a_aucun_constat():
+    """`analyse` qui renvoie None (aucun return) est traité comme « aucun constat », pas comme une erreur (#745)."""
+
+    class Muet:
+        name = "silencieux"
+
+        def analyse(self, contexte):
+            return None
+
+    r = _report()
+    runs = run_detectors([Muet()], [], r)
+    assert runs[0]["status"] == "ok" and runs[0]["findings"] == 0 and runs[0]["invalid"] == 0
+    assert runs[0]["line"] == "detecteur silencieux : ok, aucun constat"
+    assert r.security_findings == [CORE_FINDING]
+
+
 # -- lecture seule --------------------------------------------------------------------
 
 

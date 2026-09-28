@@ -268,3 +268,48 @@ def test_build_conversations_hotes_differents_restent_separes():
 
 def test_build_conversations_liste_vide():
     assert build_conversations([]) == []
+
+
+# -- Issue #749 : couverture des gardes defensives de build_flows/build_conversations
+
+
+def test_build_flows_point_avec_liste_vide_est_ignore():
+    """build_flows: un point avec une liste de paquets vide est ignore
+    (garde defensive, ligne 97)."""
+    from netcross_core.correlate import Flow, build_flows
+
+    # Construction manuelle d'un Flow avec un point vide
+    f = Flow(key=("TCP", "10.0.0.1", 1234, "10.0.0.2", 443, 1000))
+    f.points = ["A", "B"]
+    f.packet_count = {"A": 1, "B": 0}
+    f.byte_count = {"A": 100, "B": 0}
+    f.first_ts = {"A": 0.0, "B": 0.0}
+    f.last_ts = {"A": 0.0, "B": 0.0}
+    f.endpoints = ("10.0.0.1", "10.0.0.2")
+
+    # Simule un flows dict avec un point vide
+    flows = {
+        ("TCP", "10.0.0.1", 1234, "10.0.0.2", 443, 1000): {
+            "A": [make_pkt(point="A", sport=1)],
+            "B": [],  # liste vide -> garde defensive
+        }
+    }
+    result = build_flows(flows)
+    assert len(result) == 1
+    # Le point B avec liste vide ne doit pas etre ajoute
+    assert "B" not in result[0].points
+    assert "A" in result[0].points
+
+
+def test_build_conversations_flux_sans_endpoints_est_ignore():
+    """build_conversations: un Flow sans endpoints est ignore
+    (garde defensive, ligne 119)."""
+    from netcross_core.correlate import Flow, build_conversations
+
+    f = Flow(key=("TCP", "10.0.0.1", 1234, "10.0.0.2", 443, 1000))
+    f.endpoints = None  # pas d'endpoints -> garde defensive
+    f.packet_count = {"A": 1}
+    f.byte_count = {"A": 100}
+
+    result = build_conversations([f])
+    assert len(result) == 0

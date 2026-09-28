@@ -410,3 +410,23 @@ def test_fast_flux_bout_en_bout_capture_reelle(tmp_path):
     alerts = [a for a in detect_fast_flux(pkts).alerts if a.alert_type == "ip_rotation"]
     assert len(alerts) == 1
     assert len(alerts[0].ips) == 12
+
+
+# -- Issue #738 : gardes des heuristiques DGA ---------------------------------
+
+
+def test_ratios_sans_lettres_valent_zero():
+    """Lignes 269-270 et 280-281 : sans lettre, les ratios valent 0.0."""
+    from netcross_core.security.dga import _consonant_ratio, _rare_bigram_ratio
+
+    assert _consonant_ratio("1234-5678") == 0.0
+    assert _rare_bigram_ratio("1") == 0.0
+
+
+def test_detect_dga_nom_reduit_a_rien_ignore():
+    """Ligne 380 : un nom DNS qui se reduit a une chaine vide ("..") est
+    ignore sans erreur."""
+    pkt = make_pkt(point="A", dns_qry_name="..")
+    result = detect_dga([pkt])
+    assert result.alerts == []
+    assert result.domain_scores == []

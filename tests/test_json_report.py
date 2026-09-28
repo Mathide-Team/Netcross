@@ -757,3 +757,54 @@ def test_generate_json_report_checksum_errors_liste_vide_par_defaut(tmp_path):
     generate_json_report(r, out)
     doc = _read(out)
     assert doc["checksum_errors"] == []
+
+
+# -- Issue #733 : cles optionnelles du document JSON --------------------------
+
+
+def test_document_json_expose_sequence_gaps_et_voip(tmp_path):
+    """Lignes 362 et 386-387 : sequence_gaps et appels VoIP sont exportes."""
+    from netcross_core.models import SequenceGap
+    from netcross_report.json_report import build_json_report_document
+
+    r = Report(points=["A"])
+    r.sequence_gaps = [
+        SequenceGap(
+            point="A",
+            src="10.0.0.1",
+            sport=1234,
+            dst="10.0.0.2",
+            dport=80,
+            start_seq=1000,
+            end_seq=2000,
+            missing_bytes=1000,
+            ts=1.5,
+            frame_number=7,
+            cause="network_loss",
+            evidence="octets non acquittes",
+        )
+    ]
+    r.voip_calls = [{"call_id": "abc", "mos": 4.1}]
+    r.voip_quality_distribution = {"good": 1}
+    doc = build_json_report_document(r)
+    assert doc["sequence_gaps"][0]["missing_bytes"] == 1000
+    assert doc["sequence_gaps"][0]["frame_number"] == 7
+    assert doc["voip_calls"] == [{"call_id": "abc", "mos": 4.1}]
+    assert doc["voip_quality_distribution"] == {"good": 1}
+
+
+def test_json_diff_expose_les_findings_quic_avant_apres(tmp_path):
+    """Lignes 536 et 538 : les findings QUIC baseline/courant sont exportes."""
+    f = Finding("anomalie", "QUIC", "A", "handshake lent")
+    out = tmp_path / "diff.json"
+    generate_json_diff(
+        [],
+        Report(points=["A"]),
+        Report(points=["A"]),
+        out,
+        quic_findings_baseline=[f],
+        quic_findings_current=[],
+    )
+    doc = _read(out)
+    assert len(doc["quic_findings_baseline"]) == 1
+    assert doc["quic_findings_current"] == []
