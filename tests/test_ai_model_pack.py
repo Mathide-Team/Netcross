@@ -5,16 +5,19 @@ reseau (is_online est simule)."""
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import random
+import types
 import zipfile
 
 import pytest
 
+import netcross_ai.model_pack as model_pack_mod
 import netcross_ai.outbox as outbox_mod
 import netcross_ai_models_cli as models_cli
 from netcross_ai import FEATURE_NAMES
-from netcross_ai.anomaly import Baseline
+from netcross_ai.anomaly import Baseline, BaselineError
 from netcross_ai.flow_classifier import TRAINING_SCHEMA, load_training_set
 from netcross_ai.model_pack import (
     BASELINE_FILE,
@@ -131,6 +134,21 @@ def _rewrite(path, replace=None, extra=None, drop=()):
             zf.writestr(n, b)
 
 
+def _forge(path, replace=None, drop=()):
+    """Comme _rewrite, mais recalcule les SHA-256 du manifeste : l'integrite
+    reste valide et seul le CONTENU est faux. Necessaire pour atteindre les
+    controles de contenu, que la verification d'empreinte masquerait sinon."""
+    with zipfile.ZipFile(path) as zf:
+        entries = {n: zf.read(n) for n in zf.namelist() if n not in drop}
+    entries.update(replace or {})
+    manifest = json.loads(entries[MANIFEST])
+    manifest["files"] = {n: hashlib.sha256(b).hexdigest() for n, b in entries.items() if n != MANIFEST}
+    entries[MANIFEST] = json.dumps(manifest).encode()
+    with zipfile.ZipFile(path, "w") as zf:
+        for n, b in entries.items():
+            zf.writestr(n, b)
+
+
 def test_archive_alteree_detectee(tmp_path, baseline):
     path = _pack(tmp_path, baseline)
     doc = json.loads(zipfile.ZipFile(path).read(BASELINE_FILE))
@@ -192,6 +210,105 @@ def test_schema_manifeste(tmp_path, baseline):
         read_pack(path)
 
 
+def test_archive_trop_volumineuse_refusee(tmp_path, baseline, monkeypatch):
+    path = _pack(tmp_path, baseline)
+    assert read_pack(path).baseline is not None  # temoin : le paquet est valide
+    monkeypatch.setattr(model_pack_mod, "MAX_PACK_BYTES", path.stat().st_size - 1)
+    with pytest.raises(ModelPackError, match="archive trop volumineuse"):
+        read_pack(path)
+
+
+def test_entree_trop_volumineuse_selon_l_en_tete_refusee(tmp_path, baseline, monkeypatch):
+    path = _pack(tmp_path, baseline)
+    with zipfile.ZipFile(path) as zf:
+        sizes = {i.filename: i.file_size for i in zf.infolist()}
+    plus_grosse = max(sizes, key=sizes.get)
+    monkeypatch.setattr(model_pack_mod, "MAX_ENTRY_BYTES", sizes[plus_grosse] - 1)
+    with pytest.raises(ModelPackError, match=f"{plus_grosse} trop volumineux"):
+        read_pack(path)
+
+
+def test_entree_dont_le_flux_depasse_la_limite_refusee(tmp_path, monkeypatch):
+    """Garde-fou en profondeur : meme si l'en-tete annonce une petite taille,
+    on refuse un flux qui fournit plus que la limite. Avec le vrai zipfile ce
+    cas n'est pas atteignable (la lecture est plafonnee a la taille annoncee,
+    puis le CRC echoue), d'ou la doublure."""
+
+    class _FauxZip:
+        def __init__(self, path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def infolist(self):
+            return [types.SimpleNamespace(filename=MANIFEST, file_size=5)]  # en-tete mensonger
+
+        def open(self, info):
+            return io.BytesIO(b"x" * 200)
+
+    faux = tmp_path / "faux.zip"
+    faux.write_bytes(b"x")  # doit exister : _read_entries commence par stat()
+    monkeypatch.setattr(model_pack_mod, "MAX_ENTRY_BYTES", 100)
+    monkeypatch.setattr(model_pack_mod.zipfile, "ZipFile", _FauxZip)
+    with pytest.raises(ModelPackError, match=f"{MANIFEST} trop volumineux"):
+        read_pack(faux)
+
+
+@pytest.mark.parametrize("brut", [b"pas du json", b"\xff\xfe\x00"], ids=["json-invalide", "utf8-invalide"])
+def test_manifeste_illisible_refuse(tmp_path, baseline, brut):
+    path = _pack(tmp_path, baseline)
+    _rewrite(path, replace={MANIFEST: brut})
+    with pytest.raises(ModelPackError, match=f"{MANIFEST} invalide") as info:
+        read_pack(path)
+    assert isinstance(info.value.__cause__, ValueError)  # JSONDecodeError et UnicodeDecodeError en heritent
+
+
+def test_baseline_du_paquet_invalide_refusee(tmp_path, baseline):
+    path = _pack(tmp_path, baseline)
+    mauvaise = json.dumps({"schema": "autre/1", "vectors": []}).encode()
+    _forge(path, replace={BASELINE_FILE: mauvaise})  # empreintes coherentes : seul le contenu est faux
+    with pytest.raises(ModelPackError, match="n'est pas une baseline") as info:
+        read_pack(path)
+    assert isinstance(info.value.__cause__, BaselineError)
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        [],  # pas un objet
+        {"schema": "autre/1", "samples": []},  # mauvais schema
+        {"schema": TRAINING_SCHEMA},  # samples absent
+        {"schema": TRAINING_SCHEMA, "samples": "pas-une-liste"},
+    ],
+    ids=["pas-un-objet", "mauvais-schema", "samples-absent", "samples-pas-une-liste"],
+)
+def test_jeu_d_entrainement_du_paquet_invalide_refuse(tmp_path, doc):
+    path = _pack(tmp_path, training=[([1.0] * W, "normal")])
+    _forge(path, replace={TRAINING_FILE: json.dumps(doc).encode()})
+    with pytest.raises(ModelPackError, match=f"{TRAINING_FILE} invalide"):
+        read_pack(path)
+
+
+def test_paquet_sans_baseline_ni_exemple_refuse(tmp_path, baseline):
+    # seul TICKET.md reste : integrite valide, mais rien a importer
+    path = _pack(tmp_path, baseline)
+    _forge(path, drop=(BASELINE_FILE,))
+    with pytest.raises(ModelPackError, match="paquet vide"):
+        read_pack(path)
+
+
+def test_paquet_dont_le_jeu_d_entrainement_est_vide_refuse(tmp_path, baseline):
+    path = _pack(tmp_path, baseline)
+    vide = json.dumps({"schema": TRAINING_SCHEMA, "samples": []}).encode()
+    _forge(path, replace={TRAINING_FILE: vide}, drop=(BASELINE_FILE,))
+    with pytest.raises(ModelPackError, match="paquet vide"):
+        read_pack(path)
+
+
 # -- import -------------------------------------------------------------------
 
 
@@ -212,6 +329,33 @@ def test_import_enrichit_la_base_locale(tmp_path, baseline):
 def test_import_sans_cible(tmp_path, baseline):
     with pytest.raises(ModelPackError, match="preciser"):
         import_pack(_pack(tmp_path, baseline))
+
+
+@pytest.mark.parametrize("cas", ["json-invalide", "repertoire"])
+def test_import_jeu_local_illisible_refuse(tmp_path, cas):
+    path = _pack(tmp_path, training=[([1.0] * W, "normal")])
+    local = tmp_path / "entrainement.json"
+    if cas == "json-invalide":
+        local.write_text("pas du json", encoding="utf-8")
+    else:
+        local.mkdir()  # exists() est vrai mais read_text() leve une OSError
+    with pytest.raises(ModelPackError, match="jeu local illisible"):
+        import_pack(path, training_path=local)
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [[], {"schema": "autre/1", "samples": []}],
+    ids=["pas-un-objet", "mauvais-schema"],
+)
+def test_import_jeu_local_d_un_autre_schema_refuse_sans_le_modifier(tmp_path, doc):
+    path = _pack(tmp_path, training=[([1.0] * W, "normal")])
+    local = tmp_path / "entrainement.json"
+    local.write_text(json.dumps(doc), encoding="utf-8")
+    avant = local.read_text(encoding="utf-8")
+    with pytest.raises(ModelPackError, match="n'est pas un jeu"):
+        import_pack(path, training_path=local)
+    assert local.read_text(encoding="utf-8") == avant  # le fichier de l'utilisateur n'est pas touche
 
 
 def test_jeu_mixte_flux_et_vecteurs_charge(tmp_path):
