@@ -243,3 +243,18 @@ def test_collect_conversations_chaine_runner_et_parser(monkeypatch):
     convs = collect_conversations("capture.pcap", protocol="tcp")
     assert len(convs) == 2
     assert convs[0].endpoint_a == "192.168.0.1:5000"
+
+
+# -- Issue #718 : mediane et valeurs illisibles du temps de reponse -----------
+
+
+def test_parse_response_time_mediane_et_valeur_illisible():
+    """Ligne 55 : une valeur non convertible est ignoree ; ligne 66 : la
+    mediane est reconnue."""
+    from netcross_core.tshark_stats.response_time import parse_response_time
+
+    texte = "Count       ...\nMedian      12.5\nMax         40\n"
+    stat = parse_response_time(texte)
+    assert stat is not None
+    assert stat.median_ms == 12.5
+    assert stat.count is None
