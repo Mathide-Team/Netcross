@@ -12,7 +12,7 @@ from conftest import make_pkt
 from netcross_core.baseline_diff import DiffFinding, diff_reports
 from netcross_core.compliance import evaluate_compliance
 from netcross_core.correlate import build_conversations, build_flows, correlate
-from netcross_core.models import Report
+from netcross_core.models import ChecksumError, Report
 from netcross_core.wireshark_expert import build_wireshark_expert_events
 from netcross_report.expert_events import build_diagnoses, build_expert_events
 from netcross_report.json_report import generate_json_diff, generate_json_report
@@ -738,3 +738,22 @@ def test_generate_json_report_rule_engine_findings_vide_dict_vide(tmp_path):
     doc = _read(out)
     assert "rule_engine" in doc
     assert doc["rule_engine"] == {}
+
+
+def test_generate_json_report_checksum_errors(tmp_path):
+    # Job 43/issue #163 : toujours present (comme http_objects), liste
+    # vide si aucune erreur -- pas conditionne a un parametre optionnel.
+    r = Report(points=["A"])
+    r.checksum_errors = [ChecksumError(point="A", frame_number=2, protocol="TCP", checksum="0x1111")]
+    out = tmp_path / "report.json"
+    generate_json_report(r, out)
+    doc = _read(out)
+    assert doc["checksum_errors"] == [{"point": "A", "frame_number": 2, "protocol": "TCP", "checksum": "0x1111"}]
+
+
+def test_generate_json_report_checksum_errors_liste_vide_par_defaut(tmp_path):
+    r = Report(points=["A"])
+    out = tmp_path / "report.json"
+    generate_json_report(r, out)
+    doc = _read(out)
+    assert doc["checksum_errors"] == []

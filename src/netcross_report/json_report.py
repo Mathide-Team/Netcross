@@ -376,6 +376,12 @@ def build_json_report_document(
             }
             for g in r.sequence_gaps
         ]
+    # Job 43/issue #163 (rebranche par #667) : checksums IP/TCP/UDP invalides,
+    # toujours presents (liste vide si aucune erreur).
+    doc["checksum_errors"] = [
+        {"point": e.point, "frame_number": e.frame_number, "protocol": e.protocol, "checksum": e.checksum}
+        for e in (getattr(r, "checksum_errors", None) or [])
+    ]
     if getattr(r, "voip_calls", None):
         doc["voip_calls"] = list(r.voip_calls)
         doc["voip_quality_distribution"] = dict(r.voip_quality_distribution)

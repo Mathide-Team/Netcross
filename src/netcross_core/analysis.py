@@ -23,7 +23,7 @@ from netcross_core.application import (
 from netcross_core.content import extract_http_objects
 from netcross_core.correlate import TOPN_DIMENSIONS, compute_throughput, compute_topn_series
 from netcross_core.extract.carver import detect_extracted_files
-from netcross_core.forensic import detect_sequence_gaps
+from netcross_core.forensic import detect_sequence_gaps, validate_checksums
 from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt, Report
 from netcross_core.parsing import compute_mos
@@ -398,6 +398,11 @@ def analyse(
     # numero de sequence (un "flow" y est un segment, pas une connexion).
     with _phase("detect_sequence_gaps"):
         r.sequence_gaps = detect_sequence_gaps(all_packets)
+    # Checksums IP/TCP/UDP invalides (Job 43/issue #163) -- meme discipline
+    # que sequence_gaps ci-dessus : fonction pure sur all_packets, aucun
+    # recalcul de somme de controle (le verdict vient deja de tshark).
+    with _phase("validate_checksums"):
+        r.checksum_errors = validate_checksums(all_packets)
     # Alertes Expert Info applicatives + sequences TCP anormales -> suspicions
     # fuzzing/overflow/dos (issue #137).
     with _phase("apply_expert_correlation"):
