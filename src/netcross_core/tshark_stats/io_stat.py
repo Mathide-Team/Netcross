@@ -53,21 +53,21 @@ def parse_io_stat(text: str, name: str = "io_stat") -> MetricSeries:
         end = parse_float(m.group(2)) if m.group(2) is not None else None
         # Valeurs numeriques apres l'intervalle : on les extrait par champ
         # si la ligne est pipe-delimmitee, sinon par tokens.
+        # Chaque candidat est conserve avec sa valeur numerique deja parsee :
+        # seuls les champs convertibles en float sont retenus ici, donc la
+        # boucle finale n'a plus de cas "non numerique" a ecarter.
         fields = split_fields(line)
         if fields:
-            vals = [f for f in fields if parse_float(f) is not None]
+            vals = [(f, p) for f in fields if (p := parse_float(f)) is not None]
         else:
-            vals = [t for t in line.split() if parse_float(t) is not None]
+            vals = [(t, p) for t in line.split() if (p := parse_float(t)) is not None]
         # Retire les bornes de l'intervalle elles-memes.
         bounds = {m.group(1)}
         if m.group(2) is not None:
             bounds.add(m.group(2))
-        vals = [v for v in vals if v not in bounds]
+        numbers = [p for raw, p in vals if raw not in bounds]
         values: dict[str, float] = {}
-        for i, v in enumerate(vals):
-            parsed = parse_float(v)
-            if parsed is None:
-                continue
+        for i, parsed in enumerate(numbers):
             key = value_headers[i] if i < len(value_headers) else f"value_{i}"
             values[key] = parsed
         points.append(MetricPoint(start=start, end=end, values=values))

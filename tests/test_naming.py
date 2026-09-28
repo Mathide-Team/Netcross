@@ -251,3 +251,23 @@ def test_generate_json_report_sans_names_pas_de_labels(tmp_path):
     generate_json_report(r, out, flows=flow_objs)
     doc = json.loads(out.read_text(encoding="utf-8"))
     assert "endpoints_labels" not in doc["flows"][0]
+
+
+# -- Issue #726 : couverture des branches defensives de naming.py ------------
+
+
+def test_table_resolve_none():
+    """Lignes 109-110 : NameTable.resolve(None) retourne None."""
+    t = NameTable()
+    assert t.resolve(None) is None
+
+
+def test_load_json_list_pas_dict(tmp_path):
+    """Lignes 183, 188-190 : NameTable.load avec JSON qui n'est ni liste
+    ni dict avec 'entries' -- leve ValueError."""
+    import pytest
+
+    path = tmp_path / "names.json"
+    path.write_text(json.dumps("just a string"), encoding="utf-8")
+    with pytest.raises(ValueError, match="liste"):
+        NameTable.load(path)

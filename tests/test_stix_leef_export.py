@@ -289,3 +289,36 @@ def test_cli_siem_export_sans_security_report(tmp_path, monkeypatch, capsys):
 
 def test_cli_siem_export_format_inconnu(tmp_path, monkeypatch):
     assert _analyzer(monkeypatch, "--siem-export", "syslog", "--siem-output", tmp_path / "o") == 2
+
+
+# -- Issue #713 : gardes du constructeur de bundle STIX -----------------------
+
+
+def test_builder_ip_invalide_et_traffic_avec_source():
+    """Lignes 183-186 et 204 : une IP invalide est ignoree ; un trafic
+    avec source porte src_ref."""
+    from netcross_report.stix_export import _Builder
+
+    b = _Builder("2026-01-01T00:00:00Z", "2026-01-01T00:01:00Z")
+    assert b.ip("pas-une-ip") is None
+    dst = b.ip("10.0.0.2")
+    src = b.ip("10.0.0.1")
+    ref = b.traffic(dst_ref=dst, dst_port=443, src_ref=src, protocol="tcp")
+    assert ref is not None
+    assert b.objects[ref]["src_ref"] == src
+
+
+def test_cve_sans_service_et_anomalie_avec_source():
+    """Lignes 269-270 et 341 : CVE sans service -> pas de software ;
+    anomalie avec IP source -> la source est referencee."""
+    from netcross_report.stix_export import _add_anomaly, _add_cve, _Builder
+
+    b = _Builder("2026-01-01T00:00:00Z", "2026-01-01T00:01:00Z")
+    _add_cve(b, {"cve_id": "CVE-2024-0001"})
+    assert any(o["type"] == "vulnerability" for o in b.objects.values())
+    assert not any(o["type"] == "software" for o in b.objects.values())
+
+    orphans = []
+    _add_anomaly(b, {"host": "10.0.0.2", "src": "10.0.0.9", "category": "scan"}, orphans)
+    assert orphans == []
+    assert any(o.get("value") == "10.0.0.9" for o in b.objects.values())

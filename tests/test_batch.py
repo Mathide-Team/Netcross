@@ -364,3 +364,46 @@ def test_cli_bout_en_bout_tshark(tmp_path, monkeypatch):
     assert "[groupe 1] amont + aval" in index
     assert "casse (" in index
     assert "ANALYSE CROISEE" in (out / "rapport-groupe-1.txt").read_text()
+
+
+# -- Issue #729 : couverture des branches defensives de batch.py ------------
+
+
+def test_capture_inventory_duration_none():
+    """Lignes 73-74 : CaptureInventory.duration retourne 0.0 si start
+    ou end est None."""
+    inv = CaptureInventory(label="A", path="/x/A.pcap")
+    assert inv.duration == 0.0
+
+
+def test_is_meaningful_ip_invalide():
+    """Lignes 113-116 : _is_meaningful_ip retourne False pour une adresse
+    invalide."""
+    from netcross_core.batch import _is_meaningful_ip
+
+    assert _is_meaningful_ip("not-an-ip") is False
+
+
+def test_fmt_ts_none():
+    """Lignes 201-202 : _fmt_ts retourne '?' pour ts=None."""
+    from netcross_core.batch import _fmt_ts
+
+    assert _fmt_ts(None) == "?"
+
+
+def test_fmt_list_avec_plus_de_limit():
+    """Ligne 213 : _fmt_list ajoute '...' quand il y a plus d'items que
+    la limite."""
+    from netcross_core.batch import _fmt_list
+
+    result = _fmt_list(["a", "b", "c", "d", "e"], limit=3)
+    assert "..." in result
+    assert "+2" in result
+
+
+def test_fmt_gap_minutes():
+    """Lignes 227-228 : _fmt_gap formate en minutes quand seconds >= 60."""
+    from netcross_core.batch import _fmt_gap
+
+    result = _fmt_gap(120.0)
+    assert "min" in result

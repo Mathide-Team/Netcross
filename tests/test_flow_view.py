@@ -325,3 +325,22 @@ def test_flow_sans_paquet_retourne_vue_vide():
     assert view.throughput_bps == 0.0
     assert view.transactions == []
     assert view.timeline == []
+
+
+# -- Issue #716 : branches non couvertes de build_flow_view -------------------
+
+
+def test_point_sans_paquet_ignore_et_drapeaux_tcp_fin_rst_fast_retrans():
+    """Lignes 110, 144, 152, 154 : un point du flux sans paquet est ignore ;
+    fast-retransmission, FIN et RST sont comptes dans la synthese TCP."""
+    pkts = [
+        _pkt(point="A", frame_number=1, ts=1.0, flags="FA", is_fast_retransmission=True),
+        _pkt(point="A", frame_number=2, ts=2.0, flags="R"),
+    ]
+    flow = Flow(key=("k",))
+    flow.points.extend(["VIDE", "A"])
+    view = build_flow_view(flow, {"VIDE": [], "A": pkts})
+    assert view.flow.points == ["VIDE", "A"]
+    assert view.tcp.fast_retransmissions == 1
+    assert view.tcp.fin_seen is True
+    assert view.tcp.rst_seen is True

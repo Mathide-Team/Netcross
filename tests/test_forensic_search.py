@@ -336,3 +336,40 @@ def test_evenement_indexe_par_message():
     res = idx.search(ForensicSearchQuery(text="out-of-order"))
     assert len(res) == 1
     assert res[0].kind == "event"
+
+
+# -- Issue #723 : champs optionnels indexes et branches de recherche ----------
+
+
+def test_documents_indexent_les_champs_optionnels():
+    """Lignes 142, 144, 201, 228, 257 : user-agent SIP, type DHCP, cause
+    d'evenement, methode HTTP et suite TLS sont indexes."""
+    from netcross_core.forensic_search import (
+        _doc_from_event,
+        _doc_from_http_object,
+        _doc_from_packet,
+        _doc_from_tls_event,
+    )
+
+    doc = _doc_from_packet(make_pkt(sip_user_agent="Yealink", dhcp_msg_type="1"))
+    assert doc.fields["sip_user_agent"] == "Yealink"
+    assert doc.fields["dhcp_msg_type"] == "1"
+
+    ev = _event()
+    ev.cause = "congestion"
+    assert _doc_from_event(ev).fields["cause"] == "congestion"
+
+    assert _doc_from_http_object(_http(method="POST")).fields["method"] == "POST"
+
+    tls = _tls(sni="example.com")
+    tls.cipher = "TLS_AES_128_GCM_SHA256"
+    assert _doc_from_tls_event(tls).fields["cipher"] == "TLS_AES_128_GCM_SHA256"
+
+
+def test_index_ignore_flux_sans_paquet_et_valeur_de_champ_diffuse():
+    """Lignes 333 et 450 : un flux sans paquet n'est pas indexe ; une
+    field_value sans field est cherchee en texte libre."""
+    pk = make_pkt(dns_qry_name="intranet.example")
+    idx = ForensicSearchIndex([pk], flows={("k",): {"A": []}})
+    res = idx.search(ForensicSearchQuery(field_value="intranet"))
+    assert len(res) >= 1
