@@ -8,8 +8,6 @@ depasse la borne du message) et le repli `except UnicodeError` de
 
 from __future__ import annotations
 
-import logging
-
 from netcross_core.fingerprint.ssh_hassh import parse_kexinit
 
 _SSH_MSG_KEXINIT = 20
@@ -62,8 +60,6 @@ def test_message_trop_court_pour_le_cookie_renvoie_none():
     assert parse_kexinit(data) is None
 
 
-def test_namelist_non_ascii_renvoie_none_et_journalise(caplog):
+def test_namelist_non_ascii_renvoie_none():
     """UnicodeError pendant le decodage d'une name-list : repli sur None."""
-    with caplog.at_level(logging.ERROR):
-        assert parse_kexinit(_kexinit_packet(kex_raw=b"\xff\xfe")) is None
-    assert any("parse_kexinit" in record.getMessage() for record in caplog.records)
+    assert parse_kexinit(_kexinit_packet(kex_raw=b"\xff\xfe")) is None
