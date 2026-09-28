@@ -673,3 +673,192 @@ def test_apply_security_findings_inclut_exfiltration_et_forensic():
     assert "exfiltration" in details.lower()
     assert "trou de sequence" in details.lower()
     assert "paquet" in details.lower() and "double" in details.lower()
+
+
+# -- Issue #756 : couverture des fonctions de findings non testees --------
+
+
+def test_dns_tunnel_findings_volume():
+    """Lignes 226-241 : dns_tunnel_findings avec kind='volume'."""
+    from netcross_core.security.findings import dns_tunnel_findings
+
+    suspicions = [
+        {
+            "kind": "volume",
+            "point": "A",
+            "dns_packets": 500,
+            "total_packets": 1000,
+            "ratio": 0.5,
+            "severity": "moyenne",
+        }
+    ]
+    result = dns_tunnel_findings(suspicions)
+    assert len(result) == 1
+    assert result[0]["detector"] == "dns_tunnel"
+    assert "volume DNS anormal" in result[0]["detail"]
+    assert result[0]["point"] == "A"
+
+
+def test_dns_tunnel_findings_avec_signals_et_frames():
+    """Lignes 226-241 : dns_tunnel_findings avec kind != 'volume',
+    signals et frames presentes."""
+    from netcross_core.security.findings import dns_tunnel_findings
+
+    suspicions = [
+        {
+            "kind": "tunnel",
+            "point": "B",
+            "domain": "evil.example.com",
+            "signals": ["high_subdomain_count", "high_entropy"],
+            "queries": 42,
+            "unique_subdomains": 30,
+            "mean_entropy": 3.5,
+            "frames": [1, 2, 3],
+            "severity": "elevee",
+        }
+    ]
+    result = dns_tunnel_findings(suspicions)
+    assert len(result) == 1
+    assert "tunneling DNS" in result[0]["detail"]
+    assert "evil.example.com" in result[0]["detail"]
+    assert "trames 1, 2, 3" in result[0]["detail"]
+
+
+def test_beaconing_findings_avec_signals_et_frames():
+    """Lignes 274-284 : beaconing_findings avec signals et frames."""
+    from netcross_core.security.findings import beaconing_findings
+
+    suspicions = [
+        {
+            "src": "10.0.0.1",
+            "dst": "10.0.0.2",
+            "dport": 443,
+            "proto": "TCP",
+            "signals": ["regular_interval", "small_payload"],
+            "checkins": 10,
+            "mean_interval": 60.0,
+            "interval_stddev": 1.5,
+            "score": 0.85,
+            "frames": [5, 10],
+            "severity": "elevee",
+        }
+    ]
+    result = beaconing_findings(suspicions)
+    assert len(result) == 1
+    assert "beaconing" in result[0]["detail"]
+    assert "trames 5, 10" in result[0]["detail"]
+
+
+def test_exfiltration_findings_avec_frames():
+    """Ligne 341 : exfiltration_findings avec frames presentes."""
+    from netcross_core.security.findings import exfiltration_findings
+
+    alerts = [
+        {
+            "src": "10.0.0.1",
+            "dst": "10.0.0.2",
+            "bytes": 5000000,
+            "severity": "elevee",
+            "frames": [1, 2, 3],
+        }
+    ]
+    result = exfiltration_findings(alerts)
+    assert len(result) == 1
+    assert "trames 1, 2, 3" in result[0]["detail"]
+
+
+def test_lateral_movement_findings_avec_points():
+    """Lignes 413-415 : lateral_movement_findings avec 'points' dans l'event."""
+    from netcross_core.security.findings import lateral_movement_findings
+
+    events = [
+        {
+            "type": "port_scan",
+            "points": ["A", "B"],
+        }
+    ]
+    result = lateral_movement_findings(events)
+    assert len(result) == 1
+    assert result[0]["detector"] == "lateral_movement"
+
+
+def test_new_host_findings_avec_os_mac_ports():
+    """Lignes 489-497 : new_host_findings avec is_new=True, os_guess,
+    mac, ports et points."""
+    from netcross_core.security.findings import new_host_findings
+
+    assets = [
+        {
+            "is_new": True,
+            "ip": "10.0.0.5",
+            "mac": "00:11:22:33:44:55",
+            "os_guess": {"family": "Linux", "confidence": 0.9},
+            "ports": [
+                {"transport": "TCP", "port": 22},
+                {"transport": "TCP", "port": 443},
+            ],
+            "packet_count": 150,
+            "points": ["A", "B"],
+        }
+    ]
+    result = new_host_findings(assets)
+    assert len(result) == 1
+    assert "Linux" in result[0]["detail"]
+    assert "00:11:22:33:44:55" in result[0]["detail"]
+    assert "TCP/22" in result[0]["detail"]
+
+
+def test_new_host_findings_sans_os_ni_ports():
+    """Lignes 489-497 : new_host_findings avec is_new=True mais sans
+    os_guess, sans mac, sans ports."""
+    from netcross_core.security.findings import new_host_findings
+
+    assets = [
+        {
+            "is_new": True,
+            "ip": "10.0.0.6",
+            "mac": None,
+            "os_guess": None,
+            "ports": [],
+            "packet_count": 5,
+            "points": ["A"],
+        }
+    ]
+    result = new_host_findings(assets)
+    assert len(result) == 1
+    assert "OS inconnu" in result[0]["detail"]
+    assert "aucun port expose" in result[0]["detail"]
+
+
+def test_dga_findings_avec_points():
+    """Lignes 565-568 : dga_findings avec 'points' dans l'alert."""
+    from netcross_core.security.findings import dga_findings
+
+    alerts = [
+        {
+            "domain": "xkqjfhlqjhfq.example.com",
+            "score": 0.9,
+            "points": ["A", "B"],
+        }
+    ]
+    result = dga_findings(alerts)
+    assert len(result) == 1
+    assert result[0]["severity"] == "elevee"
+    assert result[0]["points"] == ["A", "B"]
+
+
+def test_fast_flux_findings_avec_points():
+    """Lignes 592-594 : fast_flux_findings avec 'points' dans l'alert."""
+    from netcross_core.security.findings import fast_flux_findings
+
+    alerts = [
+        {
+            "alert_type": "ip_rotation",
+            "domain": "suspicious.example.com",
+            "points": ["A", "B"],
+        }
+    ]
+    result = fast_flux_findings(alerts)
+    assert len(result) == 1
+    assert result[0]["severity"] == "elevee"
+    assert result[0]["points"] == ["A", "B"]

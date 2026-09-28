@@ -349,3 +349,14 @@ def test_format_health_line_contient_score_et_libelle():
     line = format_health_line(100)
     assert "100/100" in line
     assert HEALTH_LABELS["bon"] in line
+
+
+# -- Issue #754 : couverture ligne 308-309 de triage.py (garde-fou) -------
+
+
+def test_health_label_score_negatif_retourne_critique():
+    """Lignes 308-309 : health_label retourne 'critique' pour un score
+    negatif (garde-fou inatteignable en pratique car health_score() ne
+    renvoie jamais de valeur negative, mais la fonction doit rester
+    robuste a un appel direct avec un score negatif)."""
+    assert health_label(-1) == "critique"
