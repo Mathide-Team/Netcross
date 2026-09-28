@@ -897,10 +897,6 @@ def _build_support_consent(args) -> Consent:
         )
         sys.exit(1)
 
-    if args.support_map and not args.support_ticket:
-        print("--support-map necessite --support-ticket.", file=sys.stderr)
-        sys.exit(1)
-
     scopes = SUPPORT_SCOPES
     if args.support_scope:
         demandees = tuple(s.strip() for s in args.support_scope.split(",") if s.strip())
@@ -2464,9 +2460,7 @@ def main():
         if not args.capture:
             print("--convert necessite --capture (fichier source).", file=sys.stderr)
             sys.exit(1)
-        if args.live:
-            print("--convert convertit un fichier (--capture) : incompatible avec --live.", file=sys.stderr)
-            sys.exit(1)
+        # --live est deja refuse avec --capture plus haut (options exclusives).
         # --convert est un mode utilitaire qui s'arrete apres la conversion :
         # toute autre option (analyse, rapport...) serait silencieusement ignoree.
         ignored = sorted(
