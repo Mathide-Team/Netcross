@@ -191,6 +191,19 @@ def test_iter_netflow_v5_file_truncated_trailing_datagram(tmp_path):
         list(iter_netflow_v5_file(str(path)))
 
 
+def test_iter_netflow_v5_file_ignore_octets_residuels_plus_courts_qu_un_en_tete(tmp_path):
+    """Des octets en fin de fichier, trop peu nombreux pour former un
+    en-tete, terminent la lecture sans erreur : les datagrammes complets
+    deja lus sont conserves (#751)."""
+    packet = _build_packet([{"src_port": 7}])
+    path = tmp_path / "residu.netflow5"
+    path.write_bytes(packet + b"\x00\x05\x00")  # 3 octets < taille d'un en-tete
+
+    flows = list(iter_netflow_v5_file(str(path)))
+
+    assert [f.src_port for f in flows] == [7]
+
+
 def test_flow_record_to_pkt_maps_core_fields():
     packet = _build_packet(
         [
