@@ -818,3 +818,64 @@ def test_signature_hash_eddsa():
     result = _signature_hash(cert)
     # EdDSA n'a pas de hash separe -> None
     assert result is None
+
+
+# -- Issue #709 : branches restantes (payload non-bytes, DSA, Ed448, cles) ----
+
+
+def test_sip_heuristique_payload_non_bytes_renvoie_none():
+    """Lignes 185-188 : une charge utile sans .decode (str) -> None."""
+    from pcap_parser.protocols import _parse_sip_heuristic
+
+    assert _parse_sip_heuristic("INVITE sip:bob@example.com SIP/2.0") is None
+
+
+def _cert_auto_signe(key, algorithm):
+    import datetime
+
+    from cryptography import x509
+    from cryptography.x509.oid import NameOID
+
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "cle.example.com")])
+    return (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(4242)
+        .not_valid_before(datetime.datetime(2024, 1, 1))
+        .not_valid_after(datetime.datetime(2025, 1, 1))
+        .sign(key, algorithm)
+    )
+
+
+def test_public_key_summary_dsa_et_ed448():
+    """Lignes 374-375 et 379-380 : cles DSA (taille) et Ed448 (sans taille)."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import dsa, ed448
+
+    from pcap_parser.protocols import _public_key_summary
+
+    dsa_cert = _cert_auto_signe(dsa.generate_private_key(key_size=2048), hashes.SHA256())
+    assert _public_key_summary(dsa_cert) == ("DSA", 2048)
+    ed448_cert = _cert_auto_signe(ed448.Ed448PrivateKey.generate(), None)
+    assert _public_key_summary(ed448_cert) == ("Ed448", None)
+
+
+def test_public_key_summary_cle_indecodable_ou_type_inconnu():
+    """Lignes 364-366 : cle indecodable -> (None, None) ; lignes 382-383 :
+    type de cle non reconnu -> nom de la classe, sans taille."""
+    from types import SimpleNamespace
+
+    from cryptography.hazmat.primitives.asymmetric import x25519
+
+    from pcap_parser.protocols import _public_key_summary
+
+    def _refus():
+        raise ValueError("cle corrompue")
+
+    assert _public_key_summary(SimpleNamespace(public_key=_refus)) == (None, None)
+    cle = x25519.X25519PrivateKey.generate().public_key()
+    type_nom, taille = _public_key_summary(SimpleNamespace(public_key=lambda: cle))
+    assert type_nom == type(cle).__name__
+    assert taille is None

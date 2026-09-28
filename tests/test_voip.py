@@ -219,3 +219,27 @@ def test_build_calls_rtp_hors_fenetre_ambigu():
     # Le stream1 doit etre associe au call 1
     # Le stream2 (ts=10.0) est hors fenetre -> non assigne
     assert isinstance(unassigned, dict)
+
+
+# -- Issue #704 : fin d'appel deduite de l'appel suivant, flux RTP sans date --
+
+
+def test_build_calls_sans_bye_se_termine_a_l_appel_suivant():
+    """Ligne 168 : sans BYE, un appel se termine au debut de l'appel suivant ;
+    ligne 179 : un flux RTP sans aucune date est ignore ; ligne 184 : un flux
+    a la frontiere des deux appels est ambigu et rattache au plus proche."""
+    from netcross_core.voip import build_calls
+
+    pkts = [
+        _sip("A", 1.0, "INVITE", "1 INVITE", call_id="call-1"),
+        _sip("A", 5.0, "INVITE", "1 INVITE", call_id="call-2"),
+    ]
+    rtp_streams = [
+        {"first_ts": 3.0, "points": {"A": 3.0}, "mos": 4.2, "label": "dans-call-1"},
+        {"points": {}, "mos": 4.0, "label": "sans-date"},
+        {"first_ts": 5.0, "mos": 3.9, "label": "frontiere"},
+    ]
+    calls, _unassigned = build_calls(pkts, rtp_streams)
+    assert [c.call_id for c in calls] == ["call-1", "call-2"]
+    assert [s["label"] for s in calls[0].rtp_streams] == ["dans-call-1"]
+    assert [s["label"] for s in calls[1].rtp_streams] == ["frontiere"]
