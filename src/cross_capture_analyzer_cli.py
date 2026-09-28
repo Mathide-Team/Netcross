@@ -81,6 +81,12 @@ netcross_core.redact pour le detail et les limites de --redact) :
         --redact --redact-map correspondance_privee.csv \
         --pdf-report rapport_a_partager.pdf
 
+Exemple d'utilisation (rapport Markdown pour partage et export PDF -- issue #761) :
+    python3 cross_capture_analyzer_cli.py \
+        --capture LAN=capture_lan.pcapng \
+        --capture WAN=capture_wan.pcapng \
+        --md-report rapport.md
+
 Exemple d'utilisation (historique inter-runs -- voir netcross_report.history
 pour le detail ; le meme fichier .db peut etre reutilise a chaque controle
 periodique du meme lien) :
@@ -372,6 +378,7 @@ def _run_netflow(args) -> int:
             ("--live", args.live),
             ("--merge", args.merge),
             ("--pdf-report", args.pdf_report),
+            ("--md-report", args.md_report),
             ("--security-report", args.security_report),
             ("--triage", args.triage),
             ("--flow-timeline", args.flow_timeline),
@@ -1136,7 +1143,7 @@ def _send_notifications(args, report, security_report_obj) -> list[dict]:
     from netcross_core.notify import build_summary, run_notifications
 
     dash = security_report_obj.dashboard
-    report_path = args.security_html or args.json_report or args.pdf_report
+    report_path = args.security_html or args.json_report or args.pdf_report or args.md_report
     results = run_notifications(
         lambda threshold: build_summary(
             report.security_findings or [],
@@ -1834,6 +1841,13 @@ def main():
         "supplementaire (contrairement a --pdf-report).",
     )
     ap.add_argument(
+        "--md-report",
+        help="Chemin de sortie pour un rapport Markdown (.md) -- titres aerés, "
+        "tableaux, exportable en PDF via pandoc ou tout convertisseur MD. "
+        "Aucune dependance supplementaire (contrairement a --pdf-report). "
+        "Issue #761.",
+    )
+    ap.add_argument(
         "--rule-engine",
         action="store_true",
         help="Active le moteur d'execution de regles declaratives "
@@ -2414,6 +2428,7 @@ def main():
             flag
             for flag, given in (
                 ("--pdf-report", args.pdf_report),
+            ("--md-report", args.md_report),
                 ("--json-report", args.json_report),
                 ("--flow-timeline", args.flow_timeline),
                 ("--tshark-stats", args.tshark_stats),
@@ -2458,6 +2473,7 @@ def main():
             flag
             for flag, given in (
                 ("--pdf-report", args.pdf_report),
+            ("--md-report", args.md_report),
                 ("--json-report", args.json_report),
                 ("--flow-timeline", args.flow_timeline),
                 ("--tshark-stats", args.tshark_stats),
@@ -2565,6 +2581,7 @@ def main():
             flag
             for flag, given in (
                 ("--pdf-report", args.pdf_report),
+            ("--md-report", args.md_report),
                 ("--json-report", args.json_report),
                 ("--flow-timeline", args.flow_timeline),
                 ("--tshark-stats", args.tshark_stats),
@@ -3038,7 +3055,7 @@ def main():
     findings = None
     tls_findings = None
     quic_findings = None
-    if args.triage or args.pdf_report or args.json_report or args.history_db or args.expert_section:
+    if args.triage or args.pdf_report or args.json_report or args.md_report or args.history_db or args.expert_section:
         # calcule dans tous les cas si --pdf-report/--json-report/--history-db :
         # les trois integrent desormais le meme classement en tete (voir
         # netcross_report.pdf / netcross_report.json_report / netcross_report.history)
@@ -3128,7 +3145,7 @@ def main():
     # voir netcross_report.session_objects pour l'extraction (meme
     # sequence d'appels, aucun calcul nouveau).
     session_objects = None
-    if args.expert_section or args.pdf_report or args.json_report:
+    if args.expert_section or args.pdf_report or args.json_report or args.md_report:
         from netcross_report.session_objects import build_session_objects, print_session_objects
 
         session_objects = build_session_objects(r, findings, flows, all_packets)
@@ -3141,7 +3158,7 @@ def main():
     # groupes par correlate(), donc aucun reparse, mais aucune raison de les
     # calculer pour rien.
     sequence_views = None
-    if args.sequence_diagram and args.pdf_report:
+    if args.sequence_diagram and (args.pdf_report or args.md_report):
         from netcross_report.sequence_view import top_flow_views
 
         sequence_views = top_flow_views(
@@ -3175,6 +3192,23 @@ def main():
             meta={"Anonymisation": "adresses IP/MAC anonymisees (--redact)"} if args.redact else None,
         )
         print(f"Rapport PDF ecrit dans {args.pdf_report}")
+
+    if args.md_report:
+        from netcross_report import generate_markdown_report
+
+        generate_markdown_report(
+            r,
+            args.md_report,
+            findings=findings,
+            security_report=security_report_obj,
+            tls_findings=tls_findings,
+            quic_findings=quic_findings,
+            session_objects=session_objects,
+            rule_engine_findings=rule_engine_findings,
+            names=names,
+            meta={"Anonymisation": "adresses IP/MAC anonymisees (--redact)"} if args.redact else None,
+        )
+        print(f"Rapport Markdown ecrit dans {args.md_report}")
 
     if loaded_plugins is not None:
         from netcross_core.plugins import load_error_runs, run_exporters

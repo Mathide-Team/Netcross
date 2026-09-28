@@ -27,6 +27,7 @@ from netcross_report.history import (
     record_run,
 )
 from netcross_report.json_report import build_json_report_document, generate_json_diff, generate_json_report
+from netcross_report.markdown_report import build_markdown_report_document, generate_markdown_report
 from netcross_report.metric_charts import (
     ComplianceZone,
     MetricSeries,
@@ -115,6 +116,7 @@ __all__ = [
     "build_expert_events",
     "build_findings",
     "build_json_report_document",
+    "build_markdown_report_document",
     "build_path_metrics",
     "build_security_report",
     "build_sequence_view",
@@ -128,6 +130,7 @@ __all__ = [
     "generate_diff_pdf",
     "generate_json_diff",
     "generate_json_report",
+    "generate_markdown_report",
     "generate_pdf",
     "health_label",
     "health_score",
