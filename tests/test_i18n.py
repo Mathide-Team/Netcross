@@ -340,3 +340,14 @@ def test_compilation_de_toutes_les_locales(tmp_path, monkeypatch):
         assert format_bytes(2048) == "2.0 KB"
     finally:
         i18n.setup("C")
+
+
+# -- Issue #727 : couverture des branches defensives de i18n.py --------------
+
+
+def test_requested_languages_retourne_none_si_vide(monkeypatch):
+    """Lignes 64-65 : requested_languages retourne None si ni language
+    ni NETCROSS_LANG ne sont definis."""
+    import netcross_core.i18n as i18n
+    monkeypatch.delenv(i18n.ENV_LANG, raising=False)
+    assert i18n.requested_languages() is None
