@@ -162,3 +162,39 @@ def test_validations_cli(monkeypatch, capsys, tmp_path, argv, message):
     with pytest.raises(SystemExit):
         cli.main()
     assert message in capsys.readouterr().err
+
+
+# -- Issue #732 : ecriture atomique en echec et boucle de publication ---------
+
+
+def test_atomic_write_nettoie_le_temporaire_en_cas_d_echec(tmp_path, monkeypatch):
+    """Lignes 214-219 : si le remplacement echoue, le temporaire est
+    supprime et l'exception propagee."""
+    import os
+
+    from netcross_core import live_report
+
+    def _boom(src, dst):
+        raise OSError("disque plein")
+
+    monkeypatch.setattr(os, "replace", _boom)
+    with pytest.raises(OSError, match="disque plein"):
+        live_report._atomic_write(tmp_path / "live.json", "{}")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_boucle_publie_tant_que_non_arrete(tmp_path):
+    """Ligne 295 : la boucle publie a chaque intervalle jusqu'a l'arret."""
+    calls = []
+
+    class _Writer:
+        interval = 0.0
+
+        def publish(self, snapshot, journal):
+            calls.append(snapshot)
+            if len(calls) >= 2:
+                reporter._stop.set()
+
+    reporter = LiveReporter(_Writer())
+    reporter._loop()
+    assert len(calls) >= 2

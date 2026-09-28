@@ -226,3 +226,15 @@ def test_timeline_un_seul_paquet():
     assert len(timeline.packet_timings) == 1
     assert timeline.packet_timings[0].delta_ms == 0.0
     assert timeline.packet_timings[0].cumulative_bytes == 100
+
+
+# -- Issue #740 : gardes des fonctions internes -------------------------------
+
+
+def test_median_liste_vide_et_phases_sans_timings():
+    """Lignes 195-196 et 216-217 : _median([]) vaut 0.0 et
+    _detect_phases sans timings renvoie une liste vide."""
+    from netcross_core.flow_timeline import _detect_phases, _median
+
+    assert _median([]) == 0.0
+    assert _detect_phases([], []) == []
