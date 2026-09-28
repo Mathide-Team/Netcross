@@ -278,3 +278,16 @@ def test_run_tshark_stat_code_non_nul(monkeypatch):
     with pytest.raises(subprocess.CalledProcessError):
         runner.run_tshark_stat("x.pcap", "io,stat,1")
     assert runner.run_tshark_stat("x.pcap", "io,stat,1") == "tableau partiel\n"
+# -- Issue #718 : mediane et valeurs illisibles du temps de reponse -----------
+
+
+def test_parse_response_time_mediane_et_valeur_illisible():
+    """Ligne 55 : une valeur non convertible est ignoree ; ligne 66 : la
+    mediane est reconnue."""
+    from netcross_core.tshark_stats.response_time import parse_response_time
+
+    texte = "Count       ...\nMedian      12.5\nMax         40\n"
+    stat = parse_response_time(texte)
+    assert stat is not None
+    assert stat.median_ms == 12.5
+    assert stat.count is None

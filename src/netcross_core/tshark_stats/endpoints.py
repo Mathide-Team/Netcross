@@ -43,9 +43,8 @@ def parse_endpoints(text: str, protocol: str = "tcp") -> list[EndpointStat]:
     headers = reconstruct_headers(text)
     out: list[EndpointStat] = []
     for line in data_rows(text):
+        # data_rows ne rend que des lignes d'au moins deux champs.
         fields = split_fields(line)
-        if len(fields) < 2:
-            continue
         address = fields[0]
         numerics = fields[1:]
         attrs: dict[str, int | float | None] = {}

@@ -40,8 +40,9 @@ def parse_dns_stat(text: str, application: str = "dns") -> list[ApplicationStat]
         if not m:
             continue
         label = re.sub(r"\s+", " ", m.group(1).strip()).strip().lower()
-        # _LABELED_RE ne capture que \d[\d,]* : parse_int reussit toujours.
-        count = parse_int(m.group(2))
+        # _LABELED_RE ne capture que \d[\d,]* : parse_int reussit toujours
+        # (le "or 0" ne sert qu'a typer int au lieu de int | None).
+        count = parse_int(m.group(2)) or 0
         metrics[label] = count
         raw[label] = m.group(2)
     if not metrics:
