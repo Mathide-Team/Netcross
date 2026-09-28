@@ -94,6 +94,26 @@ def test_format_row_includes_latency_when_present():
     assert "latence=12.5ms" in text
 
 
+def test_format_row_includes_duration_and_throughput_when_present():
+    row = StatRow(
+        label="LAN -> WAN",
+        group_by="segment",
+        packets=5,
+        bytes=500,
+        duration_ms=250.0,
+        throughput_bps=32000.0,
+    )
+    text = format_row(row)
+    assert "duree=250ms" in text
+    assert "debit=" in text
+
+
+def test_format_row_includes_events_when_present():
+    row = StatRow(label="LAN -> WAN", group_by="segment", packets=5, bytes=500, events=3)
+    text = format_row(row)
+    assert "evenements=3" in text
+
+
 def test_format_rows_returns_list():
     rows = [
         StatRow(label="A", group_by="endpoint", packets=1, bytes=100),
@@ -229,6 +249,12 @@ def test_format_flow_summary_includes_points_and_bytes():
     assert "pkts" in text
 
 
+def test_format_flow_summary_without_points_or_endpoints():
+    flow = _make_flow(points=(), endpoints=())
+    text = format_flow_summary(flow)
+    assert "?" in text
+
+
 # -- Tests build_events_by_segment -------------------------------------------
 
 
@@ -247,3 +273,13 @@ def test_build_events_by_segment_with_findings():
     assert "LAN -> WAN" in result
     assert len(result["LAN -> WAN"]) == 1
     assert "WAN -> LAN" in result
+
+
+def test_build_events_by_segment_without_segment_or_pair():
+    class FakeFindingNoSegment:
+        pass
+
+    findings = [FakeFindingNoSegment()]
+    result = build_events_by_segment(findings, None)
+    assert "?" in result
+    assert len(result["?"]) == 1
