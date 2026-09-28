@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-160 modules · 243 classes · 550 fonctions publiques de module.
+161 modules · 243 classes · 553 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -32,16 +32,16 @@ flowchart TD
     netcross_ai["netcross_ai"]
     netcross_core["netcross_core"]
     pcap_parser["pcap_parser"]
-    CLI -->|"17 imports"| netcross_report
+    CLI -->|"18 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"40 imports"| netcross_core
     CLI -->|"6 imports"| pcap_parser
-    netcross_gtk4 -->|"13 imports"| netcross_report
-    netcross_gtk4 -->|"54 imports"| netcross_core
+    netcross_gtk4 -->|"14 imports"| netcross_report
+    netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
     netcross_api -->|"3 imports"| netcross_report
     netcross_api -->|"9 imports"| netcross_core
-    netcross_report -->|"32 imports"| netcross_core
+    netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
 ```
@@ -1612,6 +1612,7 @@ classDiagram
         <<module>>
         +print_report(r)
         +print_sequence_gaps(r)
+        +print_checksum_errors(r)
         +print_annotations(annotations)
         +write_detail_csv(path, flows, points, names)
     }
@@ -3293,6 +3294,7 @@ classDiagram
 | `netcross_report.history` | persiste un resume de chaque run (analyse ou diff) dans une base SQLite locale, pour observer une tendance dans le temps (score de sante, nombre de constats par severite) sur des runs successifs --… |
 | `netcross_report.json_report` | serialise un Report/DiffFinding en JSON structure, pour l'integration externe (dashboard, ticketing, pipeline CI qui veut parser un resultat sans dependre du format texte console). |
 | `netcross_report.live_html` | issue #274 : page de presentation du rapport temps reel (voir netcross_core.live_report). |
+| `netcross_report.markdown_report` | generation d'un rapport au format Markdown (issue #761). |
 | `netcross_report.metric_charts` | API generique de graphiques : tout module d'analyse peut produire un graphique a partir d'une MetricSeries sans reimplementer son propre code matplotlib. |
 | `netcross_report.path_metrics` | metriques de qualite par segment du chemin observe (Job 16/issue #12, FEATURES.md section 6.7). |
 | `netcross_report.pdf` | assemble le rapport PDF final (synthese, graphiques, tableaux de detail) a partir d'un Report netcross_core, avec reportlab. |
@@ -3407,6 +3409,13 @@ classDiagram
     class mod_netcross_report_live_html["netcross_report.live_html"] {
         <<module>>
         +render_live_html(snapshot, journal, interval) str
+    }
+
+    %% ===== netcross_report.markdown_report =====
+    class mod_netcross_report_markdown_report["netcross_report.markdown_report"] {
+        <<module>>
+        +build_markdown_report_document(r, title, meta, findings, tls_findings, quic_findings, session_objects, security_report, rule_engine_findings, names) str
+        +generate_markdown_report(r, output_path, title, kwargs) str
     }
 
     %% ===== netcross_report.metric_charts =====
@@ -3890,6 +3899,8 @@ classDiagram
         +float bucket_ms
         +int rtp_rate
         +bool nat_tolerant
+        +float nat_window_ms
+        +float? idle_timeout_seconds
         +bool parallel
         +bool auto_topology
         +bool triage
@@ -3987,6 +3998,7 @@ classDiagram
     }
     class MainWindow {
         <<Gtk.ApplicationWindow>>
+        +load_names_table(path)
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
         +on_export_csv(_btn)
@@ -4084,6 +4096,8 @@ classDiagram
         +float bucket_ms
         +int rtp_rate
         +bool nat_tolerant
+        +float nat_window_ms
+        +float? idle_timeout_seconds
         +bool parallel
         +bool auto_topology
         +float loss_min_pp
@@ -4091,6 +4105,8 @@ classDiagram
         +bool redact
         +bool tls
         +bool quic
+        +bool triage
+        +int triage_topn
     }
     class DiffResult {
         <<dataclass>>

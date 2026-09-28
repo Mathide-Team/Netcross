@@ -20,6 +20,7 @@ from pcap_parser.protocols import (
     extract_rtp,
     extract_sip,
     extract_tls_certificate,
+    extract_tls_handshake,
 )
 
 
@@ -470,3 +471,350 @@ def test_extract_http_reponse_expose_type_et_taille():
     result = extract_http(layers)
     assert result["content_type"] == "application/pdf"
     assert result["content_length"] == 12345
+
+
+# -- Issue #709 : couverture des branches defensives de protocols.py ----------
+
+
+def test_rtp_heuristique_csrc_trop_grand_retourne_none():
+    """Lignes 118-120 : _parse_rtp_heuristic retourne None si le header
+    RTP est plus long que le payload (CSRC count trop grand)."""
+    from pcap_parser.protocols import _parse_rtp_heuristic
+
+    # Version 2, CC=15 -> header_len = 12 + 60 = 72, mais payload = 20 octets
+    payload = _rtp_packet(csrc_count=15)
+    result = _parse_rtp_heuristic(payload)
+    assert result is None
+
+
+def test_sip_heuristique_fallback_sans_methode():
+    """Ligne 170 : extract_sip repli heuristique quand pas de methode ni
+    ligne de statut dans la dissection tshark."""
+    # Un payload SIP avec INVITE mais sans champ tshark
+    payload = b"INVITE sip:bob@example.com SIP/2.0\r\nVia: SIP/2.0/UDP 10.0.0.1\r\n\r\n"
+    result = extract_sip({}, payload)
+    assert result is not None
+    assert result["msg_type"] == "INVITE"
+
+
+def test_sip_heuristique_payload_non_decodable():
+    """Lignes 185-188 : _parse_sip_heuristic avec payload non-decodable."""
+    from pcap_parser.protocols import _parse_sip_heuristic
+
+    # Payload binaire qui ne peut pas etre decode en UTF-8
+    result = _parse_sip_heuristic(b"\xff\xfe\x00")
+    assert result is None
+
+
+def test_sip_heuristique_lignes_sans_deux_points():
+    """Ligne 213 : _parse_sip_heuristic ignore les lignes sans ':'."""
+    from pcap_parser.protocols import _parse_sip_heuristic
+
+    payload = b"INVITE sip:bob@example.com SIP/2.0\r\nligne sans deux points\r\nVia: SIP/2.0/UDP 10.0.0.1\r\n\r\n"
+    result = _parse_sip_heuristic(payload)
+    assert result is not None
+    # Le parser doit retourner un dictionnaire avec au moins msg_type
+    assert result.get("msg_type") == "INVITE"
+
+
+def test_http_content_type_en_liste():
+    """Ligne 335 : extract_http gere content_type en liste."""
+    layers = {
+        "http": {
+            "http_http_response": True,
+            "http_http_response_code": "200",
+            "http_http_content_type": ["application/json", "text/html"],
+        }
+    }
+    result = extract_http(layers)
+    assert result["content_type"] == "application/json"
+
+
+def test_extract_tls_handshake_avec_client_hello():
+    """Lignes 566-583 : extract_tls_handshake avec ClientHello."""
+    layers = {
+        "tls": {
+            "tls_tls_record_content_type": [22],
+            "tls_tls_handshake_type": [1],
+        }
+    }
+    result = extract_tls_handshake(layers)
+    assert result is not None
+    assert result["client_hello"] is True
+    assert result["server_hello"] is False
+
+
+def test_extract_tls_handshake_avec_server_hello_et_app_data():
+    """Lignes 566-583 : extract_tls_handshake avec ServerHello + AppData."""
+    layers = {
+        "tls": {
+            "tls_tls_record_content_type": [22, 23],
+            "tls_tls_handshake_type": [2],
+        }
+    }
+    result = extract_tls_handshake(layers)
+    assert result is not None
+    assert result["server_hello"] is True
+    assert result["application_data"] is True
+
+
+def test_extract_tls_handshake_sans_tls_retourne_none():
+    """Ligne 566 : extract_tls_handshake sans couche TLS retourne None."""
+    result = extract_tls_handshake({"tcp": {}})
+    assert result is None
+
+
+# -- Issue #709 : couverture des fonctions de certificat X.509 ----------------
+
+
+def _make_self_signed_rsa_cert():
+    """Genere un certificat RSA auto-signe pour les tests."""
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com"),
+        ]
+    )
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(12345)
+        .not_valid_before(datetime.datetime(2024, 1, 1))
+        .not_valid_after(datetime.datetime(2025, 1, 1))
+        .sign(key, hashes.SHA256())
+    )
+    return cert, cert.public_bytes(serialization.Encoding.DER).hex()
+
+
+def _make_self_signed_ec_cert():
+    """Genere un certificat EC auto-signe pour les tests."""
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "ec.example.com"),
+        ]
+    )
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(67890)
+        .not_valid_before(datetime.datetime(2024, 1, 1))
+        .not_valid_after(datetime.datetime(2025, 1, 1))
+        .sign(key, hashes.SHA256())
+    )
+    return cert, cert.public_bytes(serialization.Encoding.DER).hex()
+
+
+def test_public_key_summary_rsa():
+    """Lignes 362-383 : _public_key_summary avec cle RSA."""
+    from pcap_parser.protocols import _public_key_summary
+
+    cert, _ = _make_self_signed_rsa_cert()
+    key_type, key_bits = _public_key_summary(cert)
+    assert key_type == "RSA"
+    assert key_bits == 2048
+
+
+def test_public_key_summary_ec():
+    """Lignes 362-383 : _public_key_summary avec cle EC."""
+    from pcap_parser.protocols import _public_key_summary
+
+    cert, _ = _make_self_signed_ec_cert()
+    key_type, key_bits = _public_key_summary(cert)
+    assert key_type == "EC"
+    assert key_bits == 256
+
+
+def test_signature_hash_sha256():
+    """Lignes 389-395 : _signature_hash avec SHA256."""
+    from pcap_parser.protocols import _signature_hash
+
+    cert, _ = _make_self_signed_rsa_cert()
+    result = _signature_hash(cert)
+    assert result == "sha256"
+
+
+def test_certificate_details_avec_der_rsa():
+    """Lignes 417-431 : _certificate_details avec un vrai DER RSA."""
+    from pcap_parser.protocols import _certificate_details
+
+    _, der_hex = _make_self_signed_rsa_cert()
+    tls = {"tls_tls_handshake_certificate": [der_hex]}
+    result = _certificate_details(tls)
+    assert result != {}
+    assert result["key_type"] == "RSA"
+    assert result["key_bits"] == 2048
+    assert result["chain_len"] == 1
+
+
+def test_certificate_details_avec_der_ec():
+    """Lignes 417-431 : _certificate_details avec un vrai DER EC."""
+    from pcap_parser.protocols import _certificate_details
+
+    _, der_hex = _make_self_signed_ec_cert()
+    tls = {"tls_tls_handshake_certificate": [der_hex]}
+    result = _certificate_details(tls)
+    assert result != {}
+    assert result["key_type"] == "EC"
+    assert result["key_bits"] == 256
+
+
+def test_certificate_details_der_illisible():
+    """Lignes 417-419 : _certificate_details avec DER illisible."""
+    from pcap_parser.protocols import _certificate_details
+
+    tls = {"tls_tls_handshake_certificate": ["zzzz"]}
+    result = _certificate_details(tls)
+    assert result == {}
+
+
+def test_certificate_details_sans_blobs():
+    """Lignes 417-418 : _certificate_details sans blobs."""
+    from pcap_parser.protocols import _certificate_details
+
+    tls = {"tls_tls_handshake_certificate": None}
+    result = _certificate_details(tls)
+    assert result == {}
+
+
+def test_extract_tls_handshake_valeurs_scalaires():
+    """Ligne 573 : extract_tls_handshake avec valeurs scalaires (non-liste)
+    couvre la branche _as_int_set avec valeur unique."""
+    layers = {
+        "tls": {
+            "tls_tls_record_content_type": 22,
+            "tls_tls_handshake_type": 1,
+        }
+    }
+    result = extract_tls_handshake(layers)
+    assert result is not None
+    assert result["client_hello"] is True
+
+
+def test_extract_tls_handshake_valeurs_nulles():
+    """Ligne 573 : extract_tls_handshake avec valeurs None couvre la
+    branche else de _as_int_set."""
+    layers = {
+        "tls": {
+            "tls_tls_record_content_type": None,
+            "tls_tls_handshake_type": None,
+        }
+    }
+    result = extract_tls_handshake(layers)
+    assert result is not None
+    assert result["client_hello"] is False
+
+
+def test_certificate_details_sans_san():
+    """Ligne 425 : _certificate_details avec certificat sans SAN."""
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    from pcap_parser.protocols import _certificate_details
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "nosan.example.com"),
+        ]
+    )
+    # Pas de SAN dans ce certificat
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(99999)
+        .not_valid_before(datetime.datetime(2024, 1, 1))
+        .not_valid_after(datetime.datetime(2025, 1, 1))
+        .sign(key, hashes.SHA256())
+    )
+    der_hex = cert.public_bytes(serialization.Encoding.DER).hex()
+    tls = {"tls_tls_handshake_certificate": [der_hex]}
+    result = _certificate_details(tls)
+    assert result != {}
+    assert result["san_ip"] == ()
+
+
+def test_public_key_summary_ed25519():
+    """Lignes 373-383 : _public_key_summary avec cle Ed25519."""
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.x509.oid import NameOID
+
+    from pcap_parser.protocols import _public_key_summary
+
+    key = ed25519.Ed25519PrivateKey.generate()
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "ed25519.example.com"),
+        ]
+    )
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(11111)
+        .not_valid_before(datetime.datetime(2024, 1, 1))
+        .not_valid_after(datetime.datetime(2025, 1, 1))
+        .sign(key, None)
+    )
+    key_type, key_bits = _public_key_summary(cert)
+    assert key_type == "Ed25519"
+    assert key_bits is None
+
+
+def test_signature_hash_eddsa():
+    """Lignes 391-393 : _signature_hash avec EdDSA (pas de hash separe)."""
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.x509.oid import NameOID
+
+    from pcap_parser.protocols import _signature_hash
+
+    key = ed25519.Ed25519PrivateKey.generate()
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "eddsa.example.com"),
+        ]
+    )
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(22222)
+        .not_valid_before(datetime.datetime(2024, 1, 1))
+        .not_valid_after(datetime.datetime(2025, 1, 1))
+        .sign(key, None)
+    )
+    result = _signature_hash(cert)
+    # EdDSA n'a pas de hash separe -> None
+    assert result is None

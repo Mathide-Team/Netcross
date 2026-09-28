@@ -1,8 +1,7 @@
 """
-Checksums IP/TCP/UDP (Job 43, issue #163), cote pcap_parser.
+Checksums IP/TCP/UDP (Job 43, issue #163).
 
-Deux niveaux, comme pour le reste du projet (pas de tshark disponible dans
-l'environnement de developpement -- voir claude.md) :
+Trois niveaux :
   1. ek_fields.checksum_is_bad : fonction pure, directement sur les codes
      de statut rendus par tshark en EK ("0"=Bad, "1"=Good, "2"=Unverified,
      verifie empiriquement sur tshark 4.2.2 avec les preferences
@@ -10,12 +9,17 @@ l'environnement de developpement -- voir claude.md) :
   2. build_packet : extraction des valeurs brutes et des verdicts depuis
      des couches EK synthetiques, y compris les cas degeneres -- IPv6 (pas
      de checksum d'en-tete), statut absent (preferences non activees ->
-     None, jamais suppose invalide), ARP/STP (ni IP ni TCP/UDP).
-
-La partie netcross_core (forensic.validate_checksums, rapport) n'est pas
-encore ecrite -- voir l'issue #163, ce fichier couvre le socle pcap_parser.
+     None, jamais suppose invalide), ARP/STP (ni IP ni TCP/UDP) ;
+  3. netcross_core.forensic.validate_checksums : CONSOMMATEUR pur des deux
+     champs *_checksum/*_checksum_bad deja portes par Pkt -- distingue
+     l'offload materiel (checksum a 0x0000, jamais une erreur meme si
+     tshark le rend "Bad") d'un checksum reellement invalide.
 """
 
+from conftest import make_pkt
+
+from netcross_core.forensic import validate_checksums
+from netcross_core.models import ChecksumError
 from pcap_parser.ek_fields import checksum_is_bad
 from pcap_parser.ek_source import DEFAULT_PREFS
 from pcap_parser.packet import build_packet
@@ -158,3 +162,56 @@ def test_build_packet_ipv6_sans_checksum_ip_mais_tcp_extrait():
     assert pkt.ip_checksum_bad is None
     assert pkt.tcp_checksum == "0x9a13"
     assert pkt.tcp_checksum_bad is False
+
+
+# -- netcross_core.forensic.validate_checksums : distinction offload/invalide --
+
+
+def test_validate_checksums_paquet_valide_pas_d_erreur():
+    pkts = [make_pkt(ip_checksum="0x66cd", ip_checksum_bad=False, tcp_checksum="0x76be", tcp_checksum_bad=False)]
+    assert validate_checksums(pkts) == []
+
+
+def test_validate_checksums_paquet_invalide_erreur_signalee():
+    pkts = [make_pkt(point="A", frame_number=2, tcp_checksum="0x1111", tcp_checksum_bad=True)]
+    errors = validate_checksums(pkts)
+    assert errors == [ChecksumError(point="A", frame_number=2, protocol="TCP", checksum="0x1111")]
+
+
+def test_validate_checksums_offload_0x0000_ignore():
+    # tshark rend ce paquet "Bad" (0x0000 ne correspond quasiment jamais a
+    # la valeur recalculee), mais c'est la signature de l'offload
+    # materiel -- jamais une erreur, voir docstring de validate_checksums.
+    pkts = [make_pkt(tcp_checksum="0x0000", tcp_checksum_bad=True)]
+    assert validate_checksums(pkts) == []
+
+
+def test_validate_checksums_ip_invalide_aussi_detectee():
+    pkts = [make_pkt(point="B", frame_number=5, ip_checksum="0x2222", ip_checksum_bad=True)]
+    errors = validate_checksums(pkts)
+    assert errors == [ChecksumError(point="B", frame_number=5, protocol="IP", checksum="0x2222")]
+
+
+def test_validate_checksums_udp_invalide_aussi_detectee():
+    pkts = [make_pkt(point="A", frame_number=9, udp_checksum="0xdead", udp_checksum_bad=True)]
+    errors = validate_checksums(pkts)
+    assert errors == [ChecksumError(point="A", frame_number=9, protocol="UDP", checksum="0xdead")]
+
+
+def test_validate_checksums_statut_inconnu_ignore():
+    # ip_checksum_bad=None -- checksum absent ou validation desactivee
+    # (statut "Unverified") : jamais suppose invalide.
+    pkts = [make_pkt(ip_checksum="0x66cd", ip_checksum_bad=None)]
+    assert validate_checksums(pkts) == []
+
+
+def test_validate_checksums_plusieurs_paquets_plusieurs_protocoles():
+    pkts = [
+        make_pkt(point="A", frame_number=1, tcp_checksum="0x76be", tcp_checksum_bad=False),  # valide
+        make_pkt(point="A", frame_number=2, tcp_checksum="0x1111", tcp_checksum_bad=True),  # invalide
+        make_pkt(point="A", frame_number=3, tcp_checksum="0x0000", tcp_checksum_bad=True),  # offload
+        make_pkt(point="B", frame_number=4, ip_checksum="0x2222", ip_checksum_bad=True),  # invalide
+    ]
+    errors = validate_checksums(pkts)
+    assert len(errors) == 2
+    assert {(e.point, e.frame_number, e.protocol) for e in errors} == {("A", 2, "TCP"), ("B", 4, "IP")}

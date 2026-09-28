@@ -29,6 +29,9 @@ class DiffOptions:
     bucket_ms: float = 1000.0
     rtp_rate: int = 8000
     nat_tolerant: bool = False
+    # Issue #330 (écart 3) : voir AnalysisOptions
+    nat_window_ms: float = 200.0
+    idle_timeout_seconds: float | None = None
     parallel: bool = True
     auto_topology: bool = True
     loss_min_pp: float = 5.0
@@ -36,6 +39,10 @@ class DiffOptions:
     redact: bool = False
     tls: bool = False
     quic: bool = False
+    # Issue #330 (écart 4) : classement des segments sur les écarts, comme
+    # --triage / --triage-top-n de cross_capture_diff_cli.py.
+    triage: bool = False
+    triage_topn: int = 5
 
 
 @dataclass
@@ -92,7 +99,7 @@ def run_diff_pipeline(
     baseline_packets = load_packets(baseline_captures, options.parallel, on_progress)
     if redactor is not None:
         redactor.redact(baseline_packets)
-    baseline_flows = correlate(baseline_packets, options.nat_tolerant, 200)
+    baseline_flows = correlate(baseline_packets, options.nat_tolerant, options.nat_window_ms)
     baseline_report = analyse(
         baseline_flows,
         points_order,
@@ -100,6 +107,7 @@ def run_diff_pipeline(
         options.bucket_ms / 1000.0,
         options.nat_tolerant,
         options.rtp_rate,
+        idle_timeout_seconds=options.idle_timeout_seconds,
     )
 
     # 2. Courant
@@ -109,7 +117,7 @@ def run_diff_pipeline(
     if redactor is not None:
         redactor.redact(current_packets)
         _log(f"{len(redactor)} adresse(s) anonymisée(s) (IP/MAC) -- baseline et courant.")
-    current_flows = correlate(current_packets, options.nat_tolerant, 200)
+    current_flows = correlate(current_packets, options.nat_tolerant, options.nat_window_ms)
     current_report = analyse(
         current_flows,
         points_order_current,
@@ -117,6 +125,7 @@ def run_diff_pipeline(
         options.bucket_ms / 1000.0,
         options.nat_tolerant,
         options.rtp_rate,
+        idle_timeout_seconds=options.idle_timeout_seconds,
     )
 
     # 3. Comparaison
@@ -134,6 +143,18 @@ def run_diff_pipeline(
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         print_diff_report(findings)
+
+    # 4 bis. Triage des écarts (issue #330, écart 4) -- même rendu que la CLI
+    if options.triage:
+        _log("Triage des écarts...")
+        from netcross_report import format_health_line, health_score, print_triage, rank_segments
+
+        # DiffFinding a les champs lus par rank_segments (segment, category,
+        # severity) : même appel que cross_capture_diff_cli.py.
+        ranked = rank_segments(findings)  # type: ignore[arg-type]
+        with contextlib.redirect_stdout(buf):
+            print_triage(ranked, options.triage_topn)
+            print(format_health_line(health_score(ranked)))
 
     # 5. TLS
     tls_findings_baseline = tls_findings_current = None

@@ -40,6 +40,10 @@ class AnalysisOptions:
     bucket_ms: float = 1000.0
     rtp_rate: int = 8000
     nat_tolerant: bool = False
+    # Issue #330 (écart 3) : réglages fins, même sens que --nat-window-ms et
+    # --idle-timeout-seconds (None = défaut du cœur, 60 s)
+    nat_window_ms: float = 200.0
+    idle_timeout_seconds: float | None = None
     parallel: bool = True
     auto_topology: bool = True
     triage: bool = False
@@ -184,7 +188,7 @@ def run_analysis_pipeline(
 
     # 4. Corrélation
     _log("Correlation des flux entre points de capture...")
-    flows = correlate(all_packets, options.nat_tolerant, 200, options.exclude_duplicates)
+    flows = correlate(all_packets, options.nat_tolerant, options.nat_window_ms, options.exclude_duplicates)
     _log(f"  -> {len(flows)} flux identifiés")
 
     # 5. Analyse
@@ -199,6 +203,7 @@ def run_analysis_pipeline(
         options.nat_tolerant,
         options.rtp_rate,
         options.topn,
+        idle_timeout_seconds=options.idle_timeout_seconds,
         exclude_duplicates=options.exclude_duplicates,
         duplicate_counts=duplicate_counts,
     )

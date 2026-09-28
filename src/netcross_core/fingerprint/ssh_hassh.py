@@ -41,6 +41,10 @@ def _read_u32(data: bytes, off: int) -> tuple[int, int]:
 
 def _read_namelist(data: bytes, off: int) -> tuple[list[str], int]:
     length, off = _read_u32(data, off)
+    # Decodage strict : les algorithmes SSH sont toujours en ASCII (RFC 4253
+    # §7.1). Sur une charge utile non-SSH, l'UnicodeError est interceptee par
+    # parse_kexinit qui renvoie None (issue #760) : mieux vaut aucun HASSH
+    # qu'un HASSH calcule sur des octets de remplacement.
     raw = data[off : off + length].decode("ascii")
     off += length
     logger.debug("_read_namelist: retour tuple de 2")
@@ -67,7 +71,11 @@ def parse_kexinit(payload: bytes) -> dict | None:
         logger.debug("parse_kexinit: retour _parse_kexinit(…)")
         return _parse_kexinit(payload)
     except (IndexError, UnicodeError):
-        logger.exception("échec dans parse_kexinit")
+        # Issue #760 : ces echecs sont attendus quand le parser est appele
+        # sur une charge utile non-SSH (SSL/TLS, donnees binaires sur le port
+        # 22). logger.debug au lieu de logger.exception pour eviter le bruit
+        # d'un traceback ERROR a chaque paquet non-SSH.
+        logger.debug("échec dans parse_kexinit (charge utile non-SSH ou tronquée)")
         logger.debug("parse_kexinit: except (IndexError, UnicodeError) -> retour None")
         return None
 
