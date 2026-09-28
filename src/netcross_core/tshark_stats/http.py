@@ -46,9 +46,8 @@ def parse_http_stat(text: str, application: str = "http") -> list[ApplicationSta
         if not m:
             continue
         label = re.sub(r"\s+", " ", m.group(1).strip()).strip().lower()
+        # _LABELED_RE ne capture que \d[\d,]* : parse_int reussit toujours.
         count = parse_int(m.group(2))
-        if count is None:
-            continue
         metrics[label] = count
         raw[label] = m.group(2)
     if not metrics:

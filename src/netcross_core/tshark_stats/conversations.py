@@ -63,9 +63,8 @@ def parse_conversations(text: str, protocol: str = "tcp") -> list[ConversationSt
     headers = reconstruct_headers(text)
     out: list[ConversationStat] = []
     for line in data_rows(text):
+        # data_rows ne rend que des lignes d'au moins deux champs.
         fields = split_fields(line)
-        if len(fields) < 2:
-            continue
         endpoint_a, endpoint_b = _split_endpoints(fields[0])
         # Numeriques apres le champ d'adresses, dans l'ordre documente.
         numerics = fields[1:]
