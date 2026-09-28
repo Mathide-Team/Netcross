@@ -41,15 +41,11 @@ def _read_u32(data: bytes, off: int) -> tuple[int, int]:
 
 def _read_namelist(data: bytes, off: int) -> tuple[list[str], int]:
     length, off = _read_u32(data, off)
-    # Issue #760 : decode en ascii avec errors="replace" pour eviter un
-    # UnicodeDecodeError (niveau ERROR + traceback complet) quand le parser
-    # est appele sur une charge utile qui n'est pas du SSH (SSL/TLS, donnees
-    # binaires quelconques sur le port 22). Les algorithmes SSH reels sont
-    # toujours en ASCII (RFC 4253 §7.1) : si le decode echoue, ce n'est pas
-    # un vrai KEXINIT, et les octets de remplacement (U+FFFD) ne
-    # correspondront a aucun algorithme connu -- le hash HASSH sera simplement
-    # incorrect, pas un crash.
-    raw = data[off : off + length].decode("ascii", errors="replace")
+    # Decodage strict : les algorithmes SSH sont toujours en ASCII (RFC 4253
+    # §7.1). Sur une charge utile non-SSH, l'UnicodeError est interceptee par
+    # parse_kexinit qui renvoie None (issue #760) : mieux vaut aucun HASSH
+    # qu'un HASSH calcule sur des octets de remplacement.
+    raw = data[off : off + length].decode("ascii")
     off += length
     logger.debug("_read_namelist: retour tuple de 2")
     return (raw.split(",") if raw else []), off
@@ -159,7 +155,7 @@ def compute_hassh(kexinit: dict, role: str = ROLE_CLIENT) -> str:
         )
     fields = [",".join(kexinit["kex_algorithms"]), ",".join(enc), ",".join(mac), ",".join(comp)]
     logger.debug("compute_hassh: retour hashlib.md5(';'.join(fields).encode('as…(…)")
-    return hashlib.md5(";".join(fields).encode("ascii", errors="replace")).hexdigest()  # noqa: S324 -- identifiant, pas crypto
+    return hashlib.md5(";".join(fields).encode("ascii")).hexdigest()  # noqa: S324 -- identifiant, pas crypto
 
 
 def readable_kexinit(kexinit: dict, role: str = ROLE_CLIENT) -> str:
