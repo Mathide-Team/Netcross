@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import struct
 
+import pytest
 from conftest import make_pkt
+from loguru import logger
 
 from netcross_core.fingerprint import ssh_hassh, tls_ja4
 from netcross_core.fingerprint.known import identify_tool, load_known_fingerprints
@@ -361,6 +363,50 @@ def test_identify_role_serveur_quand_le_port_source_est_22():
 def test_load_known_fingerprints_par_defaut_ne_leve_pas():
     known = load_known_fingerprints()
     assert "ja4" in known and "hassh" in known
+
+
+@pytest.fixture
+def erreurs_journalisees():
+    logger.enable("netcross_core")
+    lignes: list[str] = []
+    sink = logger.add(lambda m: lignes.append(m.record["message"]), level="ERROR")
+    yield lignes
+    logger.remove(sink)
+
+
+def test_load_known_fingerprints_chemin_alternatif_valide(tmp_path):
+    fichier = tmp_path / "base.json"
+    fichier.write_text('{"ja4": {"t13d_a_b": "curl 8.18.0"}}', encoding="utf-8")
+    known = load_known_fingerprints(fichier)
+    assert known == {"ja4": {"t13d_a_b": "curl 8.18.0"}, "hassh": {}}
+
+
+def test_load_known_fingerprints_fichier_absent_renvoie_base_vide(tmp_path, erreurs_journalisees):
+    # Issue #690 : une base absente ne doit jamais faire echouer l'analyse.
+    known = load_known_fingerprints(tmp_path / "inexistant.json")
+    assert known == {"ja4": {}, "hassh": {}}
+    assert any("load_known_fingerprints" in m for m in erreurs_journalisees)
+
+
+def test_load_known_fingerprints_json_invalide_renvoie_base_vide(tmp_path, erreurs_journalisees):
+    fichier = tmp_path / "corrompu.json"
+    fichier.write_text("{ceci n'est pas du JSON", encoding="utf-8")
+    known = load_known_fingerprints(fichier)
+    assert known == {"ja4": {}, "hassh": {}}
+    assert any("load_known_fingerprints" in m for m in erreurs_journalisees)
+
+
+def test_load_known_fingerprints_chemin_repertoire_renvoie_base_vide(tmp_path):
+    # Un repertoire leve une OSError (IsADirectoryError / PermissionError) a l'ouverture.
+    assert load_known_fingerprints(tmp_path) == {"ja4": {}, "hassh": {}}
+
+
+def test_load_known_fingerprints_base_vide_est_independante_entre_appels(tmp_path):
+    # La base de repli est reconstruite a chaque echec : la muter ne doit pas
+    # contaminer l'appel suivant.
+    a = load_known_fingerprints(tmp_path / "absent.json")
+    a["ja4"]["x"] = "y"
+    assert load_known_fingerprints(tmp_path / "absent.json") == {"ja4": {}, "hassh": {}}
 
 
 def test_identify_tool_absent_de_la_base_renvoie_none():
