@@ -227,3 +227,49 @@ def test_netcross_lua_doc_subcommand(tmp_path: Path) -> None:
     assert res.returncode == 0, res.stderr
     assert "Tvb" in res.stdout
     assert res.stderr == ""  # pas de log de construction sur la sortie
+
+
+# -- Issue #721 : rendus des erreurs, exemples et attributs en mode --full ----
+
+
+def test_render_methode_et_fiche_affichent_erreurs_et_exemples():
+    """Lignes 110, 112 et 143 : erreurs et version d'une methode, exemples
+    d'une fiche."""
+    m = lua_doc.Methode(
+        classe="Tvb",
+        nom="len",
+        genre="methode",
+        signature="tvb:len()",
+        description="Longueur.",
+        depuis_version="1.99.8",
+        parametres=[],
+        retours=[],
+        erreurs=["tampon expire"],
+        exemples=[],
+    )
+    rendu = cli.render_methode(m)
+    assert any("Erreur : tampon expire" in ligne for ligne in rendu)
+    assert any("Depuis Wireshark 1.99.8" in ligne for ligne in rendu)
+    fiche = lua_doc.FicheClasse(
+        nom="Tvb", module="tvb", description="", exemples=["local n = tvb:len()"], methodes=[], attributs=[]
+    )
+    lignes = cli.render_fiche(fiche, "4.2")
+    assert "Exemple :" in lignes
+    assert any("tvb:len()" in ligne for ligne in lignes)
+
+
+def test_render_resultats_full_detaille_un_attribut(monkeypatch):
+    """Lignes 174-176 : en mode --full, un attribut est rendu en detail."""
+    attribut = lua_doc.Attribut(
+        classe="Pinfo", nom="src", nom_complet="pinfo.src", mode="lecture", description="Source.", depuis_version=None
+    )
+    monkeypatch.setattr(cli.lua_doc, "get_meta", lambda conn: {})
+    monkeypatch.setattr(cli.lua_doc, "get_attribut", lambda conn, ref_id: attribut)
+    res = [
+        lua_doc.ResultatRecherche(
+            classe="Pinfo", nom="src", signature="", description="", genre=lua_doc.GENRE_ATTRIBUT, ref_id=1
+        )
+    ]
+    lignes = cli.render_resultats(None, "src", res, full=True)
+    assert "[Pinfo]" in lignes
+    assert any("pinfo.src" in ligne for ligne in lignes)
