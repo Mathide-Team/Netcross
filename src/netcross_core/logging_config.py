@@ -1,69 +1,55 @@
 """
 netcross_core.logging_config -- configuration centrale du logging (issue #245).
 
-Configure loguru avec un format structuré et un niveau configurable.
+Configure loguru avec un format structure et un niveau configurable.
 
 Usage dans les modules :
 
     from netcross_core.logging_config import get_logger
     logger = get_logger(__name__)
     logger.info("demarrage de l'analyse")
-    logger.debug("paquet reçu : src={} dst={}", pkt.src, pkt.dst)
+    logger.debug("paquet recu : src={} dst={}", pkt.src, pkt.dst)
 
 Ne configure le handler qu'une seule fois (idempotent) -- un module qui
 importe ``get_logger`` peut le faire sans risque de doubler les handlers.
 
-Mode debug (tracing de l'exécution)
+Mode debug (tracing de l'execution)
 -----------------------------------
 
-Activé par l'option ``--debug`` des CLI et de la GUI, par
+Active par l'option ``--debug`` des CLI et de la GUI, par
 ``NETCROSS_DEBUG=1`` ou par ``NETCROSS_LOG_LEVEL=DEBUG`` (ou ``TRACE``).
 Par rapport au mode normal, chaque ligne indique en plus le processus et
-le thread émetteurs (les analyses GTK tournent dans des threads, le
+le thread emetteurs (les analyses GTK tournent dans des threads, le
 parsing multi-captures dans un pool), et les ``logger.exception``
-affichent la pile complète avec la valeur des variables
+affichent la pile complete avec la valeur des variables
 (``backtrace``/``diagnose`` de loguru). Ces valeurs peuvent contenir des
-données de capture : le mode debug est un outil de diagnostic, pas un
-réglage de production.
+donnees de capture : le mode debug est un outil de diagnostic, pas un
+reglage de production.
 
 Variables d'environnement :
 
-- ``NETCROSS_LOG_LEVEL`` : niveau loguru (défaut ``INFO``) ; prioritaire
+- ``NETCROSS_LOG_LEVEL`` : niveau loguru (defaut ``INFO``) ; prioritaire
   sur ``NETCROSS_DEBUG`` ;
-- ``NETCROSS_DEBUG`` : ``1``/``true``/``oui``/``on`` équivaut à ``DEBUG`` ;
-- ``NETCROSS_LOG_FILE`` : copie des logs dans ce fichier (rotation à
-  10 Mo, 5 fichiers conservés), utile pour la GUI dont le stderr n'est
+- ``NETCROSS_DEBUG`` : ``1``/``true``/``oui``/``on`` equivaut a ``DEBUG`` ;
+- ``NETCROSS_LOG_FILE`` : copie des logs dans ce fichier (rotation a
+  10 Mo, 5 fichiers conserves), utile pour la GUI dont le stderr n'est
   pas visible.
 
-Journaux de ``pcap_parser`` (issue #446)
------------------------------------------
-
-``pcap_parser`` est la couche la plus basse : le contrat import-linter lui
-interdit d'importer ``netcross_core``, il utilise donc loguru directement.
-Pour rester silencieux en usage bibliothèque, son ``__init__`` appelle
-``logger.disable("pcap_parser")`` (convention loguru pour les
-bibliothèques). ``configure_logging`` le réactive avec
-``logger.enable("pcap_parser")``. ``pcap_parser`` est importé en tête de
-ce module (dépendance ``netcross_core`` -> ``pcap_parser``, conforme au
-contrat de couches) : son ``disable`` s'exécute donc toujours AVANT le
-premier ``enable``, quel que soit l'ordre des imports de l'appelant.
+Issue #446 : pcap_parser (couche la plus basse) desactive loguru dans
+son ``__init__.py`` pour etre silencieux en usage bibliotheque.
+``configure_logging`` le reactive via ``logger.enable("pcap_parser")``.
+L'import de pcap_parser ici (avant ``enable``) gere le cas ou
+pcap_parser serait importe APRES ``configure_logging`` : son ``disable``
+annulerait le ``enable`` sinon. Cet import (``netcross_core`` ->
+``pcap_parser``) respecte le contrat de couches import-linter.
 """
 
 from __future__ import annotations
 
-import enum
 import os
-import re
 import sys
-from collections.abc import Sized
 
 from loguru import logger as _logger
-
-# Import pour son effet de bord (issue #446) : exécute
-# pcap_parser/__init__.py, donc son logger.disable("pcap_parser"), avant
-# tout appel à configure_logging -- sinon un import de pcap_parser postérieur
-# annulerait le logger.enable("pcap_parser") ci-dessous.
-import pcap_parser  # noqa: F401
 
 DEBUG_LEVELS = frozenset({"TRACE", "DEBUG"})
 DEFAULT_LEVEL = "INFO"
@@ -90,23 +76,18 @@ _HANDLER_IDS: list[int] = []
 
 
 def level_from_env() -> str:
-    """Niveau demandé par l'environnement (``NETCROSS_LOG_LEVEL`` puis ``NETCROSS_DEBUG``)."""
+    """Niveau demande par l'environnement (``NETCROSS_LOG_LEVEL`` puis ``NETCROSS_DEBUG``)."""
     level = os.environ.get("NETCROSS_LOG_LEVEL", "").strip()
     if level:
-        _logger.debug("level_from_env: NETCROSS_LOG_LEVEL défini -> retour {}", level.upper())
         return level.upper()
     if os.environ.get("NETCROSS_DEBUG", "").strip().lower() in _TRUE:
-        _logger.debug("level_from_env: NETCROSS_DEBUG actif -> retour DEBUG")
         return "DEBUG"
-    _logger.debug("level_from_env: aucun indicateur -> retour {}", DEFAULT_LEVEL)
     return DEFAULT_LEVEL
 
 
 def is_debug_level(level: str) -> bool:
     """Vrai si ``level`` active le mode debug (``DEBUG`` ou ``TRACE``)."""
-    result = level.strip().upper() in DEBUG_LEVELS
-    _logger.debug("is_debug_level: niveau={} -> retour {}", level, result)
-    return result
+    return level.strip().upper() in DEBUG_LEVELS
 
 
 def configure_logging(level: str | None = None, *, log_file: str | None = None, force: bool = False) -> None:
@@ -114,35 +95,26 @@ def configure_logging(level: str | None = None, *, log_file: str | None = None, 
 
     ``level`` : niveau explicite, sinon ``level_from_env()``. ``log_file`` :
     fichier de copie, sinon ``NETCROSS_LOG_FILE``. ``force`` : remplace la
-    configuration déjà posée (utilisé par ``enable_debug`` après lecture
+    configuration deja posee (utilise par ``enable_debug`` apres lecture
     des options de la ligne de commande).
     """
     global _CONFIGURED, _LEVEL
     if _CONFIGURED and not force:
-        _logger.debug("configure_logging: déjà configuré (force=False) -> retour")
         return
 
-    # Issue #446 : pcap_parser se désactive dans son __init__ (usage
-    # bibliothèque) ; les points d'entrée Netcross le réactivent ici.
-    _logger.enable("pcap_parser")
+    # Issue #446 : reactive pcap_parser (desactive dans pcap_parser/__init__.py).
+    # Import avant enable pour le cas ou pcap_parser serait importe APRES
+    # configure_logging : son disable annulerait le enable sinon.
+    import pcap_parser  # noqa: F401 -- effet de bord : __init__ desactive puis on reactive
 
-    # Retirer les anciens handlers AVANT d'appeler level_from_env() et
-    # is_debug_level() : sinon leurs _logger.debug() passent par le handler
-    # par défaut de loguru (stderr, DEBUG) et polluent la sortie des tests
-    # subprocess qui vérifient stderr == "".
-    if _CONFIGURED:
-        for handler_id in _HANDLER_IDS:
-            _logger.remove(handler_id)
-    else:
-        _logger.remove()  # handler par défaut de loguru (id 0)
-    _HANDLER_IDS.clear()
+    _logger.enable("pcap_parser")
 
     requested = (level or level_from_env()).strip().upper()
     niveau_inconnu = False
     try:
         _logger.level(requested)
     except ValueError:
-        _logger.debug("configure_logging: niveau {!r} refusé par loguru", requested)
+        _logger.debug("configure_logging: niveau {!r} refuse par loguru", requested)
         niveau_inconnu = True
         requested_invalide, requested = requested, DEFAULT_LEVEL
     if log_file is None:
@@ -150,6 +122,12 @@ def configure_logging(level: str | None = None, *, log_file: str | None = None, 
 
     debug = is_debug_level(requested)
     fmt = _DEBUG_FORMAT if debug else _FORMAT
+    if _CONFIGURED:
+        for handler_id in _HANDLER_IDS:
+            _logger.remove(handler_id)
+    else:
+        _logger.remove()  # handler par defaut de loguru (id 0)
+    _HANDLER_IDS.clear()
     _HANDLER_IDS.append(_logger.add(sys.stderr, level=requested, format=fmt, backtrace=debug, diagnose=debug))
     if log_file:
         _HANDLER_IDS.append(
@@ -179,93 +157,40 @@ def configure_logging(level: str | None = None, *, log_file: str | None = None, 
 
 
 def enable_debug(level: str = "DEBUG", *, log_file: str | None = None) -> None:
-    """Active le mode debug à chaud (option ``--debug`` d'une CLI ou de la GUI)."""
+    """Active le mode debug a chaud (option ``--debug`` d'une CLI ou de la GUI)."""
     configure_logging(level, log_file=log_file, force=True)
-    _logger.debug("enable_debug: fin (level={}, log_file={})", level, log_file or "aucun")
 
 
 def current_level() -> str:
-    """Niveau effectivement configuré."""
+    """Niveau effectivement configure."""
     if not _CONFIGURED:
         configure_logging()
-    _logger.debug("current_level: retour {}", _LEVEL)
     return _LEVEL
 
 
 def is_debug_enabled() -> bool:
     """Vrai si le mode debug est actif."""
-    result = is_debug_level(current_level())
-    _logger.debug("is_debug_enabled: retour {}", result)
-    return result
+    return is_debug_level(current_level())
 
 
 def add_debug_argument(parser) -> None:
-    """Ajoute l'option ``--debug`` commune à un ``argparse.ArgumentParser``."""
+    """Ajoute l'option ``--debug`` commune a un ``argparse.ArgumentParser``."""
     parser.add_argument(
         DEBUG_FLAG,
         action="store_true",
-        help="Active le tracing debug : niveau DEBUG, thread émetteur, tracebacks détaillés "
+        help="Active le tracing debug : niveau DEBUG, thread emetteur, tracebacks detailles "
         "(equivaut a NETCROSS_DEBUG=1 ; NETCROSS_LOG_FILE=chemin pour copier les logs dans un fichier).",
     )
-    _logger.debug("add_debug_argument: option --debug ajoutée")
 
 
 def apply_debug_argument(args) -> None:
-    """Active le mode debug si ``args.debug`` est vrai (après ``parse_args``)."""
+    """Active le mode debug si ``args.debug`` est vrai (apres ``parse_args``)."""
     if getattr(args, "debug", False):
         enable_debug()
-    _logger.debug("apply_debug_argument: fin (args.debug={})", getattr(args, "debug", False))
 
 
 def get_logger(name: str):
-    """Retourne un logger loguru configuré pour le module ``name``."""
+    """Retourne un logger loguru configure pour le module ``name``."""
     if not _CONFIGURED:
         configure_logging()
-    _logger.debug("get_logger: retour logger lié à {}", name)
     return _logger.bind(name=name)
-
-
-# -- Résumés pour les traces debug (issue #441) ------------------------------
-
-_SECRET_NAME_RE = re.compile(r"pass|secret|token|cred|auth|api_?key|private|cookie|signature", re.IGNORECASE)
-_URL_USERINFO_RE = re.compile(r"(://)[^/@\s]+@")
-_MAX_STR = 80
-
-
-def summarize(value: object, name: str = "") -> str:
-    """Résumé court et sans secret d'une valeur, pour un message de debug.
-
-    Conventions de #441 : jamais d'objet entier dans un log. Les scalaires
-    sont rendus tels quels, les chaînes courtes aussi (identifiants d'URL
-    masqués), les chaînes longues et octets par leur taille, les
-    collections par leur type et leur nombre d'éléments, tout le reste par
-    son type. Un paramètre dont le nom évoque un secret (mot de passe,
-    jeton, clé...) est toujours masqué.
-    """
-    if name and _SECRET_NAME_RE.search(name):
-        _logger.debug("summarize: nom sensible -> retour ***")
-        return "***"
-    if value is None or isinstance(value, (bool, int, float)):
-        _logger.debug("summarize: scalaire -> retour repr")
-        return repr(value)
-    if isinstance(value, str):
-        text = _URL_USERINFO_RE.sub(r"\1***@", value)
-        if len(text) <= _MAX_STR:
-            _logger.debug("summarize: chaîne courte -> retour repr")
-            return repr(text)
-        _logger.debug("summarize: chaîne longue ({} car.) -> retour taille", len(text))
-        return f"<str {len(text)} car.>"
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        _logger.debug("summarize: octets ({} octets) -> retour taille", len(value))
-        return f"<{type(value).__name__} {len(value)} octets>"
-    if isinstance(value, os.PathLike):
-        _logger.debug("summarize: PathLike -> récursion sur fspath")
-        return summarize(os.fspath(value))
-    if isinstance(value, enum.Enum):
-        _logger.debug("summarize: Enum -> retour nom qualifié")
-        return f"{type(value).__name__}.{value.name}"
-    if isinstance(value, Sized):
-        _logger.debug("summarize: Sized ({} éléments) -> retour taille", len(value))
-        return f"<{type(value).__name__} {len(value)}>"
-    _logger.debug("summarize: type par défaut -> retour nom du type")
-    return f"<{type(value).__name__}>"
