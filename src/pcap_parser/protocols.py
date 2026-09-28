@@ -186,10 +186,8 @@ def _parse_sip_heuristic(payload: bytes) -> dict | None:
         logger.trace("_parse_sip_heuristic: charge utile non décodable ({} octets)", len(payload))
         logger.debug("_parse_sip_heuristic: except (AttributeError, UnicodeError) -> retour None")
         return None
+    # str.split renvoie toujours au moins un element : pas de garde "vide".
     lines = text.split("\r\n") if "\r\n" in text else text.split("\n")
-    if not lines:
-        logger.debug("_parse_sip_heuristic: si not lines -> retour None")
-        return None
     first = lines[0].strip()
 
     msg_type = None
