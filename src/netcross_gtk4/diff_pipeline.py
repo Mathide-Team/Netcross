@@ -18,6 +18,7 @@ from typing import Any, Callable
 from netcross_core.baseline_diff import diff_reports
 from netcross_core.correlate import correlate
 from netcross_core.logging_config import get_logger
+from netcross_gtk4 import capture_list
 
 logger = get_logger(__name__)
 
@@ -92,7 +93,7 @@ def run_diff_pipeline(
     from netcross_gtk4.analysis_pipeline import load_packets
 
     redactor = AddressRedactor() if options.redact else None
-    points_order = None if options.auto_topology else [label for label, _ in baseline_captures]
+    points_order = None if options.auto_topology else capture_list.ordre_des_points(baseline_captures)
 
     # 1. Baseline
     _log("=== CHARGEMENT DU BASELINE ===")
@@ -111,7 +112,7 @@ def run_diff_pipeline(
     )
 
     # 2. Courant
-    points_order_current = None if options.auto_topology else [label for label, _ in current_captures]
+    points_order_current = None if options.auto_topology else capture_list.ordre_des_points(current_captures)
     _log("=== CHARGEMENT DU RUN COURANT ===")
     current_packets = load_packets(current_captures, options.parallel, on_progress)
     if redactor is not None:

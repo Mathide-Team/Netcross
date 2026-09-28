@@ -89,6 +89,7 @@ def test_metadonnees_conservees():
         "labels": ["LAN", "DC"],
         "points_order": ["LAN", "DC"],
         "split_interfaces": False,
+        "rotation": False,
     }
     assert options["nat_tolerant"] is False and options["redact"] is False
 
@@ -119,6 +120,58 @@ def test_un_seul_fichier_accepte_capture_unique():
     body = response.json()
     assert body["points"] == ["LAN"]
     assert body["segments"] == []
+
+
+def _post_rotation(monkeypatch, labels, points_order=None, noms=("lan_00001.pcap", "lan_00002.pcap", "dc.pcap")):
+    # Chaque fichier donne ses propres paquets : le segment LAN_2 porte le
+    # paquet que le DC voit, le segment LAN_1 le paquet perdu.
+    par_fichier = iter(
+        [
+            [make_pkt(point="LAN", sport=1)],
+            [make_pkt(point="LAN", sport=2, ts=1000.0)],
+            [make_pkt(point="DC", sport=2, ts=1000.004)],
+        ]
+    )
+    monkeypatch.setattr(api_module, "parse_capture", lambda label, path: next(par_fichier))
+    files = [("files", (nom, b"\xd4\xc3\xb2\xa1" + b"\x00" * 20, "application/octet-stream")) for nom in noms]
+    data = {"labels": labels, "rotation": "true"}
+    if points_order is not None:
+        data["points_order"] = points_order
+    return client.post("/captures/multi?wait=true", files=files, data=data)
+
+
+def test_rotation_segments_d_un_meme_point(monkeypatch):
+    # Issue #671 : LAN en deux fichiers, lus a la suite comme un seul point.
+    response = _post_rotation(monkeypatch, "LAN,LAN,DC", "LAN,DC")
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["points"] == ["LAN", "DC"]
+    assert body["packet_count"] == 3
+    (segment,) = body["segments"]
+    assert segment["segment"] == "LAN -> DC"
+    assert segment["loss_count"] == 1
+    meta = store.get(body["analysis_id"])["metadata"]
+    assert meta["labels"] == ["LAN", "LAN", "DC"]
+    assert meta["points_order"] == ["LAN", "DC"]
+    assert meta["rotation"] is True
+
+
+def test_rotation_ordre_deduit(monkeypatch):
+    response = _post_rotation(monkeypatch, "LAN,LAN,DC")
+    assert response.status_code == 201, response.text
+    assert sorted(response.json()["points"]) == ["DC", "LAN"]
+
+
+def test_rotation_points_order_cite_chaque_point_une_fois(monkeypatch):
+    response = _post_rotation(monkeypatch, "LAN,LAN,DC", "LAN,LAN,DC")
+    assert response.status_code == 400
+    assert "exactement une fois" in response.json()["detail"]
+
+
+def test_etiquette_repetee_refusee_sans_rotation():
+    response = _post(labels="LAN,LAN", points_order=None)
+    assert response.status_code == 400
+    assert "Étiquettes dupliquées : LAN" in response.json()["detail"]
 
 
 def test_aucun_fichier_refuse():

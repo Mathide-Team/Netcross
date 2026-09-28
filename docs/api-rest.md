@@ -119,6 +119,16 @@ curl -X POST http://localhost:8000/captures/multi \
   déduit du trafic comme la CLI sans `--order` (`order_source: "auto"`).
 - Chaque fichier est soumis à la même limite de taille (413) et au même
   jeton que `POST /captures`.
+- `rotation=true` (issue #671, équivalent de `--capture NOM=a,b`) : une
+  étiquette répétée dans `labels` désigne les segments successifs d'un
+  même point, lus dans l'ordre des fichiers. `points_order` cite ce point
+  une seule fois. Sans `rotation`, une étiquette répétée est refusée (400).
+
+```bash
+curl -X POST "http://localhost:8000/captures/multi?wait=true" \
+  -F "files=@lan_00001.pcap" -F "files=@lan_00002.pcap" -F "files=@dc.pcap" \
+  -F "labels=LAN,LAN,DC" -F "rotation=true" -F "points_order=LAN,DC"
+```
 - Un seul fichier est accepté (issue #474, lot 2). Sans
   `split_interfaces`, c'est une capture unique : le résumé n'a aucun
   segment.

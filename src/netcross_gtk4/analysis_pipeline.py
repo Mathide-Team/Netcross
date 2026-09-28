@@ -31,6 +31,7 @@ from netcross_core.models import Report
 from netcross_core.parsing import parse_capture
 from netcross_core.report_text import print_report
 from netcross_core.wireshark_expert import build_wireshark_expert_events
+from netcross_gtk4 import capture_list
 from netcross_report.security_report import build_security_report, print_security_report
 
 logger = get_logger(__name__)
@@ -217,7 +218,10 @@ def _run_pipeline(
     _log: Callable[[str], None],
 ) -> AnalysisResult:
     """Etapes 1 a 11 de run_analysis_pipeline, sur des captures deja separees."""
-    points_order = None if options.auto_topology else [label for label, _ in captures]
+    # Issue #671 : deux lignes de meme nom = segments d'un meme point.
+    points_order = None if options.auto_topology else capture_list.ordre_des_points(captures)
+    for label, segments in capture_list.segments_par_point(captures).items():
+        _log(f"[{label}] {segments} segments lus a la suite (capture en rotation)")
 
     # 1. Chargement
     all_packets = load_packets(captures, options.parallel, on_progress)
