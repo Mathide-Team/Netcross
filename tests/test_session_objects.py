@@ -424,3 +424,35 @@ def test_compliance_table_assez_large_pour_les_identifiants_du_catalogue():
         # c'est donc lui le plus long jeton insecable (la valeur et le seuil
         # se replient aux espaces en dessous)
         assert stringWidth(ref.metric, style.fontName, style.fontSize) <= largeur_mesure - marge, ref.metric
+
+
+# -- Issue #731 : troncatures et libelles de secours --------------------------
+
+
+def test_flow_label_sans_endpoints_utilise_la_cle():
+    """Lignes 166-167 : un Flow sans endpoints est libelle par sa cle."""
+    from netcross_report.session_objects import _flow_label
+
+    assert _flow_label(Flow(key=("10.0.0.1", 80))) == str(("10.0.0.1", 80))
+
+
+def test_format_session_objects_tronque_chaque_bloc():
+    """Lignes 228, 248, 286 et 312 : au-dela de top_n, chaque bloc
+    (evenements, diagnostics, conformite, expertise tshark) annonce le reste."""
+    from netcross_core.compliance import ComplianceResult
+
+    evs = [ExpertEvent(category="perte", severity="critique", segment="A", message=f"m{i}") for i in range(3)]
+    diags = [Diagnosis(segment=f"S{i}") for i in range(3)]
+    ref = ReferenceProfile(id="r", metric="latency", operator="<=", threshold=20.0, unit="ms", source="RFC")
+    comp = [ComplianceResult(reference=ref, observed=float(i), status="CONFORME") for i in range(3)]
+    objs = SessionObjects(
+        expert_events=evs,
+        diagnoses=diags,
+        compliance=comp,
+        wireshark_expert_events=evs,
+    )
+    texte = "\n".join(format_session_objects(objs, top_n=1))
+    assert "autre(s) evenement(s)" in texte
+    assert "autre(s) segment(s)" in texte
+    assert "autre(s) referentiel(s)" in texte
+    assert "Expertise tshark (signaux bruts)" in texte
