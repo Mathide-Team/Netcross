@@ -64,6 +64,14 @@ def test_histogram_produit_png_non_vide(tmp_path):
     assert os.path.getsize(path) > 0
 
 
+def test_histogram_sans_unite_ne_definit_pas_xlabel(tmp_path):
+    """unit="" : l'axe des x n'est pas etiquete, le rendu aboutit (#750)."""
+    s = _series(unit="", values=[1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 5.5, 6.0, 7.0] * 3)
+    path = _tmp_png(tmp_path, "hist_sans_unite.png")
+    assert render_histogram(s, path) == path
+    assert os.path.getsize(path) > 0
+
+
 # --- Cas vide : retourne None -----------------------------------------------
 
 
@@ -89,6 +97,15 @@ def test_labels_longueur_incoherente_leve_value_error(tmp_path):
         render_bars(s, _tmp_png(tmp_path))
 
 
+def test_validate_serie_vide_leve_value_error():
+    """Les rendus court-circuitent les series vides (retour None) avant
+    d'appeler validate() : le chemin d'erreur de validate() n'est donc
+    atteignable que par un appel direct (#750)."""
+    s = _series(values=[])
+    with pytest.raises(ValueError, match="vide"):
+        s.validate()
+
+
 # --- Seuils et zones de conformite ------------------------------------------
 
 
@@ -100,6 +117,15 @@ def test_seuil_et_zone_ne_cassent_pas_le_rendu(tmp_path):
     path = _tmp_png(tmp_path)
     result = render_line(s, path)
     assert result == path
+    assert os.path.getsize(path) > 0
+
+
+def test_seuil_sans_etiquette_trace_la_ligne_sans_texte(tmp_path):
+    """Un Threshold au label vide trace la ligne mais n'ajoute aucun
+    texte ; le seuil suivant est quand meme traite (#750)."""
+    s = _series(thresholds=[Threshold(value=35.0), Threshold(value=45.0, label="seuil")])
+    path = _tmp_png(tmp_path)
+    assert render_line(s, path) == path
     assert os.path.getsize(path) > 0
 
 
