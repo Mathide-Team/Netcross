@@ -32,6 +32,7 @@ geree est precisement le defaut que la regle de tracabilite du projet vise.
 
 from __future__ import annotations
 
+import os
 import pytest
 
 from netcross_core.models import Report
@@ -40,6 +41,8 @@ from netcross_report.charts import (
     chart_loss,
     chart_severity_summary,
     chart_throughput,
+    chart_topology,
+    chart_sequence_diagram,
 )
 from netcross_report.synthesis import build_findings
 
@@ -547,3 +550,178 @@ def test_generate_topn_charts_prefixe_ses_cles_par_dimension(tmp_path):
     for dimension, chemin in charts.items():
         assert dimension == "protocol"
         assert _fichier_utilisable(pathlib.Path(chemin))
+
+
+# -- Issue #725 : couverture de chart_sequence_diagram et topology ------------
+
+
+def test_chart_sequence_diagram_vide_retourne_none(tmp_path):
+    """Lignes 424-426 : chart_sequence_diagram retourne None si la vue
+    est vide ou a moins de 2 hotes."""
+    from netcross_report.sequence_view import SequenceView
+
+    path = str(tmp_path / "seq.png")
+    # Vue vide
+    result = chart_sequence_diagram(SequenceView(title="empty"), path)
+    assert result is None
+
+
+def test_chart_sequence_diagram_avec_steps(tmp_path):
+    """Lignes 427-487 : chart_sequence_diagram produit un PNG avec des
+    steps et au moins 2 hotes."""
+    from netcross_report.sequence_view import SequenceStep, SequenceView
+
+    steps = [
+        SequenceStep(
+            ts=1.0,
+            rel_ms=0.0,
+            delta_ms=0.0,
+            src="10.0.0.1",
+            dst="10.0.0.2",
+            point="A",
+            length=60,
+            proto="TCP",
+            sport=50000,
+            dport=443,
+            flags="SYN",
+            frame_number=1,
+        ),
+        SequenceStep(
+            ts=2.0,
+            rel_ms=1000.0,
+            delta_ms=1000.0,
+            src="10.0.0.2",
+            dst="10.0.0.1",
+            point="A",
+            length=60,
+            proto="TCP",
+            sport=443,
+            dport=50000,
+            flags="SYN-ACK",
+            frame_number=2,
+        ),
+    ]
+    view = SequenceView(
+        title="Test flow",
+        steps=steps,
+        hosts=["10.0.0.1", "10.0.0.2"],
+        points=["A"],
+    )
+    path = str(tmp_path / "seq.png")
+    result = chart_sequence_diagram(view, path)
+    assert result == path
+    assert os.path.exists(path)
+
+
+def test_chart_sequence_diagram_src_dst_identique(tmp_path):
+    """Ligne 443 : src et dst du meme cote -> marqueur au lieu de fleche."""
+    from netcross_report.sequence_view import SequenceStep, SequenceView
+
+    steps = [
+        SequenceStep(
+            ts=1.0,
+            rel_ms=0.0,
+            delta_ms=0.0,
+            src="10.0.0.1",
+            dst="10.0.0.1",
+            point="A",
+            length=60,
+            proto="ARP",
+            sport=None,
+            dport=None,
+            flags="",
+            frame_number=1,
+        ),
+    ]
+    view = SequenceView(
+        title="Broadcast",
+        steps=steps,
+        hosts=["10.0.0.1", "10.0.0.2"],
+        points=["A"],
+    )
+    path = str(tmp_path / "seq_broadcast.png")
+    result = chart_sequence_diagram(view, path)
+    assert result == path
+    assert os.path.exists(path)
+
+
+def test_chart_sequence_diagram_step_sans_frame_number(tmp_path):
+    """Ligne 464 : trame = '' quand frame_number est None."""
+    from netcross_report.sequence_view import SequenceStep, SequenceView
+
+    steps = [
+        SequenceStep(
+            ts=1.0,
+            rel_ms=0.0,
+            delta_ms=0.0,
+            src="10.0.0.1",
+            dst="10.0.0.2",
+            point="A",
+            length=60,
+            proto="UDP",
+            sport=53,
+            dport=5353,
+            flags="",
+            frame_number=None,
+        ),
+    ]
+    view = SequenceView(
+        title="DNS",
+        steps=steps,
+        hosts=["10.0.0.1", "10.0.0.2"],
+        points=["A"],
+    )
+    path = str(tmp_path / "seq_no_frame.png")
+    result = chart_sequence_diagram(view, path)
+    assert result == path
+    assert os.path.exists(path)
+
+
+def test_chart_topology_avec_branch_merge_isole(tmp_path):
+    """Lignes 50-63 : chart_topology colore les noeuds branch/merge/isole."""
+    from netcross_core.models import Report
+
+    r = Report(points=["10.0.0.1", "10.0.0.2", "10.0.0.3"])
+    r.topology_branch_points.append("10.0.0.1")
+    r.topology_merge_points.append("10.0.0.2")
+    r.topology_isolated.append("10.0.0.3")
+    r.topology_edges.append(("10.0.0.1", "10.0.0.2", {"label": "A->B", "confidence": 0.95}))
+    r.topology_edges.append(("10.0.0.2", "10.0.0.3", {"label": "B->C", "confidence": 0.88}))
+    path = str(tmp_path / "topology.png")
+    result = chart_topology(r, path)
+    assert result == path
+    assert os.path.exists(path)
+
+
+def test_chart_sequence_diagram_truncated(tmp_path):
+    """Ligne 487 : chart_sequence_diagram avec truncated > 0."""
+    from netcross_report.sequence_view import SequenceStep, SequenceView
+
+    steps = [
+        SequenceStep(
+            ts=1.0,
+            rel_ms=0.0,
+            delta_ms=0.0,
+            src="10.0.0.1",
+            dst="10.0.0.2",
+            point="A",
+            length=60,
+            proto="TCP",
+            sport=50000,
+            dport=443,
+            flags="SYN",
+            frame_number=1,
+        ),
+    ]
+    view = SequenceView(
+        title="Truncated flow",
+        steps=steps,
+        hosts=["10.0.0.1", "10.0.0.2"],
+        points=["A"],
+        truncated=50,
+        total_steps=51,
+    )
+    path = str(tmp_path / "seq_trunc.png")
+    result = chart_sequence_diagram(view, path)
+    assert result == path
+    assert os.path.exists(path)
