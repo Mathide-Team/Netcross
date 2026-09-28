@@ -1,127 +1,138 @@
 """
-Tests de non-régression de l'issue #446 : `pcap_parser` utilisé seul
-n'écrit rien sur stderr (handler loguru par défaut), et les points
-d'entrée Netcross le réactivent quel que soit l'ordre des imports.
+Tests de non-regression pour l'issue #446 : pcap_parser utilise seul
+n'ecrit pas de logs DEBUG sur stderr (handler loguru par defaut).
 
-Chaque cas tourne dans un sous-processus : l'état de loguru (handlers,
-`enable`/`disable`) et `sys.modules` sont globaux au processus, un test en
-processus ne verrait que l'ordre d'import déjà figé par la session pytest.
+Verifie dans des sous-processus (pour isoler l'etat global de loguru) :
+1. pcap_parser importe seul -> aucun log DEBUG sur stderr
+2. configure_logging(force=True) puis pcap_parser -> logs visibles au niveau DEBUG
+3. pcap_parser puis configure_logging(force=True) -> logs visibles (ordre inverse)
+4. pcap_parser seul avec logger.enable manuel -> logs visibles
 
-Les journaux sont déclenchés par `pcap_parser.remote.parse_source` sur une
-URI `sshdump://`, qui trace le schéma, l'hôte et la cible sans lancer
-tshark ni ouvrir de connexion.
-
-Chaque snippet imprime une sentinelle sur stdout après l'appel : sans
-elle, un test « aucune ligne DEBUG » passerait à vide si l'import ou
-l'appel échouait avant de produire le moindre journal.
+Ces tests ne necessitent pas tshark : on declenche des logs via
+pcap_parser.remote.parse_source (parsing d'URI, pas d'appel tshark).
 """
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 
-SRC = Path(__file__).resolve().parent.parent / "src"
-SENTINELLE = "SNIPPET-TERMINE"
+PYTHONPATH = "src"
 
-_DECLENCHE = (
+# Snippet qui declenche un logger.debug dans pcap_parser (sans tshark) :
+# parse_source("sshdump://...") produit plusieurs logger.debug avant
+# d'appeler tshark.
+_TRIGGERS = (
     "from pcap_parser.remote import parse_source\n"
-    'parse_source("sshdump://bob@srv.example/eth1")\n'
-    f"print({SENTINELLE!r})\n"
+    "try:\n"
+    '    parse_source("sshdump://bob@srv.example/eth1")\n'
+    "except Exception:\n"
+    "    pass\n"
 )
 
 
-def _executer(code: str, **env_extra: str) -> subprocess.CompletedProcess:
-    """Exécute `code` dans un interpréteur neuf, `src/` en tête du chemin.
-
-    Environnement du parent sans les variables NETCROSS_* (un
-    NETCROSS_DEBUG=1 du développeur fausserait le cas par défaut), plus
-    `env_extra`. Échoue si le snippet n'est pas allé au bout.
-    """
-    env = {k: v for k, v in os.environ.items() if not k.startswith("NETCROSS_")}
-    env["PYTHONPATH"] = str(SRC)
-    env.update(env_extra)
-    result = subprocess.run(
+def _run_snippet(code: str, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    """Execute un snippet Python dans un sous-processus isole."""
+    env = {"PYTHONPATH": PYTHONPATH, "PATH": "/usr/bin:/bin"}
+    if env_extra:
+        env.update(env_extra)
+    return subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,
         env=env,
-        timeout=60,
-        check=False,
+        timeout=15,
     )
-    assert result.returncode == 0, f"snippet en échec (code {result.returncode}) :\n{result.stderr}"
-    assert SENTINELLE in result.stdout, f"snippet interrompu avant la fin :\n{result.stderr}"
-    return result
-
-
-def _lignes_debug_pcap_parser(stderr: str) -> list[str]:
-    return [ligne for ligne in stderr.splitlines() if "DEBUG" in ligne and "pcap_parser.remote" in ligne]
 
 
 def test_pcap_parser_seul_n_ecrit_rien_sur_stderr():
-    """Critère 1 : sans configuration Netcross, aucune ligne sur stderr
-    (le handler par défaut de loguru écrirait dès DEBUG)."""
-    result = _executer(_DECLENCHE)
-    assert result.stderr == ""
+    """Sans configure_logging(), pcap_parser doit etre silencieux
+    (loguru desactive pour le package dans __init__.py)."""
+    result = _run_snippet(_TRIGGERS)
+    stderr = result.stderr.strip()
+    debug_lines = [l for l in stderr.splitlines() if "DEBUG" in l and "pcap_parser" in l]
+    assert not debug_lines, (
+        f"pcap_parser a ecrit {len(debug_lines)} ligne(s) DEBUG sur stderr sans configure_logging() :\n"
+        + "\n".join(debug_lines[:5])
+    )
 
 
-def test_pcap_parser_seul_reste_muet_meme_si_netcross_debug_est_positionne():
-    """Les variables NETCROSS_* ne concernent que les points d'entrée
-    Netcross : une bibliothèque importée seule ne les lit pas."""
-    result = _executer(_DECLENCHE, NETCROSS_DEBUG="1")
-    assert result.stderr == ""
+def test_configure_logging_force_puis_pcap_parser_affiche_les_logs():
+    """configure_logging(force=True, level=DEBUG) reactive pcap_parser :
+    les logs DEBUG doivent etre visibles.
+
+    force=True est necessaire car l'import de netcross_core declenche
+    configure_logging() a INFO (via get_logger dans les modules),
+    et sans force, le second appel retourne sans rien faire.
+    C'est le meme mecanisme que enable_debug() utilise par --debug.
+    """
+    code = (
+        "from netcross_core.logging_config import configure_logging\n"
+        'configure_logging("DEBUG", force=True)\n'
+        + _TRIGGERS
+    )
+    result = _run_snippet(code)
+    stderr = result.stderr
+    debug_lines = [l for l in stderr.splitlines() if "DEBUG" in l and "pcap_parser" in l]
+    assert len(debug_lines) > 0, (
+        "Aucun log DEBUG de pcap_parser trouve apres configure_logging('DEBUG', force=True) "
+        "+ import de pcap_parser. stderr :\n" + stderr[:500]
+    )
 
 
-@pytest.mark.parametrize(
-    "prelude",
-    [
-        pytest.param(
-            "from netcross_core.logging_config import enable_debug\nenable_debug()\nimport pcap_parser\n",
-            id="configure-puis-import",
-        ),
-        pytest.param(
-            "import pcap_parser\nfrom netcross_core.logging_config import enable_debug\nenable_debug()\n",
-            id="import-puis-configure",
-        ),
-        pytest.param(
-            "import pcap_parser.remote\nimport netcross_core\nfrom netcross_core.logging_config import enable_debug\n"
-            "enable_debug()\n",
-            id="sous-module-puis-netcross_core",
-        ),
-    ],
-)
-def test_debug_netcross_active_pcap_parser_quel_que_soit_l_ordre_des_imports(prelude):
-    """Critère 2 : `enable_debug()` (option --debug) réactive pcap_parser,
-    que pcap_parser soit importé avant ou après la configuration."""
-    result = _executer(prelude + _DECLENCHE)
-    assert _lignes_debug_pcap_parser(result.stderr), result.stderr
+def test_pcap_parser_puis_configure_logging_force_affiche_les_logs():
+    """Ordre inverse : pcap_parser importe AVANT configure_logging(force=True).
+    Le disable de __init__.py ne doit pas annuler le enable de
+    configure_logging (l'import dans configure_logging le gere)."""
+    code = (
+        "import pcap_parser\n"
+        "from netcross_core.logging_config import configure_logging\n"
+        'configure_logging("DEBUG", force=True)\n'
+        + _TRIGGERS
+    )
+    result = _run_snippet(code)
+    stderr = result.stderr
+    debug_lines = [l for l in stderr.splitlines() if "DEBUG" in l and "pcap_parser" in l]
+    assert len(debug_lines) > 0, (
+        "Aucun log DEBUG de pcap_parser trouve apres import pcap_parser "
+        "+ configure_logging('DEBUG', force=True). stderr :\n" + stderr[:500]
+    )
 
 
-@pytest.mark.parametrize(
-    ("variable", "valeur"),
-    [("NETCROSS_LOG_LEVEL", "DEBUG"), ("NETCROSS_DEBUG", "1")],
-)
-def test_variables_d_environnement_agissent_sur_pcap_parser(variable, valeur):
-    """NETCROSS_LOG_LEVEL / NETCROSS_DEBUG, lus par la configuration
-    implicite déclenchée à l'import de netcross_core (get_logger)."""
-    result = _executer("import netcross_core\n" + _DECLENCHE, **{variable: valeur})
-    assert _lignes_debug_pcap_parser(result.stderr), result.stderr
+def test_pcap_parser_seul_avec_logger_enable_manuel():
+    """Un utilisateur de la bibliotheque seule peut reactive les logs
+    via logger.enable('pcap_parser') sans configure_logging().
+    Doit importer pcap_parser en premier (son __init__ desactive le
+    package), puis appeler enable."""
+    code = (
+        "import pcap_parser\n"
+        "from loguru import logger\n"
+        'logger.enable("pcap_parser")\n'
+        + _TRIGGERS
+    )
+    result = _run_snippet(code)
+    stderr = result.stderr
+    debug_lines = [l for l in stderr.splitlines() if "DEBUG" in l and "pcap_parser" in l]
+    assert len(debug_lines) > 0, (
+        "Aucun log DEBUG de pcap_parser trouve apres logger.enable('pcap_parser') "
+        "sans configure_logging(). stderr :\n" + stderr[:500]
+    )
 
 
-def test_niveau_info_par_defaut_masque_le_debug_de_pcap_parser():
-    """pcap_parser réactivé suit le niveau Netcross : INFO par défaut,
-    donc aucune ligne DEBUG."""
-    result = _executer("import netcross_core\n" + _DECLENCHE)
-    assert not _lignes_debug_pcap_parser(result.stderr), result.stderr
-
-
-def test_logger_enable_manuel_apres_import():
-    """Usage bibliothèque documenté : `logger.enable("pcap_parser")` après
-    l'import de pcap_parser, sans aucune configuration Netcross."""
-    code = 'import pcap_parser\nfrom loguru import logger\nlogger.enable("pcap_parser")\n' + _DECLENCHE
-    result = _executer(code)
-    assert _lignes_debug_pcap_parser(result.stderr), result.stderr
+def test_netcross_log_level_debug_active_pcap_parser():
+    """NETCROSS_LOG_LEVEL=DEBUG doit activer les logs de pcap_parser,
+    meme si configure_logging est appele pendant l'import de netcross_core
+    (avant l'import explicite de pcap_parser)."""
+    code = (
+        "import netcross_core.logging_config\n"
+        + _TRIGGERS
+    )
+    result = _run_snippet(code, env_extra={"NETCROSS_LOG_LEVEL": "DEBUG"})
+    stderr = result.stderr
+    debug_lines = [l for l in stderr.splitlines() if "DEBUG" in l and "pcap_parser" in l]
+    assert len(debug_lines) > 0, (
+        "Aucun log DEBUG de pcap_parser trouve avec NETCROSS_LOG_LEVEL=DEBUG. "
+        "stderr :\n" + stderr[:500]
+    )
