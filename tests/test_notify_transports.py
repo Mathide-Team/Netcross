@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import errno
 import smtplib
-import socket
 import urllib.error
 import urllib.request
 
@@ -56,7 +55,6 @@ def _http_error(code):
     [
         (_http_error(404), "HTTP 404"),
         (TimeoutError(), "delai depasse"),
-        (socket.timeout(), "delai depasse"),
         (urllib.error.URLError(TimeoutError()), "delai depasse"),
         (urllib.error.URLError("nom inconnu"), "injoignable (nom inconnu)"),
         (smtplib.SMTPAuthenticationError(535, b"refuse"), "authentification SMTP refusee"),
