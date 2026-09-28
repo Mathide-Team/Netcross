@@ -116,7 +116,12 @@ paths:
 
         ou ``/status``) détaille les pertes et le délai de chaque segment.
 
-        Options d''analyse : comme ``POST /captures`` (issue #330).'
+        Options d''analyse : comme ``POST /captures`` (issue #330).
+
+
+        Issue #474 lot 2 : un seul fichier est accepté, par exemple un pcapng
+
+        multi-interfaces avec ``split_interfaces=true`` (un point par interface).'
       operationId: upload_multi_capture_captures_multi_post
       security:
       - APIKeyHeader: []
@@ -642,6 +647,13 @@ components:
           description: Écart maximal en ms entre deux copies d'un même paquet (équivalent
             de --duplicate-threshold-ms)
           default: 1.0
+        split_interfaces:
+          type: boolean
+          title: Split Interfaces
+          description: 'true : un point par interface/section d''un pcapng multi-interfaces,
+            étiqueté ETIQUETTE:INTERFACE (équivalent de --split-interfaces) ; `points_order`
+            cite alors ces étiquettes'
+          default: false
       type: object
       required:
       - files

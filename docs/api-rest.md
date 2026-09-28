@@ -60,7 +60,7 @@ La spécification OpenAPI est disponible sur :
 | Méthode | Path | Description |
 |---------|------|-------------|
 | `POST` | `/captures` | Upload d'un pcap, lance l'analyse |
-| `POST` | `/captures/multi` | Plusieurs pcaps étiquetés, analyse croisée entre points |
+| `POST` | `/captures/multi` | Un ou plusieurs pcaps étiquetés, analyse croisée entre points (`split_interfaces` : un point par interface d'un pcapng) |
 | `GET` | `/analyses/{id}/status` | Statut `pending` / `completed` / `failed` (+ résumé) |
 | `GET` | `/analyses/{id}` | Mesures brutes (copie de chaque champ du `Report`) |
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
@@ -119,6 +119,20 @@ curl -X POST http://localhost:8000/captures/multi \
   déduit du trafic comme la CLI sans `--order` (`order_source: "auto"`).
 - Chaque fichier est soumis à la même limite de taille (413) et au même
   jeton que `POST /captures`.
+- Un seul fichier est accepté (issue #474, lot 2). Sans
+  `split_interfaces`, c'est une capture unique : le résumé n'a aucun
+  segment.
+- `split_interfaces=true` (équivalent de `--split-interfaces`) : un pcapng
+  qui contient plusieurs interfaces ou sections devient un point par
+  interface, nommé `ETIQUETTE:INTERFACE`. `points_order` cite alors ces
+  noms. Un fichier à une seule capture garde son étiquette. Si la
+  séparation échoue, la requête est refusée (400).
+
+```bash
+curl -X POST "http://localhost:8000/captures/multi?wait=true" \
+  -F "files=@switch.pcapng" -F "labels=SW" -F "split_interfaces=true" \
+  -F "points_order=SW:eth0,SW:eth1"
+```
 
 Résumé (`?wait=true`, ou `summary` de `/status`), avec les pertes comptées
 au point aval comme dans le tableau « Qualité par segment » des rapports :

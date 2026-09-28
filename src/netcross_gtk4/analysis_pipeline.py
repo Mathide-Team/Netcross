@@ -15,15 +15,18 @@ GLib.idle_add(self._log, ...) du code original.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import io
 import os
+import shutil
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from netcross_core.correlate import correlate
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 from netcross_core.parsing import parse_capture
 from netcross_core.report_text import print_report
@@ -57,6 +60,8 @@ class AnalysisOptions:
     detect_duplicates: bool = False
     exclude_duplicates: bool = False
     duplicate_threshold_ms: float = 2.0
+    # Issue #474 lot 2 : un point par interface d'un pcapng (--split-interfaces)
+    split_interfaces: bool = False
 
 
 @dataclass
@@ -163,6 +168,55 @@ def run_analysis_pipeline(
             logger.debug("étape: {}", msg)
         logger.debug("run_analysis_pipeline._log: fin")
 
+    if options.split_interfaces:
+        # Fichiers extraits gardes jusqu'a la fin du processus, comme la CLI
+        # (atexit) : les vues et exports de la GUI peuvent relire les chemins.
+        workdir = tempfile.mkdtemp(prefix="netcross-gui-split-")
+        atexit.register(shutil.rmtree, workdir, True)
+        captures = expand_split_interfaces(captures, workdir, _log)
+    result = _run_pipeline(captures, options, on_progress, _log)
+    logger.debug("run_analysis_pipeline: retour result={}", summarize(result, "result"))
+    return result
+
+
+def expand_split_interfaces(
+    captures: Sequence[tuple[str, str]],
+    workdir: str,
+    log: Callable[[str], None],
+) -> list[tuple[str, str]]:
+    """Comme --split-interfaces de la CLI (issue #474 lot 2) : chaque fichier
+    qui contient plusieurs captures devient un point NOM:INTERFACE par
+    capture, extraite dans `workdir`. Un fichier a une seule capture, ou
+    illisible, est garde tel quel (la lecture normale signalera l'erreur)."""
+    from pcap_parser.capture import split_by_interface
+    from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
+
+    expanded: list[tuple[str, str]] = []
+    for index, (label, path) in enumerate(captures):
+        try:
+            slices = split_by_interface(path, os.path.join(workdir, str(index)))
+        except (OSError, TsharkNotFoundError, TsharkError) as exc:
+            logger.warning("separation des interfaces : {} non separe ({})", path, exc)
+            log(f"[{label}] separation des interfaces impossible ({exc}) : fichier lu tel quel")
+            expanded.append((label, path))
+            continue
+        if len(slices) <= 1:
+            log(f"[{label}] une seule capture dans {path} : lu tel quel")
+            expanded.append((label, path))
+            continue
+        log(f"[{label}] {len(slices)} captures dans {path}")
+        expanded.extend((f"{label}:{s.name}", str(s.path)) for s in slices)
+    logger.debug("expand_split_interfaces: retour expanded={}", summarize(expanded, "expanded"))
+    return expanded
+
+
+def _run_pipeline(
+    captures: Sequence[tuple[str, str]],
+    options: AnalysisOptions,
+    on_progress: Callable[[str], None] | None,
+    _log: Callable[[str], None],
+) -> AnalysisResult:
+    """Etapes 1 a 11 de run_analysis_pipeline, sur des captures deja separees."""
     points_order = None if options.auto_topology else [label for label, _ in captures]
 
     # 1. Chargement
@@ -304,7 +358,7 @@ def run_analysis_pipeline(
     text = buf.getvalue()
     _log("Analyse terminée.")
 
-    logger.debug("run_analysis_pipeline: retour AnalysisResult(…)")
+    logger.debug("_run_pipeline: retour AnalysisResult(…)")
     return AnalysisResult(
         mode="single",
         report=report,
