@@ -142,3 +142,42 @@ enable = true
         assert cfg.security.enable is True
     finally:
         Path(config_path).unlink(missing_ok=True)
+
+
+# -- Issue #686 : booleens textuels, tomllib absent, recherche du fichier ----
+
+
+def test_parse_bool_chaines_et_autres_types():
+    """Lignes 142-146 : chaines reconnues et repli bool()."""
+    from netcross_core.config import _parse_bool
+
+    assert _parse_bool("Yes") is True
+    assert _parse_bool("off") is False
+    assert _parse_bool(1) is True
+    assert _parse_bool(0) is False
+
+
+def test_load_config_sans_tomllib_rend_les_defauts(monkeypatch):
+    """Lignes 162-163 : sans tomllib, configuration par defaut."""
+    from netcross_core import config
+
+    monkeypatch.setattr(config, "tomllib", None)
+    assert config.load_config() == NetcrossConfig()
+
+
+def test_find_config_repertoire_courant_puis_home(monkeypatch, tmp_path):
+    """Lignes 225-226 et 231-232 : .netcross.toml du repertoire courant,
+    sinon celui du repertoire personnel."""
+    from netcross_core.config import _find_config
+
+    monkeypatch.delenv("NETCROSS_CONFIG", raising=False)
+    courant = tmp_path / "courant"
+    maison = tmp_path / "maison"
+    courant.mkdir()
+    maison.mkdir()
+    monkeypatch.chdir(courant)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: maison))
+    (maison / ".netcross.toml").write_text("", encoding="utf-8")
+    assert _find_config(None) == maison / ".netcross.toml"
+    (courant / ".netcross.toml").write_text("", encoding="utf-8")
+    assert _find_config(None) == courant / ".netcross.toml"

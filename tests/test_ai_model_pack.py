@@ -318,3 +318,41 @@ def test_cli_erreurs(tmp_path, capsys):
     assert models_cli.main(["outbox", "add", "--outbox", str(tmp_path)]) == 1
     assert models_cli.main(["outbox", "send", "--outbox", str(tmp_path / "vide")]) == 0
     assert "vide" in capsys.readouterr().out
+
+
+# -- Issue #694 : renvoi d'un paquet deja archive et test de connectivite ----
+
+
+def test_mark_sent_remplace_une_archive_deja_envoyee(tmp_path):
+    """Ligne 114 : une archive du meme nom deja dans envoyes/ est remplacee."""
+    from netcross_ai.outbox import SENT_DIR
+
+    (tmp_path / "reseau-a.zip").write_bytes(b"nouveau")
+    (tmp_path / SENT_DIR).mkdir()
+    (tmp_path / SENT_DIR / "reseau-a.zip").write_bytes(b"ancien")
+    cible = mark_sent("reseau-a", tmp_path)
+    assert cible.read_bytes() == b"nouveau"
+    assert not (tmp_path / "reseau-a.zip").exists()
+
+
+def test_is_online_connexion_reussie_et_echouee(monkeypatch):
+    """Lignes 121-128 : connexion TCP etablie -> True ; OSError -> False."""
+    import contextlib
+
+    from netcross_ai import outbox
+
+    appels = []
+
+    def _ok(addr, timeout):
+        appels.append((addr, timeout))
+        return contextlib.nullcontext()
+
+    monkeypatch.setattr(outbox.socket, "create_connection", _ok)
+    assert outbox.is_online("example.test", 443, timeout=1.0) is True
+    assert appels == [(("example.test", 443), 1.0)]
+
+    def _ko(addr, timeout):
+        raise OSError("reseau injoignable")
+
+    monkeypatch.setattr(outbox.socket, "create_connection", _ko)
+    assert outbox.is_online() is False
