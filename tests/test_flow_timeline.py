@@ -8,6 +8,8 @@ Verifie : inter-arrival, fenetres de debit, phases, RTT estimate.
 from conftest import make_pkt
 
 from netcross_core.flow_timeline import (
+    _detect_phases,
+    _median,
     build_flow_timeline,
 )
 from netcross_core.models import Pkt
@@ -226,3 +228,46 @@ def test_timeline_un_seul_paquet():
     assert len(timeline.packet_timings) == 1
     assert timeline.packet_timings[0].delta_ms == 0.0
     assert timeline.packet_timings[0].cumulative_bytes == 100
+
+
+# -- Gardes defensives et branches rares (issue #740) ----------------------
+# `_median` n'est appelee par build_flow_timeline qu'avec des deltas non vides
+# et `_detect_phases` qu'apres le retour anticipe sur liste de paquets vide :
+# ces deux gardes ne sont atteignables que par appel direct du helper.
+
+
+def test_median_liste_vide_retourne_zero():
+    assert _median([]) == 0.0
+
+
+def test_detect_phases_sans_timings_retourne_liste_vide():
+    assert _detect_phases([], []) == []
+
+
+def test_phases_idle_consecutives_fusionnees():
+    pkts = [
+        _pkt(ts=1.0),
+        _pkt(ts=3.0),  # delta 2000 ms -> idle
+        _pkt(ts=5.0),  # delta 2000 ms -> deja en idle, pas de doublon
+    ]
+    timeline = build_flow_timeline(pkts)
+    assert timeline.phases == ["idle"]
+
+
+def test_rtt_dns_reponse_orpheline_ignoree():
+    pkts = [
+        _pkt(ts=1.0, proto="UDP", dns_txn_id=0x1234, dns_qry_name="example.com", dns_is_response=True),
+    ]
+    timeline = build_flow_timeline(pkts)
+    assert timeline.rtt_estimate_ms is None
+
+
+def test_rtt_dns_reponse_orpheline_puis_paire_complete():
+    pkts = [
+        _pkt(ts=0.5, proto="UDP", dns_txn_id=0x1, dns_qry_name="orphan.example", dns_is_response=True),
+        _pkt(ts=1.0, proto="UDP", dns_txn_id=0x1234, dns_qry_name="example.com", dns_is_response=False),
+        _pkt(ts=1.2, proto="UDP", dns_txn_id=0x1234, dns_qry_name="example.com", dns_is_response=True),
+    ]
+    timeline = build_flow_timeline(pkts)
+    assert timeline.rtt_estimate_ms is not None
+    assert abs(timeline.rtt_estimate_ms - 200.0) < 1.0
