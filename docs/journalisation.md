@@ -49,31 +49,30 @@ NETCROSS_LOG_FILE=~/netcross-debug.log netcross-gui --debug
 
 ## Utiliser `pcap_parser` comme bibliothèque (issue #446)
 
-`pcap_parser` est la couche la plus basse du projet : il n'importe pas `netcross_core` (contrat import-linter) et utilise loguru directement. Sans précaution, un script, un notebook ou du code tiers qui l'importe seul hériterait du handler par défaut de loguru, qui écrit sur stderr dès le niveau `DEBUG`.
+`pcap_parser` est la couche la plus basse du projet : il n'importe pas `netcross_core` (contrat import-linter) et utilise loguru directement. En usage bibliothèque (script, notebook, code tiers), sans appel à `configure_logging()`, le handler par défaut de loguru écrirait sur stderr dès le niveau `DEBUG`.
 
-`pcap_parser/__init__.py` applique donc la [convention loguru pour les bibliothèques](https://loguru.readthedocs.io/en/stable/overview.html#suitable-for-scripts-and-libraries) : `logger.disable("pcap_parser")`. Les points d'entrée Netcross (CLI, GUI, API) le réactivent via `configure_logging()` (`logger.enable("pcap_parser")`), et `--debug`, `NETCROSS_DEBUG` et `NETCROSS_LOG_LEVEL` agissent alors aussi sur `pcap_parser`. `netcross_core.logging_config` importe `pcap_parser` en tête de module : le `disable` s'exécute toujours avant le premier `enable`, quel que soit l'ordre des imports.
+Pour éviter ce bruit, `pcap_parser/__init__.py` désactive loguru pour son propre package (`logger.disable("pcap_parser")`). Les points d'entrée Netcross (CLI, GUI, API) le reactivent via `configure_logging()` (`logger.enable("pcap_parser")`), quel que soit l'ordre des imports.
 
-**Effet de bord à connaître** : utilisé seul, `pcap_parser` n'écrit plus rien, **pas même ses warnings ni ses erreurs**, tant que ses journaux ne sont pas réactivés. Deux façons de le faire :
+**En usage bibliothèque seule**, pour voir les logs de `pcap_parser` :
 
 ```python
-# 1. Avec la configuration Netcross (format, niveau, NETCROSS_LOG_FILE)
-from netcross_core.logging_config import configure_logging
+from loguru import logger
+logger.enable("pcap_parser")
 
-configure_logging("DEBUG")
+from pcap_parser import parse_capture
+# les logs DEBUG de pcap_parser sont maintenant visibles
+```
+
+Ou en appelant `configure_logging()` de `netcross_core` (qui active aussi le format structuré et le niveau configurable) :
+
+```python
+from netcross_core.logging_config import configure_logging
+configure_logging("DEBUG")  # active pcap_parser + tous les modules netcross
 
 from pcap_parser import parse_capture
 ```
 
-```python
-# 2. Avec loguru seul : importer pcap_parser AVANT d'appeler enable,
-#    sinon le disable de son __init__ annule le enable.
-import pcap_parser
-from loguru import logger
-
-logger.enable("pcap_parser")
-```
-
-Les processus fils de `parse_captures_parallel` réimportent `pcap_parser` et `netcross_core` : ils suivent `NETCROSS_DEBUG` et `NETCROSS_LOG_LEVEL`, hérités de l'environnement, mais pas l'option `--debug`, qui n'agit que dans le processus principal.
+Sans l'un de ces deux appels, `pcap_parser` est silencieux.
 
 ## Règles pour les contributeurs
 
@@ -87,11 +86,3 @@ Ces règles sont vérifiées par `tests/test_loguru_regles.py` et `tests/test_lo
 - les messages de log ne sont pas traduits : ils restent en français.
 
 Les `print()` qui produisent la sortie d'une commande (rapport texte, résumé NetFlow, messages d'erreur d'usage des CLI) ne sont pas des logs et restent des `print()`.
-
-### Résumer un argument : `summarize`
-
-`netcross_core.logging_config.summarize(valeur, nom)` rend un argument sous une forme sûre pour un log : scalaires tels quels, chaînes courtes (identifiants d'URL masqués), chaînes longues et octets par leur taille, collections par leur type et leur nombre d'éléments, autres objets par leur type. Un paramètre dont le nom évoque un secret (`password`, `token`, `api_key`...) est toujours rendu `***`.
-
-### Instrumentation assistée (issue #441)
-
-`scripts/instrument_loguru.py FICHIER...` (option `--dry-run` pour ne rien écrire) ajoute, dans les fonctions non triviales sans aucun log, une trace DEBUG d'entrée qui résume les arguments avec `summarize`, et une trace avant chaque `raise` explicite. Il n'ajoute jamais de trace d'entrée sur un chemin chaud : fonction appelée dans une boucle sur des unités fines (paquets, lignes, flux, événements...), référencée comme rappel ou valeur d'une table de dispatch, ou appelée depuis une fonction elle-même chaude. Sur ces fonctions, seuls les refus (`raise`) sont tracés, en TRACE. La liste des fonctions écartées est affichée. Une fonction classée chaude à tort (appelée une fois par rapport, mais dans une boucle sur quelques captures, par exemple) peut être forcée avec `--force nom1,Classe.methode`. Les autres s'instrumentent à la main, en TRACE, sur les seuls cas particuliers.
