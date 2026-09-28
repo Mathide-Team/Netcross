@@ -158,3 +158,16 @@ def test_read_capture_comment_erreur_os_ne_leve_pas(monkeypatch):
 
     monkeypatch.setattr("subprocess.run", fake_run)
     assert read_capture_comment("x.pcapng") is None
+
+
+# -- Issue #744 : valeurs numeriques illisibles --------------------------------
+
+
+def test_conversions_numeriques_illisibles_renvoient_none():
+    """Lignes 247-249 et 257-259 : texte non numerique -> None."""
+    from pcap_parser.capinfos_source import _integer, _number
+
+    assert _integer("douze") is None
+    assert _number("1,5 s") is None
+    assert _integer("42") == 42
+    assert _number("1.5") == 1.5

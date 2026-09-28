@@ -409,3 +409,58 @@ def test_le_ticket_est_serialisable_en_json():
     data = json.loads(ticket.to_json())
     assert data["nature"] == "diagnostic"
     assert data["auto_verification"]
+
+
+# -- Issue #714 : echappement CSV et installation du gestionnaire de crash ---
+
+
+def test_csv_echappe_virgules_et_guillemets():
+    """Lignes 360-361 : valeur contenant , ou " mise entre guillemets."""
+    from netcross_core.support.ticket import _csv
+
+    assert _csv('a,"b"') == '"a,""b"""'
+    assert _csv("simple") == "simple"
+
+
+def test_install_crash_handler_sans_consentement_n_installe_rien(monkeypatch):
+    """Lignes 378-381 : sans consentement, sys.excepthook est inchange."""
+    import sys
+
+    from netcross_core.support.ticket import install_crash_handler
+
+    sentinelle = object()
+    monkeypatch.setattr(sys, "excepthook", sentinelle)
+    install_crash_handler("/tmp/inutile.json", Consent(granted=False))
+    assert sys.excepthook is sentinelle
+
+
+def test_install_crash_handler_ecrit_le_ticket_puis_chaine(monkeypatch, tmp_path, capsys):
+    """Lignes 383-402 : avec consentement, le hook ecrit le ticket puis
+    appelle le hook precedent ; un echec d'ecriture est signale sans
+    masquer le crash."""
+    import sys
+
+    from netcross_core.support import ticket as ticket_mod
+
+    appels = []
+    monkeypatch.setattr(sys, "excepthook", lambda *a: appels.append(a))
+    chemin = tmp_path / "crash.json"
+    ticket_mod.install_crash_handler(str(chemin), Consent(granted=True))
+    assert sys.excepthook is not None
+
+    try:
+        raise RuntimeError("boum")
+    except RuntimeError as exc:
+        info = (type(exc), exc, exc.__traceback__)
+    sys.excepthook(*info)
+    assert chemin.exists()
+    assert len(appels) == 1
+    assert "Ticket de support anonymise ecrit" in capsys.readouterr().err
+
+    def _echec(*a, **k):
+        raise OSError("disque plein")
+
+    monkeypatch.setattr(ticket_mod, "write_ticket", _echec)
+    sys.excepthook(*info)
+    assert len(appels) == 2
+    assert "Echec d'ecriture du ticket de support : disque plein" in capsys.readouterr().err
