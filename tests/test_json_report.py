@@ -738,3 +738,35 @@ def test_generate_json_report_rule_engine_findings_vide_dict_vide(tmp_path):
     doc = _read(out)
     assert "rule_engine" in doc
     assert doc["rule_engine"] == {}
+
+
+# -- Issue #762 : cle checksum_errors dans le rapport JSON ------------------
+
+
+def test_generate_json_report_checksum_errors_absente_si_vide(tmp_path):
+    """Pas de checksum invalide -> cle checksum_errors presente mais liste vide."""
+    r = Report(points=["A", "B"], pairs=[("A", "B")])
+    out = tmp_path / "checksums_empty.json"
+    generate_json_report(r, out)
+    doc = _read(out)
+    assert doc["checksum_errors"] == []
+
+
+def test_generate_json_report_checksum_errors_remplie(tmp_path):
+    """Checksums invalides -> cle checksum_errors remplie avec le detail."""
+    from netcross_core.models import ChecksumError
+
+    r = Report(points=["A", "B"], pairs=[("A", "B")])
+    r.checksum_errors = [
+        ChecksumError(point="A", frame_number=42, protocol="IP", checksum="0x1234"),
+        ChecksumError(point="B", frame_number=7, protocol="TCP", checksum="0x5678"),
+    ]
+    out = tmp_path / "checksums_filled.json"
+    generate_json_report(r, out)
+    doc = _read(out)
+    assert len(doc["checksum_errors"]) == 2
+    assert doc["checksum_errors"][0]["point"] == "A"
+    assert doc["checksum_errors"][0]["frame_number"] == 42
+    assert doc["checksum_errors"][0]["protocol"] == "IP"
+    assert doc["checksum_errors"][0]["checksum"] == "0x1234"
+    assert doc["checksum_errors"][1]["protocol"] == "TCP"

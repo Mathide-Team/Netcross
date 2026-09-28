@@ -1213,3 +1213,36 @@ def test_print_report_dns_missing_long(capsys):
     print_report(r)
     out = capsys.readouterr().out
     assert "5 autres messages manquants" in out
+
+
+# -- Issue #762 : section checksums dans le rapport texte -------------------
+
+
+def test_print_report_section_checksums_absente_si_vide(capsys):
+    """Pas de checksum invalide -> section checksums absente (sortie historique inchangee)."""
+    r = _r(checksum_errors=[])
+    print_report(r)
+    out = capsys.readouterr().out
+    assert "checksums IP/TCP/UDP" not in out
+
+
+def test_print_report_section_checksums_presente_si_erreurs(capsys):
+    """Checksums invalides -> section presente avec le detail."""
+    from netcross_core.models import ChecksumError
+
+    r = _r(
+        checksum_errors=[
+            ChecksumError(point="A", frame_number=42, protocol="IP", checksum="0x1234"),
+            ChecksumError(point="B", frame_number=7, protocol="TCP", checksum="0x5678"),
+        ]
+    )
+    print_report(r)
+    out = capsys.readouterr().out
+    assert "Integrite de capture" in out
+    assert "trame 42" in out
+    assert "IP" in out
+    assert "0x1234" in out
+    assert "trame 7" in out
+    assert "TCP" in out
+    assert "0x5678" in out
+    assert "2 checksum(s) invalide(s)" in out

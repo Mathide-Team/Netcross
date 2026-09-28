@@ -346,6 +346,19 @@ def build_json_report_document(
         # flow_anomalies et lateral_movement_events : meme convention.
         "flow_anomalies": list(getattr(r, "flow_anomalies", [])),
         "lateral_movement_events": list(getattr(r, "lateral_movement_events", [])),
+        # Job 43/issue #163/issue #762 : checksums IP/TCP/UDP invalides.
+        # Report.checksum_errors est rempli par analyse() via
+        # netcross_core.forensic.validate_checksums(). Toujours present
+        # (liste vide = rien trouve), meme convention que http_objects.
+        "checksum_errors": [
+            {
+                "point": err.point,
+                "frame_number": err.frame_number,
+                "protocol": err.protocol,
+                "checksum": err.checksum,
+            }
+            for err in getattr(r, "checksum_errors", [])
+        ],
     }
     if getattr(r, "duplicate_count", None):
         # Job 41/issue #161 : cle absente si la detection n'a rien trouve

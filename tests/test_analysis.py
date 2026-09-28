@@ -1731,3 +1731,58 @@ def test_analyse_topn_defaut_a_5():
     pkts = [make_pkt(point="A", proto="TCP", length=100)]
     r = _analyse(pkts)
     assert "TCP" in r.topn_timeseries["protocol"]["A"]
+
+
+# -- Issue #762 : validate_checksums() branchee dans analyse() ------------
+
+
+def test_analyse_remplit_checksum_errors_si_checksum_invalide():
+    """analyse() appelle validate_checksums() et remplit Report.checksum_errors."""
+    pkts = [
+        make_pkt(point="A", sport=1, ip_checksum="0x1234", ip_checksum_bad=True),
+        make_pkt(point="A", sport=2, tcp_checksum="0x5678", tcp_checksum_bad=True),
+    ]
+    r = _analyse(pkts)
+    assert len(r.checksum_errors) == 2
+    assert r.checksum_errors[0].protocol == "IP"
+    assert r.checksum_errors[0].checksum == "0x1234"
+    assert r.checksum_errors[1].protocol == "TCP"
+    assert r.checksum_errors[1].checksum == "0x5678"
+
+
+def test_analyse_checksum_vide_si_pas_derreur():
+    """Aucun checksum invalide -> Report.checksum_errors reste vide."""
+    pkts = [
+        make_pkt(point="A", sport=1, ip_checksum="0x1234", ip_checksum_bad=False),
+        make_pkt(point="A", sport=2, tcp_checksum="0x5678", tcp_checksum_bad=False),
+    ]
+    r = _analyse(pkts)
+    assert r.checksum_errors == []
+
+
+def test_analyse_checksum_offload_non_signale():
+    """Checksum a 0x0000 (offload materiel) n'est jamais signale."""
+    pkts = [
+        make_pkt(point="A", sport=1, ip_checksum="0x0000", ip_checksum_bad=True),
+    ]
+    r = _analyse(pkts)
+    assert r.checksum_errors == []
+
+
+def test_analyse_checksum_udp_invalide_detecte():
+    """Checksum UDP invalide est detecte."""
+    pkts = [
+        make_pkt(point="A", proto="UDP", sport=1, udp_checksum="0xdead", udp_checksum_bad=True),
+    ]
+    r = _analyse(pkts)
+    assert len(r.checksum_errors) == 1
+    assert r.checksum_errors[0].protocol == "UDP"
+
+
+def test_analyse_checksum_exclude_duplicates():
+    """exclude_duplicates retire les paquets dupliques avant validation checksums."""
+    pkts = [
+        make_pkt(point="A", sport=1, ip_checksum="0x1234", ip_checksum_bad=True, is_duplicate=True),
+    ]
+    r = _analyse(pkts, exclude_duplicates=True)
+    assert r.checksum_errors == []

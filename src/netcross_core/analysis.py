@@ -23,7 +23,7 @@ from netcross_core.application import (
 from netcross_core.content import extract_http_objects
 from netcross_core.correlate import TOPN_DIMENSIONS, compute_throughput, compute_topn_series
 from netcross_core.extract.carver import detect_extracted_files
-from netcross_core.forensic import detect_sequence_gaps
+from netcross_core.forensic import detect_sequence_gaps, validate_checksums
 from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Pkt, Report
 from netcross_core.parsing import compute_mos
@@ -432,6 +432,17 @@ def analyse(
     # vers l'exterieur) -- detectee depuis les champs Pkt deja disponibles.
     with _phase("detect_exfiltration"):
         r.exfiltration_alerts = detect_exfiltration(all_packets).alerts
+
+    # Job 43/issue #163/issue #762 : validation des checksums IP/TCP/UDP.
+    # validate_checksums() est un CONSOMMATEUR pur des champs deja extraits
+    # par pcap_parser (ip_checksum_bad, tcp_checksum_bad, udp_checksum_bad) --
+    # aucun recalcul. Jusqu'ici la fonction existait et etait testee mais
+    # n'etait jamais appelee : Report.checksum_errors restait vide et aucun
+    # rapport n'affichait les checksums invalides. Branche ici, APRES le
+    # filtrage exclude_duplicates, pour la meme coherence que le reste du
+    # rapport : un paquet exclu des compteurs n'apparait pas non plus ici.
+    with _phase("validate_checksums"):
+        r.checksum_errors = validate_checksums(all_packets)
 
     logger.debug(
         "analyse : terminée en {:.3f} s, {} paire(s), {}",

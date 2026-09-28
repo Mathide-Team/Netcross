@@ -174,6 +174,17 @@ def print_report(r: Report):
                     iface_parts.append(f"perdus(os) {drop_os}")
                 print(f"      [{iface_name}] {', '.join(iface_parts)}")
 
+    if r.checksum_errors:
+        # Job 43/issue #163/issue #762 : integrite de capture -- checksums
+        # IP/TCP/UDP invalides. Section absente si aucun checksum invalide
+        # n'a ete detecte (cas le plus frequent) : la sortie historique
+        # reste inchangee. Report.checksum_errors est rempli par analyse()
+        # via netcross_core.forensic.validate_checksums().
+        print("\n-- Integrite de capture : checksums IP/TCP/UDP --")
+        for err in r.checksum_errors:
+            print(f"  {err.point} — trame {err.frame_number} : {err.protocol} checksum invalide ({err.checksum})")
+        print(f"  Total : {len(r.checksum_errors)} checksum(s) invalide(s)")
+
     print("\n-- Topologie deduite (delta TTL + recouvrement de flux entre points) --")
     if r.topology_edges:
         for u, d, info in r.topology_edges:

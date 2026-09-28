@@ -111,6 +111,15 @@ def make_pkt(**overrides) -> Pkt:
         "http_uri": None,
         "http_status_code": None,
         "http_response_time_ms": None,
+        # Job 43/issue #163 : checksums IP/TCP/UDP -- None par defaut
+        # (paquet sans verdict, comme IPv6 sans checksum d'en-tete, ou
+        # preferences tshark non activees) : jamais suppose invalide.
+        "ip_checksum": None,
+        "ip_checksum_bad": None,
+        "tcp_checksum": None,
+        "tcp_checksum_bad": None,
+        "udp_checksum": None,
+        "udp_checksum_bad": None,
     }
     defaults.update(overrides)
     return Pkt(**defaults)
