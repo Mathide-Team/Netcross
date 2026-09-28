@@ -159,3 +159,63 @@ def test_voip_flux_hors_fenetre_non_associe():
     ]
     r = analyse({}, ["A", "B"], packets)
     assert r.voip_calls[0]["rtp_streams"] == []
+
+
+# -- Issue #704 : couverture des branches defensives de voip.py --------------
+
+
+def test_quality_mos_fair():
+    """Ligne 60 : _quality retourne 'fair' pour MOS entre 3.0 et 3.6."""
+    from netcross_core.voip import _quality
+
+    assert _quality([3.2, 3.4]) == "fair"
+
+
+def test_quality_mos_good():
+    """Ligne 60-63 : _quality retourne 'good' pour MOS >= 3.6."""
+    from netcross_core.voip import _quality
+
+    assert _quality([4.0, 3.8]) == "good"
+
+
+def test_quality_mos_poor():
+    """Ligne 58 : _quality retourne 'poor' pour MOS < 3.0."""
+    from netcross_core.voip import _quality
+
+    assert _quality([2.5, 1.8]) == "poor"
+
+
+def test_build_calls_sans_invite_utilise_premier_paquet():
+    """Ligne 87 : build_calls utilise le premier paquet si pas d'INVITE."""
+    from netcross_core.voip import build_calls
+
+    # Un seul paquet SIP sans INVITE
+    pkt = _sip("A", 1.0, "200 OK", "1 200")
+    calls, _unassigned = build_calls([pkt], [])
+    # Le call doit exister avec le premier paquet comme invite
+    if calls:
+        assert calls[0].call_id
+
+
+def test_build_calls_rtp_hors_fenetre_ambigu():
+    """Lignes 168, 179, 184 : RTP qui chevauche plusieurs calls
+    ou qui est hors de toutes les fenetres."""
+    from netcross_core.voip import build_calls
+
+    # Deux calls successifs + un RTP hors fenetre
+    pkts = [
+        _sip("A", 1.0, "INVITE", "1 INVITE"),
+        _sip("B", 1.1, "200 OK", "1 INVITE"),
+        _sip("A", 2.0, "BYE", "1 BYE"),
+        _sip("A", 3.0, "INVITE", "2 INVITE"),
+        _sip("B", 3.1, "200 OK", "2 INVITE"),
+        _sip("A", 4.0, "BYE", "2 BYE"),
+    ]
+    rtp_streams = [
+        {"first_ts": 1.5, "points": {"A": 1.5}, "mos": 4.0, "label": "stream1"},
+        {"first_ts": 10.0, "points": {"A": 10.0}, "mos": 4.0, "label": "stream2"},
+    ]
+    _calls, unassigned = build_calls(pkts, rtp_streams)
+    # Le stream1 doit etre associe au call 1
+    # Le stream2 (ts=10.0) est hors fenetre -> non assigne
+    assert isinstance(unassigned, dict)

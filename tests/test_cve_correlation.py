@@ -33,6 +33,7 @@ from netcross_core.security.cve_db import (
     connect_cve_db,
     count_cves,
     get_cve,
+    init_db,
     query_by_product,
     upsert_cve,
 )
@@ -167,6 +168,18 @@ def test_connect_cve_db_cree_le_schema(db_path):
     conn.close()
 
 
+def test_init_db_cree_le_fichier_et_le_schema_comme_connect_cve_db(db_path):
+    assert not db_path.exists()
+    conn = init_db(db_path)
+    try:
+        assert db_path.exists()
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        assert {"cves", "cve_products"} <= tables
+        assert count_cves(conn) == 0
+    finally:
+        conn.close()
+
+
 def test_upsert_et_get_cve_round_trip(db_path):
     conn = connect_cve_db(db_path)
     entry = _apache_entry("CVE-2021-41773", 7.5, "HIGH", start_incl="2.4.49", end_excl="2.4.50")
@@ -250,6 +263,47 @@ def test_count_cves(db_path):
     upsert_cve(conn, _apache_entry("CVE-2021-41773", 7.5, "HIGH", start_incl="2.4.49", end_excl="2.4.50"))
     assert count_cves(conn) == 1
     conn.close()
+
+
+# -- AffectedProduct.matches --------------------------------------------------
+
+_APACHE_RANGE = AffectedProduct(
+    vendor="apache",
+    product="http_server",
+    version_start_including="2.4.49",
+    version_end_excluding="2.4.50",
+)
+
+
+@pytest.mark.parametrize(
+    ("vendor", "product"),
+    [
+        ("nginx", "http_server"),  # autre editeur, meme produit
+        ("apache", "tomcat"),  # meme editeur, autre produit
+        ("nginx", "nginx"),  # ni l'un ni l'autre
+    ],
+)
+def test_affected_product_matches_faux_si_vendor_ou_product_differe(vendor, product):
+    # meme avec une version pourtant dans le range : vendor/product decident d'abord
+    assert _APACHE_RANGE.matches(vendor, product, "2.4.49") is False
+
+
+def test_affected_product_matches_delegue_la_version_au_range():
+    assert _APACHE_RANGE.matches("apache", "http_server", "2.4.49") is True
+    assert _APACHE_RANGE.matches("apache", "http_server", "2.4.50") is False  # borne exclue
+    assert _APACHE_RANGE.matches("apache", "http_server", "2.4.48") is False  # sous la borne incluse
+
+
+def test_affected_product_matches_insensible_a_la_casse():
+    assert _APACHE_RANGE.matches("Apache", "HTTP_Server", "2.4.49") is True
+    produit_majuscule = AffectedProduct(vendor="APACHE", product="Http_Server", version="2.4.49")
+    assert produit_majuscule.matches("apache", "http_server", "2.4.49") is True
+
+
+def test_affected_product_matches_version_exacte_sans_range():
+    exact = AffectedProduct(vendor="openbsd", product="openssh", version="8.3")
+    assert exact.matches("openbsd", "openssh", "8.3") is True
+    assert exact.matches("openbsd", "openssh", "8.4") is False
 
 
 # -- scripts/import_nvd.py : parsing du format API NVD 2.0 ------------------

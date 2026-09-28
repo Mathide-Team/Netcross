@@ -247,3 +247,82 @@ def test_build_events_by_segment_with_findings():
     assert "LAN -> WAN" in result
     assert len(result["LAN -> WAN"]) == 1
     assert "WAN -> LAN" in result
+
+
+# -- Couverture >= 98 % (issue #730) -----------------------------------------
+#
+# Les tests ci-dessous couvrent les branches « vraies » que la suite
+# précédente ne prenait pas : champs optionnels renseignés dans `format_row`,
+# flux sans points / sans endpoints dans `format_flow_summary`, finding sans
+# `segment` ni `pair` dans `build_events_by_segment`.
+
+
+def test_format_row_includes_all_optional_fields_when_positive():
+    """duree, debit, latence et evenements sont tous affichés quand renseignés."""
+    row = StatRow(
+        label="LAN -> WAN",
+        group_by="segment",
+        packets=42,
+        bytes=2048,
+        duration_ms=1500.0,
+        throughput_bps=2_500_000.0,
+        latency_ms=3.5,
+        events=7,
+    )
+    text = format_row(row)
+    assert text == (
+        "LAN -> WAN | paquets=42 | octets=2.0 Ko | duree=1500ms | debit=2.5 Mbps | latence=3.5ms | evenements=7"
+    )
+
+
+def test_format_row_events_only_adds_evenements_field():
+    """Un seul champ optionnel (events > 0) : les autres restent omis."""
+    row = StatRow(label="TCP", group_by="protocol", packets=1, bytes=10, events=3)
+    text = format_row(row)
+    assert text.endswith("evenements=3")
+    assert "duree=" not in text
+    assert "debit=" not in text
+    assert "latence=" not in text
+
+
+def test_format_flow_summary_without_points_shows_placeholder():
+    """Un flux sans point de capture affiche « ? » à la place des points."""
+    flow = _make_flow()
+    flow.points = []
+    text = format_flow_summary(flow)
+    assert text.startswith("? | 10.0.0.1 <-> 10.0.0.2 | ")
+
+
+def test_format_flow_summary_without_endpoints_shows_placeholder():
+    """Un flux sans endpoints affiche « ? » à la place de la paire d'adresses."""
+    flow = _make_flow()
+    flow.endpoints = None
+    text = format_flow_summary(flow)
+    assert text.startswith("LAN -> WAN | ? | ")
+    assert "pkts" in text
+
+
+def test_format_flow_summary_without_points_nor_endpoints():
+    """Ni points ni endpoints : les deux champs retombent sur « ? »."""
+    flow = _make_flow()
+    flow.points = []
+    flow.endpoints = None
+    flow.packet_count = {}
+    flow.byte_count = {}
+    assert format_flow_summary(flow) == "? | ? | 0 pkts | 0 o"
+
+
+def test_build_events_by_segment_groups_findings_without_segment_under_question_mark():
+    """Un finding sans `segment` ni `pair` est regroupé sous la clé « ? »."""
+
+    class NoSegmentFinding:
+        pass
+
+    class PairFinding:
+        pair = ("LAN", "WAN")
+
+    orphan_a, orphan_b, paired = NoSegmentFinding(), NoSegmentFinding(), PairFinding()
+    result = build_events_by_segment([orphan_a, paired, orphan_b], None)
+    assert result["?"] == [orphan_a, orphan_b]
+    assert result[str(("LAN", "WAN"))] == [paired]
+    assert set(result) == {"?", str(("LAN", "WAN"))}
