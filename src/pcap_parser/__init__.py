@@ -22,7 +22,6 @@ Organisation en couches (bas en haut) :
                    (+ merge_captures : fusion de fichiers via mergecap, sans decodage
                    + replay_capture : rejeu de trafic via tcpreplay, sans decodage
                    + split_capture : decoupage par duree, nombre de paquets ou taille
-                   + split_by_interface : une capture par interface d'un pcapng (#474)
                    + iter_live_multi : capture simultanee sur plusieurs interfaces)
 
 Utilisation typique :
@@ -46,19 +45,15 @@ Utilisation typique :
 Usage en tant que bibliotheque (issue #446)
 -------------------------------------------
 
-pcap_parser est silencieux par defaut (loguru desactive pour ce package),
-warnings et erreurs compris. Pour voir ses logs, au choix :
+pcap_parser est silencieux par defaut (loguru desactive pour ce package).
+Pour voir ses logs, au choix :
 
     from netcross_core.logging_config import configure_logging
     configure_logging()           # active aussi pcap_parser
 
-    # ou directement via loguru, APRES l'import de pcap_parser (sinon le
-    # disable ci-dessous annule le enable) :
-    import pcap_parser
+    # ou directement via loguru :
     from loguru import logger
     logger.enable("pcap_parser")
-
-Voir docs/journalisation.md.
 """
 
 from loguru import logger as _loguru_logger
@@ -67,7 +62,6 @@ from pcap_parser.capfile import first_timestamp
 from pcap_parser.capinfos_source import CaptureInfo, read_capture_comment, read_capture_info
 from pcap_parser.capture import (
     CaptureRingBuffer,
-    InterfaceSlice,
     TcpreplayError,
     TcpreplayNotFoundError,
     adjust_timestamps,
@@ -77,15 +71,13 @@ from pcap_parser.capture import (
     export_json,
     iter_live,
     iter_live_multi,
-    list_interfaces,
     merge_captures,
     parse_capture,
     parse_captures_parallel,
     replay_capture,
-    split_by_interface,
     split_capture,
 )
-from pcap_parser.ek_source import CaptureAccessError, TsharkError, TsharkNotFoundError
+from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
 from pcap_parser.packet import RawPacket
 from pcap_parser.protocols import (
     compute_mos,
@@ -109,10 +101,8 @@ logger = _loguru_logger.bind(name=__name__)
 _loguru_logger.disable("pcap_parser")
 
 __all__ = [
-    "CaptureAccessError",
     "CaptureInfo",
     "CaptureRingBuffer",
-    "InterfaceSlice",
     "RawPacket",
     "TcpreplayError",
     "TcpreplayNotFoundError",
@@ -134,7 +124,6 @@ __all__ = [
     "is_tunnel",
     "iter_live",
     "iter_live_multi",
-    "list_interfaces",
     "merge_captures",
     "parse_capture",
     "parse_captures_parallel",
@@ -142,6 +131,5 @@ __all__ = [
     "read_capture_info",
     "replay_capture",
     "select_innermost_layers",
-    "split_by_interface",
     "split_capture",
 ]
