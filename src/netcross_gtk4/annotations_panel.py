@@ -221,8 +221,16 @@ class AnnotationsPanel(Gtk.Box):
         return self.store.rows(self.selected_tags) if self.store else []
 
     def _refresh_rows(self) -> None:
-        while (child := self.list_box.get_first_child()) is not None:
-            self.list_box.remove(child)
+        # Seules les lignes sont retirees : le popover du clic droit est aussi
+        # un enfant du list_box (set_parent) tant qu'il n'est pas ferme, et
+        # ListBox.remove() l'ignore -- un « while get_first_child() » ne
+        # terminait alors jamais (suppression depuis le menu contextuel).
+        child = self.list_box.get_first_child()
+        while child is not None:
+            suivant = child.get_next_sibling()
+            if isinstance(child, Gtk.ListBoxRow):
+                self.list_box.remove(child)
+            child = suivant
         rows = self.visible_rows()
         logger.debug("_refresh_rows: {} annotation(s) visible(s)", len(rows))
         if not rows:
