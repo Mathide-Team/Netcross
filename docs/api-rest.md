@@ -65,6 +65,9 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}` | Mesures brutes (copie de chaque champ du `Report`) |
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
+| `GET` | `/analyses/{id}/text` | Rapport texte, identique à la sortie standard de `netcross --triage` (issue #670) |
+| `GET` | `/analyses/{id}/detail.csv` | Détail par flux, identique à `--detail-csv` (issue #670) |
+| `GET` | `/analyses/{id}/pdf` | Rapport PDF, identique à `--pdf-report`, si l'analyse a été lancée avec `pdf=true` (issue #670) |
 | `GET` | `/analyses` | Liste des analyses |
 | `GET` | `/health` | Health check |
 
@@ -209,6 +212,34 @@ clé `meta` vaut `{"Source": "API REST"}` et `_analysis_id` est ajoutée.
 
 Une analyse enregistrée (SQLite) avant cette route n'a pas de rapport
 structuré : la route répond `409`, il faut relancer l'analyse.
+
+### Exports texte, CSV et PDF (issue #670)
+
+```bash
+curl http://localhost:8000/analyses/a1b2c3d4e5f6/text
+curl -OJ http://localhost:8000/analyses/a1b2c3d4e5f6/detail.csv
+```
+
+Le rapport texte et le CSV du détail sont produits à la fin de chaque
+analyse, et conservés avec elle (y compris dans `NETCROSS_DB_PATH`) : ils
+sont identiques à la sortie standard de `netcross --triage` (avec TLS, QUIC
+et sécurité quand ils ont été calculés) et à `--detail-csv`. Avec
+`redact=true`, ils ne contiennent que des adresses anonymisées.
+
+Le PDF est plus coûteux : il n'est produit que si l'analyse a été lancée
+avec `pdf=true`. `topn_charts` (défaut : 5) règle ses graphiques Top-N,
+comme `--topn-charts`. Sans `pdf=true`, la route répond `409`. Il faut
+reportlab, matplotlib et networkx sur le serveur ; sinon, l'analyse
+échoue avec un message qui l'indique.
+
+```bash
+curl -X POST "http://localhost:8000/captures?wait=true" \
+  -F "file=@capture.pcap" -F "label=LAN" -F "pdf=true" -F "topn_charts=10"
+curl -OJ http://localhost:8000/analyses/a1b2c3d4e5f6/pdf
+```
+
+Une analyse enregistrée avant cette version n'a pas d'exports : les trois
+routes répondent `409`, il suffit de la relancer.
 
 ### Récupérer les constats de sécurité
 

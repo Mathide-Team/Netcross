@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-160 modules · 243 classes · 551 fonctions publiques de module.
+161 modules · 244 classes · 557 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -39,8 +39,8 @@ flowchart TD
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"4 imports"| pcap_parser
-    netcross_api -->|"3 imports"| netcross_report
-    netcross_api -->|"10 imports"| netcross_core
+    netcross_api -->|"6 imports"| netcross_report
+    netcross_api -->|"14 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"32 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -3731,6 +3731,7 @@ classDiagram
 |---|---|
 | `netcross_api` | service REST FastAPI pour exposer les analyses Netcross (issue #209). |
 | `netcross_api.app` | application FastAPI pour exposer les analyses Netcross (issues #209, #354, #356). |
+| `netcross_api.exports` | Exports texte, CSV du détail et PDF de l'API REST (issue #670). |
 | `netcross_api.models` | modèles Pydantic pour les requêtes/réponses API (issue #209). |
 | `netcross_api.store` | analyses de l'API : statut, document JSON, persistance. |
 
@@ -3754,6 +3755,8 @@ classDiagram
         +bool detect_duplicates
         +bool exclude_duplicates
         +float duplicate_threshold_ms
+        +bool pdf
+        +int topn_charts
     }
     class AnalysisError {
         <<Exception>>
@@ -3761,14 +3764,28 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, pdf, topn_charts, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, split_interfaces, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, pdf, topn_charts, split_interfaces, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
+        +get_analysis_text(analysis_id, _auth) PlainTextResponse
+        +get_analysis_detail_csv(analysis_id, _auth) Response
+        +get_analysis_pdf(analysis_id, _auth) Response
         +get_security_report(analysis_id, _auth) SecurityReport
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
+    }
+
+    %% ===== netcross_api.exports =====
+    class PdfUnavailableError {
+        <<RuntimeError>>
+    }
+    class mod_netcross_api_exports["netcross_api.exports"] {
+        <<module>>
+        +text_report(report, findings, security_report, tls_findings, quic_findings) str
+        +detail_csv(flows, points) str
+        +pdf_report(report, findings, security_report, tls_findings, quic_findings, meta) bytes
     }
 
     %% ===== netcross_api.models =====
@@ -3846,7 +3863,7 @@ classDiagram
     class AnalysesStore {
         +persistent() bool
         +create_pending(metadata) str
-        +complete(analysis_id, document, summary, report) None
+        +complete(analysis_id, document, summary, report, exports) None
         +fail(analysis_id, error) None
         +get(analysis_id) dict?
         +get_status(analysis_id) str?

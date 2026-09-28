@@ -67,6 +67,8 @@ def test_options_par_defaut_enregistrees():
         "detect_duplicates": False,
         "exclude_duplicates": False,
         "duplicate_threshold_ms": 1.0,
+        "pdf": False,
+        "topn_charts": 5,
     }
 
 
