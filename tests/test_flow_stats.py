@@ -318,3 +318,24 @@ def test_custom_small_packet_threshold():
     flow = result.flows[0]
     # Median = 60 > 50, donc pas interactif, pas transfert, pas obfusque -> normal
     assert flow.classification == CLASSIFICATION_NORMAL
+
+
+# -- Issue #742 : gardes des distributions vides ------------------------------
+
+
+def test_entropie_distribution_vide_et_flux_sans_taille():
+    """Lignes 167-168 : entropie d'un Counter vide = 0.0 ; lignes 177-181 :
+    un flux sans distribution de tailles est classe normal."""
+    from collections import Counter
+
+    from netcross_core.security.flow_stats import (
+        CLASSIFICATION_NORMAL,
+        FlowStat,
+        FlowStatsThresholds,
+        _classify_flow,
+        _shannon_entropy,
+    )
+
+    assert _shannon_entropy(Counter()) == 0.0
+    flux = FlowStat(src="10.0.0.1", dst="10.0.0.2")
+    assert _classify_flow(flux, FlowStatsThresholds()) == CLASSIFICATION_NORMAL
