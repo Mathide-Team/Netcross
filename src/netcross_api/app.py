@@ -1050,3 +1050,224 @@ async def get_analysis_status(analysis_id: str, _auth: None = Depends(_verify_ap
         error=entry["error"],
         summary=entry["summary"],
     )
+
+
+# -- Issue #669 : comparaison baseline/courant -----------------------------
+
+# Store en mémoire pour les comparaisons (séparé du store des analyses).
+_comparisons: dict[str, dict] = {}
+
+_LOSS_THRESHOLD_FORM = Form(
+    default=2.0, gt=0, description="Seuil d'écart de pertes en points de % (défaut: 2.0)"
+)
+_LATENCY_THRESHOLD_FORM = Form(
+    default=5.0, gt=0, description="Seuil d'écart de latence en ms (défaut: 5.0)"
+)
+_TRIAGE_TOP_N_FORM = Form(
+    default=5, ge=1, le=50, description="Nombre de segments au triage (défaut: 5)"
+)
+
+
+_BASELINE_FILES = File(default=..., description="Fichiers pcap baseline")
+_CURRENT_FILES = File(default=..., description="Fichiers pcap courant")
+_BASELINE_LABELS_FORM = Form(default="", description="Étiquettes baseline (séparées par virgule)")
+_CURRENT_LABELS_FORM = Form(default="", description="Étiquettes courant (séparées par virgule)")
+
+
+@app.post(
+    "/comparisons",
+    response_model=AnalysisAccepted,
+    status_code=202,
+    tags=["comparisons"],
+    responses=_UPLOAD_RESPONSES,
+)
+async def create_comparison(
+    baseline_files: list[UploadFile] = _BASELINE_FILES,
+    current_files: list[UploadFile] = _CURRENT_FILES,
+    baseline_labels: str = _BASELINE_LABELS_FORM,
+    current_labels: str = _CURRENT_LABELS_FORM,
+    points_order: str = _POINTS_ORDER_FORM,
+    nat_tolerant: bool = _NAT_TOLERANT_FORM,
+    nat_window_ms: float = _NAT_WINDOW_FORM,
+    tls: bool = _TLS_FORM,
+    quic: bool = _QUIC_FORM,
+    redact: bool = _REDACT_FORM,
+    loss_threshold_pp: float = _LOSS_THRESHOLD_FORM,
+    latency_threshold_ms: float = _LATENCY_THRESHOLD_FORM,
+    triage_top_n: int = _TRIAGE_TOP_N_FORM,
+    wait: bool = _WAIT_QUERY,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Compare deux jeux de captures (baseline vs courant) et remonte les
+    régressions/améliorations (issue #669).
+
+    Équivalent de ``cross-capture-diff --baseline LAN=lan.pcap --current
+    LAN=lan2.pcap``. ``baseline_files`` et ``current_files`` sont des
+    listes de pcap étiquetés (même topologie attendue).
+    """
+    import uuid
+
+    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    if not baseline_files or not current_files:
+        raise HTTPException(status_code=400, detail="baseline_files et current_files sont requis")
+    baseline_label_list = _parse_labels(baseline_labels, len(baseline_files))
+    current_label_list = _parse_labels(current_labels, len(current_files))
+    order_list = _parse_points_order(points_order, baseline_label_list)
+
+    # Sauvegarder les fichiers
+    baseline_captures: list[tuple[str, str]] = []
+    current_captures: list[tuple[str, str]] = []
+    try:
+        for file, label in zip(baseline_files, baseline_label_list, strict=True):
+            if not file.filename:
+                raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
+            baseline_captures.append((label, await _save_upload(file, label)))
+        for file, label in zip(current_files, current_label_list, strict=True):
+            if not file.filename:
+                raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
+            current_captures.append((label, await _save_upload(file, label)))
+    except BaseException:
+        for _label, path in baseline_captures + current_captures:
+            Path(path).unlink(missing_ok=True)
+        raise
+
+    comparison_id = uuid.uuid4().hex[:12]
+    _comparisons[comparison_id] = {"status": PENDING, "result": None, "error": None}
+    status_url = f"/comparisons/{comparison_id}"
+
+    def _run_comparison():
+        try:
+            baseline_doc, baseline_summary, _ = _analyse_captures(
+                baseline_captures, order_list, multi=True, options=options
+            )
+            current_doc, current_summary, _ = _analyse_captures(
+                current_captures, order_list, multi=True, options=options
+            )
+            from netcross_core.baseline_diff import diff_reports
+            from netcross_report.triage import health_score, rank_segments
+
+            # Reconstruire des Report minimaux depuis les documents pour diff_reports
+            # diff_reports attend des Report, mais on peut utiliser les documents JSON
+            # car diff_reports lit les champs via .get() / defaultdict
+            findings = diff_reports(
+                _dict_as_report(baseline_doc),
+                _dict_as_report(current_doc),
+                loss_min_pp=loss_threshold_pp,
+                latency_min_ms=latency_threshold_ms,
+            )
+            ranked = rank_segments(findings)
+            score = health_score(ranked)
+            regression = any(f.severity == "regression" for f in findings)
+            result = {
+                "findings": [_diff_finding_to_dict(f) for f in findings],
+                "triage": [
+                    {"segment": s.segment, "score": s.score, "categories": list(s.categories)}
+                    for s in ranked[:triage_top_n]
+                ],
+                "health_score": score,
+                "regression": regression,
+                "baseline_summary": baseline_summary,
+                "current_summary": current_summary,
+            }
+            _comparisons[comparison_id] = {"status": COMPLETED, "result": result, "error": None}
+        except Exception as exc:
+            logger.exception("comparaison {} : erreur", comparison_id)
+            _comparisons[comparison_id] = {"status": FAILED, "result": None, "error": str(exc)}
+        finally:
+            for _label, path in baseline_captures + current_captures:
+                Path(path).unlink(missing_ok=True)
+
+    if not wait:
+        _get_executor().submit(_run_comparison)
+        accepted = AnalysisAccepted(analysis_id=comparison_id, status=PENDING, status_url=status_url)
+        return JSONResponse(status_code=202, content=accepted.model_dump(), headers={"Location": status_url})
+    await run_in_threadpool(_run_comparison)
+    entry = _comparisons[comparison_id]
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=400, detail=entry["error"])
+    return JSONResponse(status_code=201, content=entry["result"], headers={"Location": status_url})
+
+
+def _dict_as_report(doc: dict):
+    """Convertit un document JSON (report_document) en un objet semblable à
+    un Report pour diff_reports, qui lit les champs par attribut."""
+    from netcross_core.models import Report
+
+    r = Report()
+    r.points = doc.get("points", [])
+    r.pairs = [tuple(p) for p in doc.get("pairs", [])]
+    r.seen_count = doc.get("seen_count", {})
+    r.loss_count = doc.get("loss_count", {})
+    r.off_path_count = doc.get("off_path_count", {})
+    r.latency = {tuple(k.split(" -> ")): v for k, v in doc.get("latency", {}).items()}
+    r.retrans = doc.get("retrans", {})
+    r.retrans_fast = doc.get("retrans_fast", {})
+    r.retrans_rto = doc.get("retrans_rto", {})
+    r.retrans_spurious = doc.get("retrans_spurious", {})
+    r.qos_change = {tuple(k.split(" -> ")): v for k, v in doc.get("qos_change", {}).items()}
+    r.hop_delta = {tuple(k.split(" -> ")): v for k, v in doc.get("hop_delta", {}).items()}
+    r.ttl_unstable = doc.get("ttl_unstable", {})
+    r.frag_count = doc.get("frag_count", {})
+    r.frag_new = {tuple(k.split(" -> ")): v for k, v in doc.get("frag_new", {}).items()}
+    r.security_findings = doc.get("security_findings", [])
+    return r
+
+
+def _diff_finding_to_dict(f) -> dict:
+    """Sérialise un DiffFinding en dict JSON-sérialisable."""
+    return {
+        "severity": f.severity,
+        "category": f.category,
+        "point": f.point,
+        "detail": f.detail,
+    }
+
+
+@app.get("/comparisons/{comparison_id}", tags=["comparisons"], responses=_ANALYSIS_RESPONSES)
+async def get_comparison(
+    comparison_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Récupère le résultat d'une comparaison (écarts, triage, score de santé).
+
+    Issue #669 : ``regression: true`` si au moins un écart est en régression.
+    """
+    entry = _comparisons.get(comparison_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
+    if entry["status"] == PENDING:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    return JSONResponse(content=entry["result"])
+
+
+@app.get(
+    "/comparisons/{comparison_id}/csv",
+    tags=["comparisons"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_comparison_csv(
+    comparison_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """CSV du détail des écarts (équivalent de ``--diff-csv``, issue #669)."""
+    entry = _comparisons.get(comparison_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
+    if entry["status"] == PENDING:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["severity", "category", "point", "detail"])
+    for f in entry["result"]["findings"]:
+        writer.writerow([f["severity"], f["category"], f["point"], f["detail"]])
+    return PlainTextResponse(
+        buf.getvalue(),
+        headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
+    )
