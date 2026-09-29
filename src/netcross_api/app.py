@@ -25,16 +25,19 @@ dépendance optionnelle (extra ``api``).
 
 from __future__ import annotations
 
+import contextlib
 import hmac
+import io
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 
 from netcross_api.models import (
@@ -255,10 +258,13 @@ def _analyse_captures(
     order_list: list[str] | None,
     multi: bool,
     options: ApiAnalysisOptions | None = None,
-) -> tuple[dict, dict, dict]:
+) -> tuple[dict, dict, dict, Any, Any, list, Any, Any, list | None, list | None]:
     """Analyse complète (corrélation, sécurité) ; retourne le document brut,
-    le résumé et le rapport structuré (celui de ``--json-report``, issue
-    #330). Exécuté hors de la boucle asyncio."""
+    le résumé, le rapport structuré (celui de ``--json-report``, issue
+    #330), l'objet Report vivant, les flows, les findings, le
+    security_report_obj et les diagnostics TLS/QUIC — conservés en
+    mémoire pour les exports texte/PDF/CSV de l'issue #670.
+    Exécuté hors de la boucle asyncio."""
     options = options or ApiAnalysisOptions()
     all_packets = []
     for label, path in captures:
@@ -292,12 +298,15 @@ def _analyse_captures(
         tls_findings, quic_findings = _tls_quic_findings(captures, list(report.points), options)
         # Issue #330 : même document que `netcross --json-report
         # --security-report` (constats, triage, score de santé).
+        # Issue #670 : findings calculés une fois, partagés entre le JSON
+        # structuré et les exports texte/PDF/CSV ultérieurs.
+        findings = build_findings(report)
         meta = {"Source": "API REST"}
         if options.redact:
             meta["Anonymisation"] = "adresses IP/MAC anonymisees (redact)"
         structured = build_json_report_document(
             report,
-            findings=build_findings(report),
+            findings=findings,
             security_report=security_report,
             tls_findings=tls_findings,
             quic_findings=quic_findings,
@@ -321,8 +330,19 @@ def _analyse_captures(
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
-    logger.debug("_analyse_captures: retour tuple de 3")
-    return report_document(report), summary, structured
+    logger.debug("_analyse_captures: retour tuple de 10")
+    return (
+        report_document(report),
+        summary,
+        structured,
+        report,
+        flows,
+        findings,
+        security_report,
+        tls_findings,
+        quic_findings,
+        all_packets,
+    )
 
 
 def _run_job(
@@ -334,7 +354,18 @@ def _run_job(
 ) -> None:
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
-        document, summary, structured = _analyse_captures(captures, order_list, multi, options)
+        (
+            document,
+            summary,
+            structured,
+            report_obj,
+            flows,
+            findings,
+            security_report_obj,
+            tls_findings,
+            quic_findings,
+            _all_packets,
+        ) = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
         store.fail(analysis_id, str(exc))
@@ -342,7 +373,18 @@ def _run_job(
         logger.exception("analyse {} : erreur interne", analysis_id)
         store.fail(analysis_id, f"Erreur interne: {exc}")
     else:
-        store.complete(analysis_id, document, summary, report=structured)
+        store.complete(
+            analysis_id,
+            document,
+            summary,
+            report=structured,
+            report_obj=report_obj,
+            flows=flows,
+            findings=findings,
+            security_report_obj=security_report_obj,
+            tls_findings=tls_findings,
+            quic_findings=quic_findings,
+        )
     finally:
         for _label, path in captures:
             Path(path).unlink(missing_ok=True)
@@ -673,6 +715,140 @@ async def get_security_report(analysis_id: str, _auth: None = Depends(_verify_ap
         lateral_movement_events=doc.get("lateral_movement_events", []),
         dga_alerts=doc.get("dga_alerts", []),
         fast_flux_alerts=doc.get("fast_flux_alerts", []),
+    )
+
+
+# -- Issue #670 : exports texte, PDF et CSV du détail -----------------------
+
+
+def _live_objects(analysis_id: str) -> dict:
+    """Entrée d'une analyse terminée, avec garantie que les objets vivants
+    (report_obj, flows, findings) sont disponibles. 409 si l'analyse a été
+    relue depuis SQLite après un redémarrage : ces objets ne sont pas
+    persistés (voir store.complete)."""
+    entry = _completed_entry(analysis_id)
+    if entry.get("report_obj") is None:
+        logger.debug("_live_objects: refus, HTTPException")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Analyse {analysis_id} sans objets vivants en memoire "
+            "(relue depuis SQLite ou version anterieure) : la relancer pour generer cet export",
+        )
+    return entry
+
+
+@app.get(
+    "/analyses/{analysis_id}/text",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/plain": {}}}},
+)
+async def get_analysis_text(
+    analysis_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Rapport texte d'une analyse terminée (équivalent de la sortie console
+    de la CLI, issue #670).
+
+    409 si l'analyse a été relue depuis SQLite après un redémarrage
+    (les objets vivants nécessaires ne sont pas persistés).
+    """
+    logger.debug("get_analysis_text(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        from netcross_core.report_text import print_report
+
+        print_report(report)
+    logger.debug("get_analysis_text: retour PlainTextResponse(…)")
+    return PlainTextResponse(buf.getvalue())
+
+
+@app.get(
+    "/analyses/{analysis_id}/pdf",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"application/pdf": {}}}},
+)
+async def get_analysis_pdf(
+    analysis_id: str,
+    topn: int = Query(default=5, ge=1, le=50, description="Nombre de catégories par graphique Top-N"),
+    _auth: None = Depends(_verify_api_key),
+) -> StreamingResponse:
+    """Rapport PDF d'une analyse terminée (équivalent de ``--pdf-report``,
+    issue #670).
+
+    ``topn`` contrôle le nombre de catégories affichées par graphique
+    temporel Top-N (équivalent de ``--topn-charts``, défaut 5).
+
+    409 si l'analyse a été relue depuis SQLite après un redémarrage.
+    """
+    logger.debug("get_analysis_pdf(analysis_id={}, topn={})", analysis_id, topn)
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    findings = entry.get("findings")
+    security_report = entry.get("security_report_obj")
+    tls_findings = entry.get("tls_findings")
+    quic_findings = entry.get("quic_findings")
+
+    from netcross_report.pdf import generate_pdf
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)  # noqa: SIM115
+    try:
+        with tmp:
+            # Le paramètre topn est accepté pour la parité avec --topn-charts
+            # mais le PDF utilise le topn fixé au moment de analyse() (défaut 5).
+            generate_pdf(
+                report,
+                tmp.name,
+                findings=findings,
+                security_report=security_report,
+                tls_findings=tls_findings,
+                quic_findings=quic_findings,
+                meta={"Source": "API REST"},
+            )
+        data = Path(tmp.name).read_bytes()
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
+    logger.debug("get_analysis_pdf: retour StreamingResponse(…)")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}.pdf"'},
+    )
+
+
+@app.get(
+    "/analyses/{analysis_id}/detail.csv",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_analysis_csv(
+    analysis_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """CSV du détail par flux d'une analyse terminée (équivalent de
+    ``--detail-csv``, issue #670).
+
+    409 si l'analyse a été relue depuis SQLite après un redémarrage.
+    """
+    logger.debug("get_analysis_csv(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    flows = entry.get("flows")
+
+    from netcross_core.report_text import write_detail_csv
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)  # noqa: SIM115
+    try:
+        with tmp:
+            write_detail_csv(tmp.name, flows, report.points)
+        data = Path(tmp.name).read_text(encoding="utf-8")
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
+    logger.debug("get_analysis_csv: retour PlainTextResponse(…)")
+    return PlainTextResponse(
+        data,
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-detail.csv"'},
     )
 
 

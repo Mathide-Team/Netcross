@@ -117,6 +117,12 @@ class AnalysesStore:
             "report": None,
             "summary": None,
             "error": None,
+            "report_obj": None,
+            "flows": None,
+            "findings": None,
+            "security_report_obj": None,
+            "tls_findings": None,
+            "quic_findings": None,
         }
         with self._lock:
             self._store[analysis_id] = entry
@@ -124,10 +130,44 @@ class AnalysesStore:
         logger.debug("AnalysesStore.create_pending: retour analysis_id={}", summarize(analysis_id, "analysis_id"))
         return analysis_id
 
-    def complete(self, analysis_id: str, document: dict, summary: dict, report: dict | None = None) -> None:
+    def complete(
+        self,
+        analysis_id: str,
+        document: dict,
+        summary: dict,
+        report: dict | None = None,
+        report_obj: Any = None,
+        flows: Any = None,
+        findings: Any = None,
+        security_report_obj: Any = None,
+        tls_findings: Any = None,
+        quic_findings: Any = None,
+    ) -> None:
         """Passe l'analyse en ``completed`` avec son document brut, son
-        résumé et son rapport structuré (celui de ``--json-report``)."""
-        self._update(analysis_id, status=COMPLETED, document=document, report=report, summary=summary, error=None)
+        résumé et son rapport structuré (celui de ``--json-report``).
+
+        Issue #670 : ``report_obj``, ``flows``, ``findings``,
+        ``security_report_obj``, ``tls_findings`` et ``quic_findings`` sont
+        les objets Python vivants conservés en mémoire pour générer les
+        exports texte, PDF et CSV à la demande. Ils ne sont pas persistés
+        en SQLite (ce sont des objets complexes non sérialisables tels
+        quels) : une analyse relue depuis SQLite après redémarrage ne
+        pourra pas les régénérer (409, comme une analyse antérieure à
+        #330 sans rapport structuré)."""
+        self._update(
+            analysis_id,
+            status=COMPLETED,
+            document=document,
+            report=report,
+            summary=summary,
+            error=None,
+            report_obj=report_obj,
+            flows=flows,
+            findings=findings,
+            security_report_obj=security_report_obj,
+            tls_findings=tls_findings,
+            quic_findings=quic_findings,
+        )
         logger.debug("AnalysesStore.complete: fin")
 
     def fail(self, analysis_id: str, error: str) -> None:
@@ -206,6 +246,15 @@ class AnalysesStore:
                 "report": json.loads(structured_json) if structured_json else None,
                 "summary": json.loads(summary_json) if summary_json else None,
                 "error": error,
+                # Issue #670 : les objets vivants ne sont pas persistés en
+                # SQLite. Les exports texte/PDF/CSV nécessitent une analyse
+                # en mémoire (relancer si besoin).
+                "report_obj": None,
+                "flows": None,
+                "findings": None,
+                "security_report_obj": None,
+                "tls_findings": None,
+                "quic_findings": None,
             }
             if entry["status"] == PENDING:
                 entry.update(status=FAILED, error=ERREUR_INTERROMPUE)
