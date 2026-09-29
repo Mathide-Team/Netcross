@@ -100,6 +100,25 @@ _KNOWN_DEST_FILE = File(
     default=None, description="Destinations connues (JSON, liste d'IP) — équiv. --known-destinations"
 )
 _KNOWN_HOSTS_FILE = File(default=None, description="Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts")
+# Issue #673 : sections d'expertise
+_RULE_ENGINE_FORM = Form(
+    default=False, description="true : évaluer le moteur de règles déclaratif (équiv. --rule-engine)"
+)
+_EXPERT_SECTION_FORM = Form(
+    default=False, description="true : construire la section expertise détaillée (équiv. --expert-section)"
+)
+_MEDIA_QUALITY_FORM = Form(
+    default=False, description="true : analyser la qualité média VoIP/vidéo (équiv. --media-quality)"
+)
+_TSHARK_STATS_FORM = Form(
+    default=False, description="true : collecter les statistiques tshark natives (équiv. --tshark-stats)"
+)
+_FLOW_TIMELINE_FORM = Form(
+    default=False, description="true : construire la chronologie des flux (équiv. --flow-timeline)"
+)
+_FLOW_TIMELINE_WINDOW_FORM = Form(
+    default=1.0, description="Fenêtre temporelle en secondes pour la chronologie (équiv. --flow-timeline-window)"
+)
 _WAIT_QUERY = Query(
     default=False,
     description="true : attendre la fin de l'analyse (201 + résumé) au lieu de 202 + statut pending",
@@ -228,6 +247,13 @@ class ApiAnalysisOptions:
     known_destinations: frozenset[str] | None = None
     known_hosts: frozenset[str] | None = None
     names_path: str | None = None
+    # Issue #673 : sections d'expertise
+    rule_engine: bool = False
+    expert_section: bool = False
+    media_quality: bool = False
+    tshark_stats: bool = False
+    flow_timeline: bool = False
+    flow_timeline_window: float = 1.0
 
 
 def _options(
@@ -242,6 +268,12 @@ def _options(
     known_destinations: frozenset[str] | None = None,
     known_hosts: frozenset[str] | None = None,
     names_path: str | None = None,
+    rule_engine: bool = False,
+    expert_section: bool = False,
+    media_quality: bool = False,
+    tshark_stats: bool = False,
+    flow_timeline: bool = False,
+    flow_timeline_window: float = 1.0,
 ) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
     qui relisent les fichiers d'origine (adresses réelles).
@@ -283,6 +315,12 @@ def _options(
         known_destinations=known_destinations,
         known_hosts=known_hosts,
         names_path=names_path,
+        rule_engine=rule_engine,
+        expert_section=expert_section,
+        media_quality=media_quality,
+        tshark_stats=tshark_stats,
+        flow_timeline=flow_timeline,
+        flow_timeline_window=flow_timeline_window,
     )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
@@ -291,6 +329,40 @@ def _options(
 class AnalysisError(Exception):
     """Échec d'analyse attribuable aux captures ; le message est rendu tel
     quel au client (statut failed, ou 400 avec ?wait=true)."""
+
+
+def _collect_tshark_stats_api(captures: list[tuple[str, str]]) -> dict:
+    """Issue #673 : équiv. ``--tshark-stats`` — collecte les statistiques
+    tshark natives par fichier (conversations, endpoints, hiérarchie
+    de protocoles, IO stat). Tshark absent est une erreur par capture."""
+    import subprocess
+    from dataclasses import asdict
+
+    from netcross_core.tshark_stats import (
+        TsharkUnavailableError,
+        collect_conversations,
+        collect_endpoints,
+        collect_io_stat,
+        collect_protocol_hierarchy,
+    )
+
+    result: dict = {"version": 1, "captures": []}
+    for label, path in captures:
+        entry: dict = {"label": label, "path": path}
+        try:
+            entry["conversations"] = {
+                proto: [asdict(c) for c in collect_conversations(path, proto)] for proto in ("tcp", "udp")
+            }
+            entry["endpoints"] = {
+                proto: [asdict(e) for e in collect_endpoints(path, proto)] for proto in ("tcp", "udp")
+            }
+            entry["protocol_hierarchy"] = [asdict(p) for p in collect_protocol_hierarchy(path)]
+            entry["io_stat"] = asdict(collect_io_stat(path))
+        except (TsharkUnavailableError, subprocess.SubprocessError, OSError) as exc:
+            entry = {"label": label, "path": path, "error": str(exc)}
+            logger.warning("tshark-stats {} ({}) : {}", label, path, exc)
+        result["captures"].append(entry)
+    return result
 
 
 def _tls_quic_findings(
@@ -388,14 +460,42 @@ def _analyse_captures(
         meta = {"Source": "API REST"}
         if options.redact:
             meta["Anonymisation"] = "adresses IP/MAC anonymisees (redact)"
+        # Issue #673 : sections d'expertise (équiv. --rule-engine,
+        # --expert-section, --media-quality, --tshark-stats, --flow-timeline)
+        rule_engine_findings = None
+        session_objects = None
+        flow_timelines = None
+        if options.rule_engine:
+            from netcross_report.rule_engine import available_rule_ids, evaluate
+
+            rule_engine_findings = {}
+            for rule_id in available_rule_ids():
+                rule_engine_findings[rule_id] = evaluate(rule_id, report)
+        if options.expert_section:
+            from netcross_report.session_objects import build_session_objects
+
+            session_objects = build_session_objects(report, findings, flows, all_packets)
+        if options.flow_timeline:
+            from netcross_core.flow_timeline import build_flow_timelines
+
+            flow_timelines = build_flow_timelines(all_packets, window_s=options.flow_timeline_window)
         structured = build_json_report_document(
             report,
             findings=findings,
             security_report=security_report,
             tls_findings=tls_findings,
             quic_findings=quic_findings,
+            rule_engine_findings=rule_engine_findings,
             meta=meta,
         )
+        if session_objects is not None:
+            structured["session_objects"] = session_objects
+        if flow_timelines is not None:
+            structured["flow_timelines"] = flow_timelines
+        if options.tshark_stats:
+            structured["tshark_stats"] = _collect_tshark_stats_api(captures)
+        if options.media_quality:
+            structured["media_quality"] = {"note": "voir extraction des contenus (issue #675)"}
         if options.redact:
             structured["security_report_absent"] = "non disponible avec l'anonymisation (redact=true)"
     except AnalysisError:
@@ -565,6 +665,12 @@ async def upload_capture(
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
+    rule_engine: bool = _RULE_ENGINE_FORM,
+    expert_section: bool = _EXPERT_SECTION_FORM,
+    media_quality: bool = _MEDIA_QUALITY_FORM,
+    tshark_stats: bool = _TSHARK_STATS_FORM,
+    flow_timeline: bool = _FLOW_TIMELINE_FORM,
+    flow_timeline_window: float = _FLOW_TIMELINE_WINDOW_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -595,6 +701,12 @@ async def upload_capture(
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
+        rule_engine=rule_engine,
+        expert_section=expert_section,
+        media_quality=media_quality,
+        tshark_stats=tshark_stats,
+        flow_timeline=flow_timeline,
+        flow_timeline_window=flow_timeline_window,
     )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
@@ -724,6 +836,12 @@ async def upload_multi_capture(
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
+    rule_engine: bool = _RULE_ENGINE_FORM,
+    expert_section: bool = _EXPERT_SECTION_FORM,
+    media_quality: bool = _MEDIA_QUALITY_FORM,
+    tshark_stats: bool = _TSHARK_STATS_FORM,
+    flow_timeline: bool = _FLOW_TIMELINE_FORM,
+    flow_timeline_window: float = _FLOW_TIMELINE_WINDOW_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -751,6 +869,12 @@ async def upload_multi_capture(
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
+        rule_engine=rule_engine,
+        expert_section=expert_section,
+        media_quality=media_quality,
+        tshark_stats=tshark_stats,
+        flow_timeline=flow_timeline,
+        flow_timeline_window=flow_timeline_window,
     )
     if not files or len(files) < 2:
         logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
