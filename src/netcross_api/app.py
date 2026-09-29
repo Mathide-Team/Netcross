@@ -113,6 +113,14 @@ _MEDIA_QUALITY_FORM = Form(
 _TSHARK_STATS_FORM = Form(
     default=False, description="true : collecter les statistiques tshark natives (équiv. --tshark-stats)"
 )
+
+# -- Issue #675 : singletons pour les parametres de formulaire --
+_EXTRACT_FILES = File(default=..., description="Fichiers pcap a extraire")
+_EXTRACT_LABELS_FORM = Form(default="", description="Etiquettes separees par virgule")
+_EXTRACT_KINDS_FORM = Form(default="", description="Types: audio,video,documents")
+_NETFLOW_FILES = File(default=..., description="Fichiers NetFlow v5")
+_NETFLOW_EXPORTERS_FORM = Form(default="", description="Exportateurs: NOM=FICHIER ou FICHIER")
+_NETFLOW_TOP_FORM = Form(default=10, ge=1, le=100, description="Taille des classements")
 _FLOW_TIMELINE_FORM = Form(
     default=False, description="true : construire la chronologie des flux (équiv. --flow-timeline)"
 )
@@ -549,7 +557,7 @@ def _run_job(
             security_report_obj,
             tls_findings,
             quic_findings,
-            _all_packets,
+            all_packets,
         ) = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
@@ -569,6 +577,7 @@ def _run_job(
             security_report_obj=security_report_obj,
             tls_findings=tls_findings,
             quic_findings=quic_findings,
+            all_packets=all_packets,
         )
     finally:
         for _label, path in captures:
@@ -1145,6 +1154,245 @@ async def get_analysis_csv(
         data,
         headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-detail.csv"'},
     )
+
+
+# -- Issue #675 : recherche forensique, extraction, comparaison, NetFlow --------
+
+
+@app.post(
+    "/analyses/{analysis_id}/search",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 409: {"model": ErrorResponse}},
+)
+async def forensic_search(
+    analysis_id: str,
+    body: dict,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Recherche forensique transversale sur une analyse terminee (issue #675,
+    equivalent de ``--forensic-search`` et ``--search-*``).
+
+    Critères en JSON : ``text``, ``point``, ``protocol``, ``address``,
+    ``port``, ``time_start``, ``time_end``, ``field``, ``field_value``.
+
+    409 si l'analyse a ete relue depuis SQLite apres un redemarrage.
+    """
+    logger.debug("forensic_search(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    all_packets = entry.get("all_packets") or []
+    flows = entry.get("flows")
+    from netcross_core.forensic_search import ForensicSearchIndex, ForensicSearchQuery
+
+    index = ForensicSearchIndex(all_packets, flows=flows)
+    allowed = {
+        "text",
+        "point",
+        "protocol",
+        "address",
+        "port",
+        "time_start",
+        "time_end",
+        "field",
+        "field_value",
+    }
+    params = {k: v for k, v in body.items() if k in allowed}
+    query = ForensicSearchQuery(**params)
+    results = index.search(query)
+    payload = {
+        "analysis_id": analysis_id,
+        "query": params,
+        "results": [
+            {
+                "kind": r.kind,
+                "point": r.point,
+                "frame_number": r.frame_number,
+                "ts": r.ts,
+                "matched_fields": list(r.matched_fields),
+                "snippet": r.snippet,
+            }
+            for r in results
+        ],
+        "total": len(results),
+    }
+    logger.debug("forensic_search: retour {} resultat(s)", len(results))
+    return JSONResponse(payload)
+
+
+@app.post(
+    "/analyses/{analysis_id}/extract",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 409: {"model": ErrorResponse}, 200: {"content": {"application/zip": {}}}},
+)
+async def extract_contents(
+    analysis_id: str,
+    files: list[UploadFile] = _EXTRACT_FILES,
+    labels: str = _EXTRACT_LABELS_FORM,
+    kinds: str = _EXTRACT_KINDS_FORM,
+    _auth: None = Depends(_verify_api_key),
+) -> StreamingResponse:
+    """Extraction des contenus (audio, video, documents) d'une analyse (issue
+    #675, equivalent de ``--extract-contents`` et ``--extract-kinds``).
+
+    Retourne une archive ZIP contenant les fichiers extraits et un manifeste.
+    Les fichiers pcap sont fournis dans la requete (les captures originales
+    sont supprimees apres analyse).
+    """
+    logger.debug("extract_contents(analysis_id={})", analysis_id)
+    _completed_entry(analysis_id)
+    from netcross_core.extract.contents import parse_kinds, run_extraction
+
+    try:
+        kind_list = parse_kinds(kinds or None)
+    except ValueError as exc:
+        logger.warning("extract_contents: kinds invalide ({})", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    import json as _json
+    import zipfile
+
+    saved: list[tuple[str, str]] = []
+    tmpdir = tempfile.mkdtemp(prefix="netcross-api-extract-")
+    try:
+        label_list = _parse_labels(labels, len(files))
+        for i, upload in enumerate(files):
+            path = os.path.join(tmpdir, f"capture-{i}.pcap")
+            content = await upload.read()
+            Path(path).write_bytes(content)
+            saved.append((label_list[i], path))
+        out_dir = os.path.join(tmpdir, "extracted")
+        result = run_extraction(saved, out_dir=out_dir, kinds=kind_list)
+        zip_path = os.path.join(tmpdir, f"netcross-{analysis_id}-extract.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            extracted_root = Path(out_dir)
+            if extracted_root.is_dir():
+                for p in extracted_root.rglob("*"):
+                    if p.is_file() and p.name != "manifest.json":
+                        zf.write(p, p.relative_to(extracted_root))
+            zf.writestr("manifest.json", _json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        data = Path(zip_path).read_bytes()
+    finally:
+        import shutil
+
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    logger.debug("extract_contents: retour StreamingResponse(zip)")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-extract.zip"'},
+    )
+
+
+@app.post(
+    "/analyses/{analysis_id}/client-diff",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 409: {"model": ErrorResponse}, 400: {"model": ErrorResponse}},
+)
+async def client_comparison(
+    analysis_id: str,
+    body: dict,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Comparaison de postes clients sur une analyse terminee (issue #675,
+    equivalent de ``--client-group``, ``--client-reference``).
+
+    Corps JSON : ``groups`` (dict nom -> liste d'IP), ``reference`` (str, optionnel).
+    """
+    logger.debug("client_comparison(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    all_packets = entry.get("all_packets") or []
+    groups = body.get("groups")
+    if not groups or len(groups) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Au moins 2 groupes de clients sont requis pour la comparaison",
+        )
+    reference = body.get("reference")
+    if reference and reference not in groups:
+        raise HTTPException(
+            status_code=400,
+            detail=f"reference {reference!r} ne correspond a aucun groupe fourni",
+        )
+    from netcross_core.client_diff import compare_clients
+
+    client_groups: dict[str, set[str]] = {}
+    for name, ips in groups.items():
+        client_groups[name] = set(ips)
+    comparison = compare_clients(all_packets, client_groups, reference=reference)
+    payload = {
+        "analysis_id": analysis_id,
+        "reference": comparison.reference,
+        "clients": [
+            {
+                "name": name,
+                "ips": list(cr.ips),
+                "packet_count": cr.packet_count,
+                "signature": {
+                    "dhcp_vendor_classes": dict(cr.signature.dhcp_vendor_classes),
+                    "sip_user_agents": dict(cr.signature.sip_user_agents),
+                },
+            }
+            for name, cr in comparison.clients.items()
+        ],
+        "diffs": {
+            name: [
+                {
+                    "severity": d.severity,
+                    "category": d.category,
+                    "segment": d.segment,
+                    "message": d.message,
+                    "before": d.before,
+                    "after": d.after,
+                }
+                for d in findings
+            ]
+            for name, findings in comparison.diffs.items()
+        },
+    }
+    logger.debug("client_comparison: retour JSONResponse")
+    return JSONResponse(payload)
+
+
+@app.post(
+    "/analyses/{analysis_id}/netflow",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 400: {"model": ErrorResponse}},
+)
+async def netflow_summary(
+    analysis_id: str,
+    files: list[UploadFile] = _NETFLOW_FILES,
+    exporters: str = _NETFLOW_EXPORTERS_FORM,
+    top: int = _NETFLOW_TOP_FORM,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Resume d'exports NetFlow v5 (issue #675, equivalent de ``--netflow``
+    et ``--netflow-top``).
+
+    Les fichiers NetFlow sont fournis dans la requete. Retourne le resume
+    agrege (top flux, protocoles, destinations...).
+    """
+    logger.debug("netflow_summary(analysis_id={})", analysis_id)
+    _completed_entry(analysis_id)
+    from netcross_core.netflow import iter_netflow_v5_file, summarize_flow_records
+
+    records: list = []
+    exporter_list = [s.strip() for s in exporters.split(",") if s.strip()] if exporters else []
+    for i, upload in enumerate(files):
+        exporter = exporter_list[i] if i < len(exporter_list) else None
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".netflow")  # noqa: SIM115
+        try:
+            content = await upload.read()
+            tmp.write(content)
+            tmp.close()
+            records.extend(iter_netflow_v5_file(tmp.name, exporter=exporter))
+        except Exception as exc:
+            logger.warning("netflow_summary: erreur lecture NetFlow {} ({})", upload.filename, exc)
+            raise HTTPException(status_code=400, detail=f"NetFlow {upload.filename}: {exc}") from exc
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+    summary = summarize_flow_records(records, top=top)
+    payload = {"analysis_id": analysis_id, "netflow": summary, "flow_count": len(records)}
+    logger.debug("netflow_summary: retour JSONResponse")
+    return JSONResponse(payload)
 
 
 @app.get("/analyses", tags=["analyses"], responses={401: {"model": ErrorResponse}})

@@ -506,6 +506,265 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/search:
+    post:
+      tags:
+      - analyses
+      summary: Forensic Search
+      description: 'Recherche forensique transversale sur une analyse terminee (issue
+        #675,
+
+        equivalent de ``--forensic-search`` et ``--search-*``).
+
+
+        Critères en JSON : ``text``, ``point``, ``protocol``, ``address``,
+
+        ``port``, ``time_start``, ``time_end``, ``field``, ``field_value``.
+
+
+        409 si l''analyse a ete relue depuis SQLite apres un redemarrage.'
+      operationId: forensic_search_analyses__analysis_id__search_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/extract:
+    post:
+      tags:
+      - analyses
+      summary: Extract Contents
+      description: 'Extraction des contenus (audio, video, documents) d''une analyse
+        (issue
+
+        #675, equivalent de ``--extract-contents`` et ``--extract-kinds``).
+
+
+        Retourne une archive ZIP contenant les fichiers extraits et un manifeste.
+
+        Les fichiers pcap sont fournis dans la requete (les captures originales
+
+        sont supprimees apres analyse).'
+      operationId: extract_contents_analyses__analysis_id__extract_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_extract_contents_analyses__analysis_id__extract_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/zip: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/client-diff:
+    post:
+      tags:
+      - analyses
+      summary: Client Comparison
+      description: 'Comparaison de postes clients sur une analyse terminee (issue
+        #675,
+
+        equivalent de ``--client-group``, ``--client-reference``).
+
+
+        Corps JSON : ``groups`` (dict nom -> liste d''IP), ``reference`` (str, optionnel).'
+      operationId: client_comparison_analyses__analysis_id__client_diff_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/netflow:
+    post:
+      tags:
+      - analyses
+      summary: Netflow Summary
+      description: 'Resume d''exports NetFlow v5 (issue #675, equivalent de ``--netflow``
+
+        et ``--netflow-top``).
+
+
+        Les fichiers NetFlow sont fournis dans la requete. Retourne le resume
+
+        agrege (top flux, protocoles, destinations...).'
+      operationId: netflow_summary_analyses__analysis_id__netflow_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_netflow_summary_analyses__analysis_id__netflow_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses:
     get:
       tags:
@@ -907,6 +1166,54 @@ components:
       - baseline_files
       - current_files
       title: Body_create_comparison_comparisons_post
+    Body_extract_contents_analyses__analysis_id__extract_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+          description: Fichiers pcap a extraire
+        labels:
+          type: string
+          title: Labels
+          description: Etiquettes separees par virgule
+          default: ''
+        kinds:
+          type: string
+          title: Kinds
+          description: 'Types: audio,video,documents'
+          default: ''
+      type: object
+      required:
+      - files
+      title: Body_extract_contents_analyses__analysis_id__extract_post
+    Body_netflow_summary_analyses__analysis_id__netflow_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+          description: Fichiers NetFlow v5
+        exporters:
+          type: string
+          title: Exporters
+          description: 'Exportateurs: NOM=FICHIER ou FICHIER'
+          default: ''
+        top:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Top
+          description: Taille des classements
+          default: 10
+      type: object
+      required:
+      - files
+      title: Body_netflow_summary_analyses__analysis_id__netflow_post
     Body_upload_capture_captures_post:
       properties:
         file:

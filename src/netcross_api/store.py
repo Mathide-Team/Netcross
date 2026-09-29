@@ -123,6 +123,7 @@ class AnalysesStore:
             "security_report_obj": None,
             "tls_findings": None,
             "quic_findings": None,
+            "all_packets": None,
         }
         with self._lock:
             self._store[analysis_id] = entry
@@ -142,6 +143,7 @@ class AnalysesStore:
         security_report_obj: Any = None,
         tls_findings: Any = None,
         quic_findings: Any = None,
+        all_packets: Any = None,
     ) -> None:
         """Passe l'analyse en ``completed`` avec son document brut, son
         résumé et son rapport structuré (celui de ``--json-report``).
@@ -167,6 +169,7 @@ class AnalysesStore:
             security_report_obj=security_report_obj,
             tls_findings=tls_findings,
             quic_findings=quic_findings,
+            all_packets=all_packets,
         )
         logger.debug("AnalysesStore.complete: fin")
 
