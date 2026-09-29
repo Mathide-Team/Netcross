@@ -470,7 +470,7 @@ def _apply_split_interfaces(
             expanded.append((label, path))
             continue
         logger.debug("split_interfaces : {} capture(s) dans {}", len(slices), path)
-        expanded.extend((f"{label}:{s.name}", s.path) for s in slices)
+        expanded.extend((f"{label}:{s.name}", s.path) for s in slices if s.path)
     return expanded
 
 
