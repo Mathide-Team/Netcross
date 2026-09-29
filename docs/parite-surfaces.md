@@ -220,7 +220,10 @@ son équivalent CLI ou API.
 
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
-`quic`, `redact`.
+`quic`, `redact`, `max_packets`, `sample`, `test_net_external`, `names`,
+`known_destinations`, `known_hosts` (issue #672), `rule_engine`,
+`expert_section`, `media_quality`, `tshark_stats`, `flow_timeline`,
+`flow_timeline_window` (issue #673).
 | `GET /analyses` | Liste des analyses |
 | `GET /analyses/{analysis_id}` | Mesures brutes (voir plus haut) |
 | `GET /analyses/{analysis_id}/report` | Rapport structuré, identique à `--json-report` |

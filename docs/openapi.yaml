@@ -987,6 +987,37 @@ components:
           - type: 'null'
           title: Known Hosts
           description: Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts
+        rule_engine:
+          type: boolean
+          title: Rule Engine
+          description: 'true : évaluer le moteur de règles déclaratif (équiv. --rule-engine)'
+          default: false
+        expert_section:
+          type: boolean
+          title: Expert Section
+          description: 'true : construire la section expertise détaillée (équiv. --expert-section)'
+          default: false
+        media_quality:
+          type: boolean
+          title: Media Quality
+          description: 'true : analyser la qualité média VoIP/vidéo (équiv. --media-quality)'
+          default: false
+        tshark_stats:
+          type: boolean
+          title: Tshark Stats
+          description: 'true : collecter les statistiques tshark natives (équiv. --tshark-stats)'
+          default: false
+        flow_timeline:
+          type: boolean
+          title: Flow Timeline
+          description: 'true : construire la chronologie des flux (équiv. --flow-timeline)'
+          default: false
+        flow_timeline_window:
+          type: number
+          title: Flow Timeline Window
+          description: Fenêtre temporelle en secondes pour la chronologie (équiv.
+            --flow-timeline-window)
+          default: 1.0
       type: object
       required:
       - file
@@ -1078,6 +1109,37 @@ components:
           - type: 'null'
           title: Known Hosts
           description: Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts
+        rule_engine:
+          type: boolean
+          title: Rule Engine
+          description: 'true : évaluer le moteur de règles déclaratif (équiv. --rule-engine)'
+          default: false
+        expert_section:
+          type: boolean
+          title: Expert Section
+          description: 'true : construire la section expertise détaillée (équiv. --expert-section)'
+          default: false
+        media_quality:
+          type: boolean
+          title: Media Quality
+          description: 'true : analyser la qualité média VoIP/vidéo (équiv. --media-quality)'
+          default: false
+        tshark_stats:
+          type: boolean
+          title: Tshark Stats
+          description: 'true : collecter les statistiques tshark natives (équiv. --tshark-stats)'
+          default: false
+        flow_timeline:
+          type: boolean
+          title: Flow Timeline
+          description: 'true : construire la chronologie des flux (équiv. --flow-timeline)'
+          default: false
+        flow_timeline_window:
+          type: number
+          title: Flow Timeline Window
+          description: Fenêtre temporelle en secondes pour la chronologie (équiv.
+            --flow-timeline-window)
+          default: 1.0
       type: object
       required:
       - files
