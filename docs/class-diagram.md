@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-161 modules · 243 classes · 556 fonctions publiques de module.
+161 modules · 243 classes · 559 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -39,8 +39,8 @@ flowchart TD
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
-    netcross_api -->|"4 imports"| netcross_report
-    netcross_api -->|"12 imports"| netcross_core
+    netcross_api -->|"5 imports"| netcross_report
+    netcross_api -->|"14 imports"| netcross_core
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
@@ -3780,6 +3780,9 @@ classDiagram
         +get_analysis_csv(analysis_id, _auth) PlainTextResponse
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
+        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, wait, _auth) JSONResponse
+        +get_comparison(comparison_id, _auth) JSONResponse
+        +get_comparison_csv(comparison_id, _auth) PlainTextResponse
     }
 
     %% ===== netcross_api.models =====

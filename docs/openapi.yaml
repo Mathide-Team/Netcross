@@ -574,6 +574,178 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /comparisons:
+    post:
+      tags:
+      - comparisons
+      summary: Create Comparison
+      description: 'Compare deux jeux de captures (baseline vs courant) et remonte
+        les
+
+        régressions/améliorations (issue #669).
+
+
+        Équivalent de ``cross-capture-diff --baseline LAN=lan.pcap --current
+
+        LAN=lan2.pcap``. ``baseline_files`` et ``current_files`` sont des
+
+        listes de pcap étiquetés (même topologie attendue).'
+      operationId: create_comparison_comparisons_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: wait
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: 'true : attendre la fin de l''analyse (201 + résumé) au lieu
+            de 202 + statut pending'
+          default: false
+          title: Wait
+        description: 'true : attendre la fin de l''analyse (201 + résumé) au lieu
+          de 202 + statut pending'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_create_comparison_comparisons_post'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisAccepted'
+        '201':
+          description: Analyse terminée (?wait=true)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisSummary'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Content Too Large
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /comparisons/{comparison_id}:
+    get:
+      tags:
+      - comparisons
+      summary: Get Comparison
+      description: 'Récupère le résultat d''une comparaison (écarts, triage, score
+        de santé).
+
+
+        Issue #669 : ``regression: true`` si au moins un écart est en régression.'
+      operationId: get_comparison_comparisons__comparison_id__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: comparison_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Comparison Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /comparisons/{comparison_id}/csv:
+    get:
+      tags:
+      - comparisons
+      summary: Get Comparison Csv
+      description: 'CSV du détail des écarts (équivalent de ``--diff-csv``, issue
+        #669).'
+      operationId: get_comparison_csv_comparisons__comparison_id__csv_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: comparison_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Comparison Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AnalysisAccepted:
@@ -651,6 +823,90 @@ components:
       - analysis_id
       title: AnalysisSummary
       description: Résumé d'une analyse (retourné par POST /captures).
+    Body_create_comparison_comparisons_post:
+      properties:
+        baseline_files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Baseline Files
+          description: Fichiers pcap baseline
+        current_files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Current Files
+          description: Fichiers pcap courant
+        baseline_labels:
+          type: string
+          title: Baseline Labels
+          description: Étiquettes baseline (séparées par virgule)
+          default: ''
+        current_labels:
+          type: string
+          title: Current Labels
+          description: Étiquettes courant (séparées par virgule)
+          default: ''
+        points_order:
+          type: string
+          title: Points Order
+          description: 'Ordre des points séparé par virgule (ex: lan,wan,dc)'
+          default: ''
+        nat_tolerant:
+          type: boolean
+          title: Nat Tolerant
+          description: 'true : corrélation tolérante au NAT (équivalent de --nat-tolerant)'
+          default: false
+        nat_window_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Nat Window Ms
+          description: Fenêtre de corrélation NAT en ms, avec nat_tolerant (équivalent
+            de --nat-window-ms)
+          default: 200.0
+        tls:
+          type: boolean
+          title: Tls
+          description: 'true : diagnostic TLS (équivalent de --tls)'
+          default: false
+        quic:
+          type: boolean
+          title: Quic
+          description: 'true : diagnostic QUIC/HTTP3 (équivalent de --quic)'
+          default: false
+        redact:
+          type: boolean
+          title: Redact
+          description: 'true : anonymise les adresses IP/MAC avant analyse (équivalent
+            de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
+            alors pas calculé'
+          default: false
+        loss_threshold_pp:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Loss Threshold Pp
+          description: 'Seuil d''écart de pertes en points de % (défaut: 2.0)'
+          default: 2.0
+        latency_threshold_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Latency Threshold Ms
+          description: 'Seuil d''écart de latence en ms (défaut: 5.0)'
+          default: 5.0
+        triage_top_n:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Triage Top N
+          description: 'Nombre de segments au triage (défaut: 5)'
+          default: 5
+      type: object
+      required:
+      - baseline_files
+      - current_files
+      title: Body_create_comparison_comparisons_post
     Body_upload_capture_captures_post:
       properties:
         file:
