@@ -1057,15 +1057,9 @@ async def get_analysis_status(analysis_id: str, _auth: None = Depends(_verify_ap
 # Store en mémoire pour les comparaisons (séparé du store des analyses).
 _comparisons: dict[str, dict] = {}
 
-_LOSS_THRESHOLD_FORM = Form(
-    default=2.0, gt=0, description="Seuil d'écart de pertes en points de % (défaut: 2.0)"
-)
-_LATENCY_THRESHOLD_FORM = Form(
-    default=5.0, gt=0, description="Seuil d'écart de latence en ms (défaut: 5.0)"
-)
-_TRIAGE_TOP_N_FORM = Form(
-    default=5, ge=1, le=50, description="Nombre de segments au triage (défaut: 5)"
-)
+_LOSS_THRESHOLD_FORM = Form(default=2.0, gt=0, description="Seuil d'écart de pertes en points de % (défaut: 2.0)")
+_LATENCY_THRESHOLD_FORM = Form(default=5.0, gt=0, description="Seuil d'écart de latence en ms (défaut: 5.0)")
+_TRIAGE_TOP_N_FORM = Form(default=5, ge=1, le=50, description="Nombre de segments au triage (défaut: 5)")
 
 
 _BASELINE_FILES = File(default=..., description="Fichiers pcap baseline")
