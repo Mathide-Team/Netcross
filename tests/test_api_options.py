@@ -67,6 +67,12 @@ def test_options_par_defaut_enregistrees():
         "known_destinations": None,
         "known_hosts": None,
         "names_path": None,
+        "rule_engine": False,
+        "expert_section": False,
+        "media_quality": False,
+        "tshark_stats": False,
+        "flow_timeline": False,
+        "flow_timeline_window": 1.0,
         "split_interfaces": False,
     }
 

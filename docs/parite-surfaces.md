@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (108 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 14 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) |
+| API | 18 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -69,10 +69,10 @@ actif, non réglable.
 | Qualité média (VoIP/vidéo) | non | `--media-quality` | non |
 | Statistiques tshark natives | non | `--tshark-stats` | non |
 | Chronologie des flux | non | `--flow-timeline`, `--flow-timeline-window` | non |
-| Recherche forensic | non | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | non |
-| Extraction des contenus | non | `--extract-contents`, `--extract-kinds` | non |
-| Comparaison de postes | non | `--client-group`, `--client-reference`, `--client-diff-csv` | non |
-| NetFlow / sFlow | non | `--netflow`, `--netflow-top` | non |
+| Recherche forensic | non | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | `POST /analyses/{analysis_id}/search` (issue #675), `body` |
+| Extraction des contenus | non | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
+| Comparaison de postes | non | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
+| NetFlow / sFlow | non | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
 | Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
 | Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | non |
 
@@ -221,8 +221,9 @@ son équivalent CLI ou API.
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 `quic`, `redact`, `max_packets`, `sample`, `test_net_external`, `names`,
-`known_destinations`, `known_hosts` (issue #672), `extra_files`,
-`split_interfaces` (issue #671).
+`known_destinations`, `known_hosts` (issue #672), `rule_engine`,
+`expert_section`, `media_quality`, `tshark_stats`, `flow_timeline`,
+`flow_timeline_window` (issue #673).
 | `GET /analyses` | Liste des analyses |
 | `GET /analyses/{analysis_id}` | Mesures brutes (voir plus haut) |
 | `GET /analyses/{analysis_id}/report` | Rapport structuré, identique à `--json-report` |
