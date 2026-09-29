@@ -1132,21 +1132,19 @@ async def create_comparison(
 
     def _run_comparison():
         try:
-            baseline_doc, baseline_summary, _ = _analyse_captures(
+            _baseline_doc, baseline_summary, _, baseline_report, *_ = _analyse_captures(
                 baseline_captures, order_list, multi=True, options=options
             )
-            current_doc, current_summary, _ = _analyse_captures(
+            _current_doc, current_summary, _, current_report, *_ = _analyse_captures(
                 current_captures, order_list, multi=True, options=options
             )
             from netcross_core.baseline_diff import diff_reports
             from netcross_report.triage import health_score, rank_segments
 
-            # Reconstruire des Report minimaux depuis les documents pour diff_reports
-            # diff_reports attend des Report, mais on peut utiliser les documents JSON
-            # car diff_reports lit les champs via .get() / defaultdict
+            # Les Report vivants sont disponibles dans le tuple de 10
             findings = diff_reports(
-                _dict_as_report(baseline_doc),
-                _dict_as_report(current_doc),
+                baseline_report,
+                current_report,
                 loss_min_pp=loss_threshold_pp,
                 latency_min_ms=latency_threshold_ms,
             )
