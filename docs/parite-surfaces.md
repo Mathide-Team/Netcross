@@ -14,7 +14,7 @@ ici fait donc échouer la CI.
 
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
-| CLI | `cross_capture_analyzer_cli.py` (108 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
+| CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 14 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) |
 
@@ -119,10 +119,10 @@ est conservée telle quelle pour les clients existants.
 | Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | non |
 | Durée maximale | oui | `--live-duration` | non |
 | Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | non |
-| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée) | non | non |
+| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée) | `--ring-buffer N:SECONDES` (issue #676) | non |
 | Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | non (`--live LABEL:IF:FILTRE` sans bibliothèque) | non |
-| Rapport HTML rafraîchi en continu | non | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
-| Notifications (webhook, Slack, e-mail) | non | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
+| Rapport HTML rafraîchi en continu | oui (case « Rapport en continu ») | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
+| Notifications (webhook, Slack, e-mail) | oui (réglages de notification) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
 
 ## Comparaison avant/après
 
@@ -195,7 +195,7 @@ son équivalent CLI ou API.
 | Case | Page | Équivalent |
 |---|---|---|
 | Mode comparaison (baseline / courant) -- equivalent de cross_capture_diff_cli.py | Configuration | `cross_capture_diff_cli.py` |
-| Capture en direct (interfaces reseau, au lieu de fichiers) | Configuration | `--live` |
+| Capture en direct (interfaces reseau, au lieu de fichiers) | Configuration | `--live`, `--ring-buffer`, `--bpf-library` |
 | Rotation de capture (ring buffer) | Configuration | aucun |
 | Correlation tolérante au NAT | Configuration | `--nat-tolerant` |
 | Détecter les doublons inter-captures | Configuration | `--detect-duplicates` |

@@ -199,6 +199,50 @@ def _parse_live_spec(spec):
     return label, iface, bpf or None
 
 
+def _parse_ring_buffer_spec(spec):
+    """Issue #676 : parse N:SECONDES -> (max_files, max_duration).
+
+    Retourne (None, None) si spec est vide ; leve SystemExit sur format invalide.
+    """
+    if not spec:
+        return None, None
+    try:
+        parts = spec.split(":")
+        if len(parts) != 2:
+            raise ValueError("format attendu N:SECONDES")
+        max_files = int(parts[0])
+        max_duration = float(parts[1])
+        if max_files < 1:
+            raise ValueError("N doit etre >= 1")
+        if max_duration <= 0:
+            raise ValueError("SECONDES doit etre > 0")
+    except ValueError as exc:
+        print(f"Format invalide pour --ring-buffer: {spec} ({exc})", file=sys.stderr)
+        sys.exit(1)
+    logger.debug("_parse_ring_buffer_spec: retour ({}, {})", max_files, max_duration)
+    return max_files, max_duration
+
+
+def _load_bpf_from_library(name):
+    """Issue #676 : charge un filtre BPF nomine depuis la bibliotheque de la GUI.
+
+    Retourne l'expression BPF (str) ou None si le nom est vide.
+    Leve SystemExit si le filtre n'est pas trouve.
+    """
+    if not name:
+        return None
+    from netcross_core.bpf_filters import available_bpf_filters
+
+    filters = available_bpf_filters()
+    for f in filters:
+        if f.name.strip().lower() == name.strip().lower():
+            logger.debug("_load_bpf_from_library: filtre '{}' trouve", name)
+            return f.expression
+    print(f"Filtre BPF '{name}' introuvable dans la bibliotheque.", file=sys.stderr)
+    print(f"Filtres disponibles: {', '.join(f.name for f in filters)}", file=sys.stderr)
+    sys.exit(1)
+
+
 def _check_single_stdin(points):
     """Une seule source pipe://- (entree standard) par execution : deux
     lecteurs se partageraient les octets du meme flux pcap."""
@@ -772,7 +816,7 @@ def _run_replay(capture_specs, interface, speed, loop):
     logger.debug("_run_replay: fin")
 
 
-def _run_live_captures(live_specs, duration, reporter=None):
+def _run_live_captures(live_specs, duration, reporter=None, ring_buffer=None):
     """Capture en direct sur un ou plusieurs points simultanement (un thread
     par point, comme l'interface graphique -- voir netcross_gtk4.app
     _begin_live_capture/_live_capture_worker) jusqu'a Ctrl+C ou
@@ -787,18 +831,35 @@ def _run_live_captures(live_specs, duration, reporter=None):
     points = [_parse_live_spec(s) for s in live_specs]
     _check_single_stdin(points)
     stop_event = threading.Event()
+    # Issue #676 : ring buffer de capture (equivalent GUI)
+    ring_buffers = {}
+    if ring_buffer and ring_buffer[0] is not None:
+        from pcap_parser.capture import CaptureRingBuffer
+
+        for label, _iface, _bpf in points:
+            import tempfile as _tf
+
+            rb_dir = _tf.mkdtemp(prefix=f"netcross-ring-{label}-")
+            ring_buffers[label] = CaptureRingBuffer(
+                directory=rb_dir,
+                max_files=ring_buffer[0],
+                max_duration_per_file=ring_buffer[1],
+            )
     packets_by_point = {label: [] for label, _iface, _bpf in points}
     lock = threading.Lock()
 
     def _worker(label, iface, bpf):
         count = 0
         last_log = time.monotonic()
+        rb = ring_buffers.get(label)
         try:
             for pkt in parse_live(label, iface, bpf_filter=bpf, stop_event=stop_event):
                 with lock:
                     packets_by_point[label].append(pkt)
                 if reporter is not None:
                     reporter.add(pkt)
+                if rb is not None:
+                    rb.maybe_rotate()
                 count += 1
                 now = time.monotonic()
                 if now - last_log >= 2.0:
@@ -1472,6 +1533,22 @@ def main():
         metavar="PORT",
         help="Avec --live-report : sert REPERTOIRE en HTTP sur 127.0.0.1:PORT (localhost seulement) pour que "
         "la page se mette a jour sans rechargement.",
+    )
+    ap.add_argument(
+        "--ring-buffer",
+        metavar="N:SECONDES",
+        help="Avec --live : rotation de capture (ring buffer). Garde au plus N fichiers "
+        "de SECONDES secondes chacun dans un repertoire temporaire, supprime "
+        "automatiquement le plus ancien. Ex: 5:60 (5 fichiers de 60 s). "
+        "Equivalent GUI de la rotation de capture (issue #676).",
+    )
+    ap.add_argument(
+        "--bpf-library",
+        metavar="NOM",
+        help="Avec --live : charge un filtre BPF nomine depuis la bibliotheque "
+        "(~/.netcross/bpf_filters.json, enregistree par la GUI) au lieu de le "
+        "saisir dans --live. Le filtre s'applique a tous les points de capture. "
+        "Issue #676.",
     )
     ap.add_argument(
         "--split",
@@ -2764,9 +2841,25 @@ def main():
 
     all_packets = []
     if args.live:
+        # Issue #676 : --bpf-library charge un filtre depuis la bibliotheque
+        # et l'applique a tous les points de capture
+        library_bpf = _load_bpf_from_library(getattr(args, "bpf_library", None))
+        if library_bpf:
+            live_specs = []
+            for spec in args.live:
+                label, iface, _existing_bpf = _parse_live_spec(spec)
+                live_specs.append(f"{label}:{iface}:{library_bpf}")
+            args.live = live_specs
+        # Issue #676 : --ring-buffer N:SECONDES
+        ring_max_files, ring_max_duration = _parse_ring_buffer_spec(
+            getattr(args, "ring_buffer", None)
+        )
         reporter, server = _start_live_report(args)
         try:
-            all_packets = _run_live_captures(args.live, args.live_duration, reporter)
+            all_packets = _run_live_captures(
+                args.live, args.live_duration, reporter,
+                ring_buffer=(ring_max_files, ring_max_duration),
+            )
         finally:
             if server is not None:
                 server.shutdown()
