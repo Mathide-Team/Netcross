@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-161 modules · 243 classes · 559 fonctions publiques de module.
+161 modules · 243 classes · 566 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -34,13 +34,14 @@ flowchart TD
     pcap_parser["pcap_parser"]
     CLI -->|"18 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
-    CLI -->|"40 imports"| netcross_core
-    CLI -->|"6 imports"| pcap_parser
+    CLI -->|"41 imports"| netcross_core
+    CLI -->|"7 imports"| pcap_parser
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
-    netcross_api -->|"7 imports"| netcross_report
-    netcross_api -->|"16 imports"| netcross_core
+    netcross_api -->|"10 imports"| netcross_report
+    netcross_api -->|"21 imports"| netcross_core
+    netcross_api -->|"1 import"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
@@ -3762,6 +3763,7 @@ classDiagram
         +frozenset~str~? known_destinations
         +frozenset~str~? known_hosts
         +str? names_path
+        +bool split_interfaces
         +bool rule_engine
         +bool expert_section
         +bool media_quality
@@ -3775,15 +3777,22 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
         +get_analysis_text(analysis_id, _auth) PlainTextResponse
         +get_analysis_pdf(analysis_id, topn, _auth) StreamingResponse
         +get_analysis_csv(analysis_id, _auth) PlainTextResponse
+        +get_analysis_sequence(analysis_id, max_flows, _auth) JSONResponse
+        +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
+        +forensic_search(analysis_id, body, _auth) JSONResponse
+        +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
+        +create_support_ticket(analysis_id, consent, kind, _auth) JSONResponse
+        +client_comparison(analysis_id, body, _auth) JSONResponse
+        +netflow_summary(analysis_id, files, exporters, top, _auth) JSONResponse
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
         +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, wait, _auth) JSONResponse
@@ -3866,7 +3875,7 @@ classDiagram
     class AnalysesStore {
         +persistent() bool
         +create_pending(metadata) str
-        +complete(analysis_id, document, summary, report, report_obj, flows, findings, security_report_obj, tls_findings, quic_findings) None
+        +complete(analysis_id, document, summary, report, report_obj, flows, findings, security_report_obj, tls_findings, quic_findings, all_packets) None
         +fail(analysis_id, error) None
         +get(analysis_id) dict?
         +get_status(analysis_id) str?
