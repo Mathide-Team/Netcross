@@ -82,6 +82,24 @@ _REDACT_FORM = Form(
     description="true : anonymise les adresses IP/MAC avant analyse (équivalent de --redact) ; "
     "incompatible avec tls/quic, et le rapport de sécurité n'est alors pas calculé",
 )
+# Issue #672 : options d'analyse avancées (équivalents CLI)
+_MAX_PACKETS_FORM = Form(
+    default=None,
+    description="Limiter l'analyse aux N premiers paquets (équivalent de --max-packets)",
+)
+_SAMPLE_FORM = Form(
+    default=None,
+    description="Échantillonnage 1/N (ex: 1/50) — équivalent de --sample",
+)
+_TEST_NET_EXTERNAL_FORM = Form(
+    default=False,
+    description="true : plages TEST-NET traitées comme externes (équivalent de --test-net-external)",
+)
+_NAMES_FILE = File(default=None, description="Table des noms logiques (JSON/YAML) — équiv. --names")
+_KNOWN_DEST_FILE = File(
+    default=None, description="Destinations connues (JSON, liste d'IP) — équiv. --known-destinations"
+)
+_KNOWN_HOSTS_FILE = File(default=None, description="Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts")
 _WAIT_QUERY = Query(
     default=False,
     description="true : attendre la fin de l'analyse (201 + résumé) au lieu de 202 + statut pending",
@@ -193,18 +211,44 @@ async def _save_upload(file: UploadFile, label: str) -> str:
 
 @dataclass(frozen=True)
 class ApiAnalysisOptions:
-    """Options d'analyse de l'API (issue #330), miroir des options de la CLI."""
+    """Options d'analyse de l'API (issue #330), miroir des options de la CLI.
+
+    Issue #672 : options avancées ajoutées pour la parité avec la CLI.
+    """
 
     nat_tolerant: bool = False
     nat_window_ms: float = 200.0
     tls: bool = False
     quic: bool = False
     redact: bool = False
+    # Issue #672 : options d'analyse avancées (équivalents CLI)
+    max_packets: int | None = None
+    sample_n: int | None = None
+    test_net_external: bool = False
+    known_destinations: frozenset[str] | None = None
+    known_hosts: frozenset[str] | None = None
+    names_path: str | None = None
 
 
-def _options(nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, redact: bool) -> ApiAnalysisOptions:
+def _options(
+    nat_tolerant: bool,
+    nat_window_ms: float,
+    tls: bool,
+    quic: bool,
+    redact: bool,
+    max_packets: int | None = None,
+    sample: str | None = None,
+    test_net_external: bool = False,
+    known_destinations: frozenset[str] | None = None,
+    known_hosts: frozenset[str] | None = None,
+    names_path: str | None = None,
+) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
-    qui relisent les fichiers d'origine (adresses réelles)."""
+    qui relisent les fichiers d'origine (adresses réelles).
+
+    Issue #672 : validation de ``sample`` (format 1/N) comme la CLI
+    (``_parse_sample_spec``).
+    """
     if redact and (tls or quic):
         logger.debug("_options: si redact and (tls or quic) -> levée HTTPException")
         raise HTTPException(
@@ -212,7 +256,34 @@ def _options(nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, re
             detail="redact n'est pas disponible avec tls/quic : ces diagnostics relisent les fichiers "
             "d'origine, avec les adresses réelles (même règle que la CLI)",
         )
-    options = ApiAnalysisOptions(nat_tolerant, nat_window_ms, tls, quic, redact)
+    sample_n: int | None = None
+    if sample:
+        import re
+
+        match = re.match(r"^1/(\d+)$", sample.strip())
+        if not match:
+            raise HTTPException(
+                status_code=400,
+                detail="sample : format attendu 1/N avec N entier > 0 (ex: 1/50)",
+            )
+        sample_n = int(match.group(1))
+        if sample_n < 1:
+            raise HTTPException(status_code=400, detail="sample : N doit etre > 0")
+    if max_packets is not None and max_packets < 1:
+        raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
+    options = ApiAnalysisOptions(
+        nat_tolerant,
+        nat_window_ms,
+        tls,
+        quic,
+        redact,
+        max_packets=max_packets,
+        sample_n=sample_n,
+        test_net_external=test_net_external,
+        known_destinations=known_destinations,
+        known_hosts=known_hosts,
+        names_path=names_path,
+    )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
 
@@ -278,6 +349,12 @@ def _analyse_captures(
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
         all_packets.extend(pkts)
     try:
+        # Issue #672 : --max-packets/--sample, appliqués AVANT la corrélation
+        # (même ordre que la CLI, voir _apply_packet_limits).
+        if options.sample_n and options.sample_n > 1:
+            all_packets = all_packets[:: options.sample_n]
+        if options.max_packets is not None and len(all_packets) > options.max_packets:
+            all_packets = all_packets[: options.max_packets]
         if options.redact:
             from netcross_core.redact import redact_packets
 
@@ -293,7 +370,14 @@ def _analyse_captures(
             detections = []
             for label, path in captures:
                 detections.extend(scan_capture_exploits(label, path))
-            apply_security_findings(report, all_packets, detections=detections)
+            apply_security_findings(
+                report,
+                all_packets,
+                detections=detections,
+                known_destinations=options.known_destinations,
+                known_hosts=options.known_hosts,
+                treat_test_net_as_external=options.test_net_external,
+            )
             security_report = build_security_report(report)
         tls_findings, quic_findings = _tls_quic_findings(captures, list(report.points), options)
         # Issue #330 : même document que `netcross --json-report
@@ -351,6 +435,7 @@ def _run_job(
     order_list: list[str] | None,
     multi: bool,
     options: ApiAnalysisOptions | None = None,
+    extra_files: list[str] | None = None,
 ) -> None:
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
@@ -388,6 +473,8 @@ def _run_job(
     finally:
         for _label, path in captures:
             Path(path).unlink(missing_ok=True)
+        for path in extra_files or []:
+            Path(path).unlink(missing_ok=True)
     logger.debug("_run_job: fin")
 
 
@@ -398,6 +485,7 @@ async def _dispatch(
     multi: bool,
     wait: bool,
     options: ApiAnalysisOptions | None = None,
+    extra_files: list[str] | None = None,
 ) -> JSONResponse:
     """Enregistre l'analyse en pending puis l'exécute : en tâche de fond
     (202) ou, avec ``wait``, dans le pool de threads de la requête (201)."""
@@ -413,11 +501,11 @@ async def _dispatch(
     analysis_id = store.create_pending({**metadata, "options": asdict(options)})
     status_url = f"/analyses/{analysis_id}/status"
     if not wait:
-        _get_executor().submit(_run_job, analysis_id, captures, order_list, multi, options)
+        _get_executor().submit(_run_job, analysis_id, captures, order_list, multi, options, extra_files)
         accepted = AnalysisAccepted(analysis_id=analysis_id, status=PENDING, status_url=status_url)
         logger.debug("_dispatch: si not wait -> retour JSONResponse(…)")
         return JSONResponse(status_code=202, content=accepted.model_dump(), headers={"Location": status_url})
-    await run_in_threadpool(_run_job, analysis_id, captures, order_list, multi, options)
+    await run_in_threadpool(_run_job, analysis_id, captures, order_list, multi, options, extra_files)
     entry = store.get(analysis_id)
     assert entry is not None
     if entry["status"] == FAILED:
@@ -437,6 +525,25 @@ _UPLOAD_RESPONSES: dict = {
 }
 
 
+async def _save_optional_file(file: UploadFile | None, suffix: str) -> str | None:
+    """Sauvegarde un fichier optionnel (names, known_destinations, known_hosts)
+    sur disque. Retourne le chemin ou None si aucun fichier fourni."""
+    if file is None or not file.filename:
+        return None
+    path = await _save_upload(file, file.filename)
+    return path
+
+
+def _load_host_set(path: str | None) -> frozenset[str] | None:
+    """Charge un ensemble d'IP depuis un fichier JSON (known_destinations,
+    known_hosts). Retourne None si path est None."""
+    if path is None:
+        return None
+    from netcross_core.discovery.assets import load_baseline_hosts
+
+    return frozenset(load_baseline_hosts(path))
+
+
 @app.post(
     "/captures",
     response_model=AnalysisAccepted,
@@ -452,6 +559,12 @@ async def upload_capture(
     tls: bool = _TLS_FORM,
     quic: bool = _QUIC_FORM,
     redact: bool = _REDACT_FORM,
+    max_packets: int | None = _MAX_PACKETS_FORM,
+    sample: str | None = _SAMPLE_FORM,
+    test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
+    names: UploadFile | None = _NAMES_FILE,
+    known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
+    known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -462,15 +575,43 @@ async def upload_capture(
     fin et retourne directement le résumé (201). ``nat_tolerant``,
     ``nat_window_ms``, ``tls``, ``quic`` et ``redact`` ont le sens des
     options de même nom de la CLI (issue #330).
+
+    Issue #672 : ``max_packets``, ``sample``, ``test_net_external``, ``names``,
+    ``known_destinations`` et ``known_hosts`` sont les équivalents des options
+    CLI de même nom (fichiers joints pour les trois derniers).
     """
-    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    names_path = await _save_optional_file(names, ".json")
+    known_dest_path = await _save_optional_file(known_destinations, ".json")
+    known_hosts_path = await _save_optional_file(known_hosts, ".json")
+    options = _options(
+        nat_tolerant,
+        nat_window_ms,
+        tls,
+        quic,
+        redact,
+        max_packets=max_packets,
+        sample=sample,
+        test_net_external=test_net_external,
+        known_destinations=_load_host_set(known_dest_path),
+        known_hosts=_load_host_set(known_hosts_path),
+        names_path=names_path,
+    )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Nom de fichier manquant")
     path = await _save_upload(file, label)
     metadata = {"filename": file.filename, "label": label}
+    extra_files = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
     logger.debug("upload_capture: retour await _dispatch([(label, path)], metadata, None, …")
-    return await _dispatch([(label, path)], metadata, None, multi=False, wait=wait, options=options)
+    return await _dispatch(
+        [(label, path)],
+        metadata,
+        None,
+        multi=False,
+        wait=wait,
+        options=options,
+        extra_files=extra_files,
+    )
 
 
 def _parse_labels(labels: str, file_count: int) -> list[str]:
@@ -577,6 +718,12 @@ async def upload_multi_capture(
     tls: bool = _TLS_FORM,
     quic: bool = _QUIC_FORM,
     redact: bool = _REDACT_FORM,
+    max_packets: int | None = _MAX_PACKETS_FORM,
+    sample: str | None = _SAMPLE_FORM,
+    test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
+    names: UploadFile | None = _NAMES_FILE,
+    known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
+    known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -587,9 +734,24 @@ async def upload_multi_capture(
     l'ordre des fichiers) ; ``points_order`` (facultatif) fixe l'ordre
     amont -> aval, sinon il est déduit du trafic. Le résumé (``?wait=true``
     ou ``/status``) détaille les pertes et le délai de chaque segment.
-    Options d'analyse : comme ``POST /captures`` (issue #330).
+    Options d'analyse : comme ``POST /captures`` (issue #330, #672).
     """
-    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    names_path = await _save_optional_file(names, ".json")
+    known_dest_path = await _save_optional_file(known_destinations, ".json")
+    known_hosts_path = await _save_optional_file(known_hosts, ".json")
+    options = _options(
+        nat_tolerant,
+        nat_window_ms,
+        tls,
+        quic,
+        redact,
+        max_packets=max_packets,
+        sample=sample,
+        test_net_external=test_net_external,
+        known_destinations=_load_host_set(known_dest_path),
+        known_hosts=_load_host_set(known_hosts_path),
+        names_path=names_path,
+    )
     if not files or len(files) < 2:
         logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Au moins 2 fichiers sont requis pour l'analyse multi-points")
@@ -614,8 +776,17 @@ async def upload_multi_capture(
         raise
 
     metadata = {"files": [f.filename for f in files], "labels": label_list, "points_order": order_list}
+    extra_files = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
     logger.debug("upload_multi_capture: retour await _dispatch(captures, metadata, order_list, m…")
-    return await _dispatch(captures, metadata, order_list, multi=True, wait=wait, options=options)
+    return await _dispatch(
+        captures,
+        metadata,
+        order_list,
+        multi=True,
+        wait=wait,
+        options=options,
+        extra_files=extra_files,
+    )
 
 
 def _completed_entry(analysis_id: str) -> dict:

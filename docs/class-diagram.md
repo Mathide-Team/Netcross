@@ -40,7 +40,7 @@ flowchart TD
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
     netcross_api -->|"4 imports"| netcross_report
-    netcross_api -->|"11 imports"| netcross_core
+    netcross_api -->|"12 imports"| netcross_core
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
@@ -3756,6 +3756,12 @@ classDiagram
         +bool tls
         +bool quic
         +bool redact
+        +int? max_packets
+        +int? sample_n
+        +bool test_net_external
+        +frozenset~str~? known_destinations
+        +frozenset~str~? known_hosts
+        +str? names_path
     }
     class AnalysisError {
         <<Exception>>
@@ -3763,9 +3769,9 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
