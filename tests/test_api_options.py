@@ -67,6 +67,7 @@ def test_options_par_defaut_enregistrees():
         "known_destinations": None,
         "known_hosts": None,
         "names_path": None,
+        "split_interfaces": False,
     }
 
 

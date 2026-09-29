@@ -100,6 +100,15 @@ _KNOWN_DEST_FILE = File(
     default=None, description="Destinations connues (JSON, liste d'IP) — équiv. --known-destinations"
 )
 _KNOWN_HOSTS_FILE = File(default=None, description="Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts")
+# Issue #671 : split_interfaces et fichiers multiples par point
+_SPLIT_INTERFACES_FORM = Form(
+    default=False,
+    description="true : séparer les interfaces d'un pcapng multi-interfaces (équiv. --split-interfaces)",
+)
+_EXTRA_FILES = File(
+    default=None,
+    description="Fichiers pcap/pcapng supplémentaires pour le même point (rotation) — équiv. --capture NOM=a,b",
+)
 _WAIT_QUERY = Query(
     default=False,
     description="true : attendre la fin de l'analyse (201 + résumé) au lieu de 202 + statut pending",
@@ -228,6 +237,8 @@ class ApiAnalysisOptions:
     known_destinations: frozenset[str] | None = None
     known_hosts: frozenset[str] | None = None
     names_path: str | None = None
+    # Issue #671 : split_interfaces (--split-interfaces)
+    split_interfaces: bool = False
 
 
 def _options(
@@ -242,6 +253,7 @@ def _options(
     known_destinations: frozenset[str] | None = None,
     known_hosts: frozenset[str] | None = None,
     names_path: str | None = None,
+    split_interfaces: bool = False,
 ) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
     qui relisent les fichiers d'origine (adresses réelles).
@@ -283,6 +295,7 @@ def _options(
         known_destinations=known_destinations,
         known_hosts=known_hosts,
         names_path=names_path,
+        split_interfaces=split_interfaces,
     )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
@@ -429,6 +442,38 @@ def _analyse_captures(
     )
 
 
+def _apply_split_interfaces(
+    captures: list[tuple[str, str]], options: ApiAnalysisOptions | None
+) -> list[tuple[str, str]]:
+    """Issue #671 : équiv. ``--split-interfaces`` — sépare les interfaces d'un
+    pcapng multi-interfaces en points distincts. Les fichiers extraits vont
+    dans un répertoire temporaire supprimé à la fin de l'analyse."""
+    if not options or not options.split_interfaces:
+        return captures
+    import atexit
+    import shutil
+    import tempfile
+
+    from pcap_parser.capture import split_by_interface
+
+    workdir = tempfile.mkdtemp(prefix="netcross-api-split-")
+    atexit.register(shutil.rmtree, workdir, True)
+    expanded: list[tuple[str, str]] = []
+    for index, (label, path) in enumerate(captures):
+        try:
+            slices = split_by_interface(path, os.path.join(workdir, str(index)))
+        except Exception as exc:
+            logger.warning("split_interfaces : {} non separe ({})", path, exc)
+            expanded.append((label, path))
+            continue
+        if len(slices) <= 1:
+            expanded.append((label, path))
+            continue
+        logger.debug("split_interfaces : {} capture(s) dans {}", len(slices), path)
+        expanded.extend((f"{label}:{s.name}", s.path) for s in slices)
+    return expanded
+
+
 def _run_job(
     analysis_id: str,
     captures: list[tuple[str, str]],
@@ -439,6 +484,7 @@ def _run_job(
 ) -> None:
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
+        captures = _apply_split_interfaces(captures, options)
         (
             document,
             summary,
@@ -565,6 +611,8 @@ async def upload_capture(
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
+    extra_files: list[UploadFile] | None = _EXTRA_FILES,
+    split_interfaces: bool = _SPLIT_INTERFACES_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -579,6 +627,11 @@ async def upload_capture(
     Issue #672 : ``max_packets``, ``sample``, ``test_net_external``, ``names``,
     ``known_destinations`` et ``known_hosts`` sont les équivalents des options
     CLI de même nom (fichiers joints pour les trois derniers).
+
+    Issue #671 : ``extra_files`` permet d'envoyer plusieurs fichiers pour le
+    même point (rotation, concaténation chronologique comme ``--capture
+    NOM=a,b``). ``split_interfaces`` sépare les interfaces d'un pcapng
+    multi-interfaces en points distincts (équiv. ``--split-interfaces``).
     """
     names_path = await _save_optional_file(names, ".json")
     known_dest_path = await _save_optional_file(known_destinations, ".json")
@@ -595,31 +648,45 @@ async def upload_capture(
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
+        split_interfaces=split_interfaces,
     )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Nom de fichier manquant")
-    path = await _save_upload(file, label)
+    # Issue #671 : fichiers multiples par point (rotation)
+    captures: list[tuple[str, str]] = [(label, await _save_upload(file, label))]
+    if extra_files:
+        for ef in extra_files:
+            if not ef.filename:
+                raise HTTPException(status_code=400, detail="Nom de fichier manquant dans extra_files")
+            captures.append((label, await _save_upload(ef, label)))
     metadata = {"filename": file.filename, "label": label}
-    extra_files = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
-    logger.debug("upload_capture: retour await _dispatch([(label, path)], metadata, None, …")
+    if extra_files:
+        metadata["extra_files"] = [f.filename for f in extra_files]
+    metadata["split_interfaces"] = split_interfaces
+    extra_paths = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
+    logger.debug("upload_capture: retour await _dispatch(captures, metadata, None, …")
     return await _dispatch(
-        [(label, path)],
+        captures,
         metadata,
         None,
         multi=False,
         wait=wait,
         options=options,
-        extra_files=extra_files,
+        extra_files=extra_paths,
     )
 
 
-def _parse_labels(labels: str, file_count: int) -> list[str]:
+def _parse_labels(labels: str, file_count: int, allow_duplicates: bool = False) -> list[str]:
     """Étiquettes des captures, une par fichier, dans l'ordre des fichiers.
 
     Issue #354 : une étiquette manquante ou dupliquée est refusée (400)
     plutôt que remplacée en silence par ``point-N`` -- l'ordre des points et
     les segments de la réponse en dépendent.
+
+    Issue #671 : quand ``allow_duplicates=True``, les étiquettes dupliquées
+    sont autorisées : les fichiers portant le même label sont concaténés
+    (rotation, comme ``--capture NOM=a,b`` en CLI).
     """
     logger.debug(
         "_parse_labels: labels={} file_count={}",
@@ -635,7 +702,7 @@ def _parse_labels(labels: str, file_count: int) -> list[str]:
             f"{len([lbl for lbl in label_list if lbl])} reçue(s))",
         )
     doublons = sorted({lbl for lbl in label_list if label_list.count(lbl) > 1})
-    if doublons:
+    if doublons and not allow_duplicates:
         logger.debug("_parse_labels: refus, HTTPException")
         raise HTTPException(status_code=400, detail=f"Étiquettes dupliquées : {', '.join(doublons)}")
     logger.debug("_parse_labels: retour label_list={}", summarize(label_list, "label_list"))
@@ -724,6 +791,7 @@ async def upload_multi_capture(
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
+    split_interfaces: bool = _SPLIT_INTERFACES_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -735,6 +803,12 @@ async def upload_multi_capture(
     amont -> aval, sinon il est déduit du trafic. Le résumé (``?wait=true``
     ou ``/status``) détaille les pertes et le délai de chaque segment.
     Options d'analyse : comme ``POST /captures`` (issue #330, #672).
+
+    Issue #671 : ``split_interfaces`` sépare les interfaces d'un pcapng
+    multi-interfaces en points distincts (équiv. ``--split-interfaces``).
+    Les étiquettes dupliquées sont autorisées : les fichiers portant le
+    même label sont concaténés dans l'ordre chronologique (rotation),
+    comme ``--capture NOM=a,b`` en CLI.
     """
     names_path = await _save_optional_file(names, ".json")
     known_dest_path = await _save_optional_file(known_destinations, ".json")
@@ -751,6 +825,7 @@ async def upload_multi_capture(
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
+        split_interfaces=split_interfaces,
     )
     if not files or len(files) < 2:
         logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
@@ -758,7 +833,7 @@ async def upload_multi_capture(
     if len(files) > _MAX_FILES:
         logger.debug("upload_multi_capture: si len(files) > _MAX_FILES -> levée HTTPException")
         raise HTTPException(status_code=400, detail=f"Au plus {_MAX_FILES} fichiers par requête")
-    label_list = _parse_labels(labels, len(files))
+    label_list = _parse_labels(labels, len(files), allow_duplicates=True)
     order_list = _parse_points_order(points_order, label_list)
 
     captures: list[tuple[str, str]] = []

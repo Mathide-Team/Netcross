@@ -94,7 +94,7 @@ def test_metadonnees_conservees():
         ("", "LAN,DC", "une étiquette non vide par fichier"),
         ("LAN", None, "une étiquette non vide par fichier"),
         ("LAN,", None, "une étiquette non vide par fichier"),
-        ("LAN,LAN", None, "Étiquettes dupliquées : LAN"),
+        # Issue #671 : les étiquettes dupliquées sont maintenant autorisées (rotation)
         ("LAN,DC", "LAN,WAN", "inconnue(s) : WAN"),
         ("LAN,DC", "LAN", "absente(s) : DC"),
         ("LAN,DC", "LAN,DC,LAN", "exactement une fois"),
