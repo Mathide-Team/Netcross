@@ -1088,8 +1088,9 @@ async def get_analysis_siem(
     else:  # stix
         from netcross_report.stix_export import export_stix
 
-        lines = export_stix(report_obj)
-    data = "\n".join(lines)
+        data = export_stix(report_obj)
+    if format != "stix":
+        data = "\n".join(lines)
     return PlainTextResponse(
         data,
         headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-siem.{format}"'},
