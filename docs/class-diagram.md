@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-161 modules · 243 classes · 563 fonctions publiques de module.
+161 modules · 243 classes · 566 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -39,8 +39,8 @@ flowchart TD
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
-    netcross_api -->|"7 imports"| netcross_report
-    netcross_api -->|"20 imports"| netcross_core
+    netcross_api -->|"10 imports"| netcross_report
+    netcross_api -->|"21 imports"| netcross_core
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
@@ -3784,8 +3784,11 @@ classDiagram
         +get_analysis_text(analysis_id, _auth) PlainTextResponse
         +get_analysis_pdf(analysis_id, topn, _auth) StreamingResponse
         +get_analysis_csv(analysis_id, _auth) PlainTextResponse
+        +get_analysis_sequence(analysis_id, max_flows, _auth) JSONResponse
+        +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
         +forensic_search(analysis_id, body, _auth) JSONResponse
         +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
+        +create_support_ticket(analysis_id, consent, kind, _auth) JSONResponse
         +client_comparison(analysis_id, body, _auth) JSONResponse
         +netflow_summary(analysis_id, files, exporters, top, _auth) JSONResponse
         +list_analyses(_auth) dict
