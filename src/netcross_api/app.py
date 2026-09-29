@@ -1121,6 +1121,7 @@ async def create_comparison(
                 raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
             current_captures.append((label, await _save_upload(file, label)))
     except BaseException:
+        logger.debug("create_comparison: except BaseException -> nettoyage et relance")
         for _label, path in baseline_captures + current_captures:
             Path(path).unlink(missing_ok=True)
         raise
