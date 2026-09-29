@@ -100,6 +100,15 @@ _KNOWN_DEST_FILE = File(
     default=None, description="Destinations connues (JSON, liste d'IP) — équiv. --known-destinations"
 )
 _KNOWN_HOSTS_FILE = File(default=None, description="Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts")
+# Issue #671 : split_interfaces et fichiers multiples par point
+_SPLIT_INTERFACES_FORM = Form(
+    default=False,
+    description="true : séparer les interfaces d'un pcapng multi-interfaces (équiv. --split-interfaces)",
+)
+_EXTRA_FILES = File(
+    default=None,
+    description="Fichiers pcap/pcapng supplémentaires pour le même point (rotation) — équiv. --capture NOM=a,b",
+)
 # Issue #673 : sections d'expertise
 _RULE_ENGINE_FORM = Form(
     default=False, description="true : évaluer le moteur de règles déclaratif (équiv. --rule-engine)"
@@ -113,6 +122,14 @@ _MEDIA_QUALITY_FORM = Form(
 _TSHARK_STATS_FORM = Form(
     default=False, description="true : collecter les statistiques tshark natives (équiv. --tshark-stats)"
 )
+
+# -- Issue #675 : singletons pour les parametres de formulaire --
+_EXTRACT_FILES = File(default=..., description="Fichiers pcap a extraire")
+_EXTRACT_LABELS_FORM = Form(default="", description="Etiquettes separees par virgule")
+_EXTRACT_KINDS_FORM = Form(default="", description="Types: audio,video,documents")
+_NETFLOW_FILES = File(default=..., description="Fichiers NetFlow v5")
+_NETFLOW_EXPORTERS_FORM = Form(default="", description="Exportateurs: NOM=FICHIER ou FICHIER")
+_NETFLOW_TOP_FORM = Form(default=10, ge=1, le=100, description="Taille des classements")
 _FLOW_TIMELINE_FORM = Form(
     default=False, description="true : construire la chronologie des flux (équiv. --flow-timeline)"
 )
@@ -247,6 +264,8 @@ class ApiAnalysisOptions:
     known_destinations: frozenset[str] | None = None
     known_hosts: frozenset[str] | None = None
     names_path: str | None = None
+    # Issue #671 : split_interfaces (--split-interfaces)
+    split_interfaces: bool = False
     # Issue #673 : sections d'expertise
     rule_engine: bool = False
     expert_section: bool = False
@@ -268,6 +287,7 @@ def _options(
     known_destinations: frozenset[str] | None = None,
     known_hosts: frozenset[str] | None = None,
     names_path: str | None = None,
+    split_interfaces: bool = False,
     rule_engine: bool = False,
     expert_section: bool = False,
     media_quality: bool = False,
@@ -315,6 +335,7 @@ def _options(
         known_destinations=known_destinations,
         known_hosts=known_hosts,
         names_path=names_path,
+        split_interfaces=split_interfaces,
         rule_engine=rule_engine,
         expert_section=expert_section,
         media_quality=media_quality,
@@ -529,6 +550,38 @@ def _analyse_captures(
     )
 
 
+def _apply_split_interfaces(
+    captures: list[tuple[str, str]], options: ApiAnalysisOptions | None
+) -> list[tuple[str, str]]:
+    """Issue #671 : équiv. ``--split-interfaces`` — sépare les interfaces d'un
+    pcapng multi-interfaces en points distincts. Les fichiers extraits vont
+    dans un répertoire temporaire supprimé à la fin de l'analyse."""
+    if not options or not options.split_interfaces:
+        return captures
+    import atexit
+    import shutil
+    import tempfile
+
+    from pcap_parser.capture import split_by_interface
+
+    workdir = tempfile.mkdtemp(prefix="netcross-api-split-")
+    atexit.register(shutil.rmtree, workdir, True)
+    expanded: list[tuple[str, str]] = []
+    for index, (label, path) in enumerate(captures):
+        try:
+            slices = split_by_interface(path, os.path.join(workdir, str(index)))
+        except Exception as exc:
+            logger.warning("split_interfaces : {} non separe ({})", path, exc)
+            expanded.append((label, path))
+            continue
+        if len(slices) <= 1:
+            expanded.append((label, path))
+            continue
+        logger.debug("split_interfaces : {} capture(s) dans {}", len(slices), path)
+        expanded.extend((f"{label}:{s.name}", s.path) for s in slices if s.path)
+    return expanded
+
+
 def _run_job(
     analysis_id: str,
     captures: list[tuple[str, str]],
@@ -539,6 +592,7 @@ def _run_job(
 ) -> None:
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
+        captures = _apply_split_interfaces(captures, options)
         (
             document,
             summary,
@@ -549,7 +603,7 @@ def _run_job(
             security_report_obj,
             tls_findings,
             quic_findings,
-            _all_packets,
+            all_packets,
         ) = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
@@ -569,6 +623,7 @@ def _run_job(
             security_report_obj=security_report_obj,
             tls_findings=tls_findings,
             quic_findings=quic_findings,
+            all_packets=all_packets,
         )
     finally:
         for _label, path in captures:
@@ -665,6 +720,8 @@ async def upload_capture(
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
+    extra_files: list[UploadFile] | None = _EXTRA_FILES,
+    split_interfaces: bool = _SPLIT_INTERFACES_FORM,
     rule_engine: bool = _RULE_ENGINE_FORM,
     expert_section: bool = _EXPERT_SECTION_FORM,
     media_quality: bool = _MEDIA_QUALITY_FORM,
@@ -685,6 +742,11 @@ async def upload_capture(
     Issue #672 : ``max_packets``, ``sample``, ``test_net_external``, ``names``,
     ``known_destinations`` et ``known_hosts`` sont les équivalents des options
     CLI de même nom (fichiers joints pour les trois derniers).
+
+    Issue #671 : ``extra_files`` permet d'envoyer plusieurs fichiers pour le
+    même point (rotation, concaténation chronologique comme ``--capture
+    NOM=a,b``). ``split_interfaces`` sépare les interfaces d'un pcapng
+    multi-interfaces en points distincts (équiv. ``--split-interfaces``).
     """
     names_path = await _save_optional_file(names, ".json")
     known_dest_path = await _save_optional_file(known_destinations, ".json")
@@ -701,6 +763,7 @@ async def upload_capture(
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
+        split_interfaces=split_interfaces,
         rule_engine=rule_engine,
         expert_section=expert_section,
         media_quality=media_quality,
@@ -711,27 +774,40 @@ async def upload_capture(
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Nom de fichier manquant")
-    path = await _save_upload(file, label)
-    metadata = {"filename": file.filename, "label": label}
-    extra_files = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
-    logger.debug("upload_capture: retour await _dispatch([(label, path)], metadata, None, …")
+    # Issue #671 : fichiers multiples par point (rotation)
+    captures: list[tuple[str, str]] = [(label, await _save_upload(file, label))]
+    if extra_files:
+        for ef in extra_files:
+            if not ef.filename:
+                raise HTTPException(status_code=400, detail="Nom de fichier manquant dans extra_files")
+            captures.append((label, await _save_upload(ef, label)))
+    metadata: dict[str, Any] = {"filename": file.filename, "label": label}
+    if extra_files:
+        metadata["extra_files"] = [f.filename for f in extra_files]
+    metadata["split_interfaces"] = split_interfaces
+    extra_paths = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
+    logger.debug("upload_capture: retour await _dispatch(captures, metadata, None, …")
     return await _dispatch(
-        [(label, path)],
+        captures,
         metadata,
         None,
         multi=False,
         wait=wait,
         options=options,
-        extra_files=extra_files,
+        extra_files=extra_paths,
     )
 
 
-def _parse_labels(labels: str, file_count: int) -> list[str]:
+def _parse_labels(labels: str, file_count: int, allow_duplicates: bool = False) -> list[str]:
     """Étiquettes des captures, une par fichier, dans l'ordre des fichiers.
 
     Issue #354 : une étiquette manquante ou dupliquée est refusée (400)
     plutôt que remplacée en silence par ``point-N`` -- l'ordre des points et
     les segments de la réponse en dépendent.
+
+    Issue #671 : quand ``allow_duplicates=True``, les étiquettes dupliquées
+    sont autorisées : les fichiers portant le même label sont concaténés
+    (rotation, comme ``--capture NOM=a,b`` en CLI).
     """
     logger.debug(
         "_parse_labels: labels={} file_count={}",
@@ -747,7 +823,7 @@ def _parse_labels(labels: str, file_count: int) -> list[str]:
             f"{len([lbl for lbl in label_list if lbl])} reçue(s))",
         )
     doublons = sorted({lbl for lbl in label_list if label_list.count(lbl) > 1})
-    if doublons:
+    if doublons and not allow_duplicates:
         logger.debug("_parse_labels: refus, HTTPException")
         raise HTTPException(status_code=400, detail=f"Étiquettes dupliquées : {', '.join(doublons)}")
     logger.debug("_parse_labels: retour label_list={}", summarize(label_list, "label_list"))
@@ -836,6 +912,7 @@ async def upload_multi_capture(
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
+    split_interfaces: bool = _SPLIT_INTERFACES_FORM,
     rule_engine: bool = _RULE_ENGINE_FORM,
     expert_section: bool = _EXPERT_SECTION_FORM,
     media_quality: bool = _MEDIA_QUALITY_FORM,
@@ -853,6 +930,12 @@ async def upload_multi_capture(
     amont -> aval, sinon il est déduit du trafic. Le résumé (``?wait=true``
     ou ``/status``) détaille les pertes et le délai de chaque segment.
     Options d'analyse : comme ``POST /captures`` (issue #330, #672).
+
+    Issue #671 : ``split_interfaces`` sépare les interfaces d'un pcapng
+    multi-interfaces en points distincts (équiv. ``--split-interfaces``).
+    Les étiquettes dupliquées sont autorisées : les fichiers portant le
+    même label sont concaténés dans l'ordre chronologique (rotation),
+    comme ``--capture NOM=a,b`` en CLI.
     """
     names_path = await _save_optional_file(names, ".json")
     known_dest_path = await _save_optional_file(known_destinations, ".json")
@@ -869,6 +952,7 @@ async def upload_multi_capture(
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
+        split_interfaces=split_interfaces,
         rule_engine=rule_engine,
         expert_section=expert_section,
         media_quality=media_quality,
@@ -882,7 +966,7 @@ async def upload_multi_capture(
     if len(files) > _MAX_FILES:
         logger.debug("upload_multi_capture: si len(files) > _MAX_FILES -> levée HTTPException")
         raise HTTPException(status_code=400, detail=f"Au plus {_MAX_FILES} fichiers par requête")
-    label_list = _parse_labels(labels, len(files))
+    label_list = _parse_labels(labels, len(files), allow_duplicates=True)
     order_list = _parse_points_order(points_order, label_list)
 
     captures: list[tuple[str, str]] = []
@@ -1145,6 +1229,245 @@ async def get_analysis_csv(
         data,
         headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-detail.csv"'},
     )
+
+
+# -- Issue #675 : recherche forensique, extraction, comparaison, NetFlow --------
+
+
+@app.post(
+    "/analyses/{analysis_id}/search",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 409: {"model": ErrorResponse}},
+)
+async def forensic_search(
+    analysis_id: str,
+    body: dict,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Recherche forensique transversale sur une analyse terminee (issue #675,
+    equivalent de ``--forensic-search`` et ``--search-*``).
+
+    Critères en JSON : ``text``, ``point``, ``protocol``, ``address``,
+    ``port``, ``time_start``, ``time_end``, ``field``, ``field_value``.
+
+    409 si l'analyse a ete relue depuis SQLite apres un redemarrage.
+    """
+    logger.debug("forensic_search(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    all_packets = entry.get("all_packets") or []
+    flows = entry.get("flows")
+    from netcross_core.forensic_search import ForensicSearchIndex, ForensicSearchQuery
+
+    index = ForensicSearchIndex(all_packets, flows=flows)
+    allowed = {
+        "text",
+        "point",
+        "protocol",
+        "address",
+        "port",
+        "time_start",
+        "time_end",
+        "field",
+        "field_value",
+    }
+    params = {k: v for k, v in body.items() if k in allowed}
+    query = ForensicSearchQuery(**params)
+    results = index.search(query)
+    payload = {
+        "analysis_id": analysis_id,
+        "query": params,
+        "results": [
+            {
+                "kind": r.kind,
+                "point": r.point,
+                "frame_number": r.frame_number,
+                "ts": r.ts,
+                "matched_fields": list(r.matched_fields),
+                "snippet": r.snippet,
+            }
+            for r in results
+        ],
+        "total": len(results),
+    }
+    logger.debug("forensic_search: retour {} resultat(s)", len(results))
+    return JSONResponse(payload)
+
+
+@app.post(
+    "/analyses/{analysis_id}/extract",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 409: {"model": ErrorResponse}, 200: {"content": {"application/zip": {}}}},
+)
+async def extract_contents(
+    analysis_id: str,
+    files: list[UploadFile] = _EXTRACT_FILES,
+    labels: str = _EXTRACT_LABELS_FORM,
+    kinds: str = _EXTRACT_KINDS_FORM,
+    _auth: None = Depends(_verify_api_key),
+) -> StreamingResponse:
+    """Extraction des contenus (audio, video, documents) d'une analyse (issue
+    #675, equivalent de ``--extract-contents`` et ``--extract-kinds``).
+
+    Retourne une archive ZIP contenant les fichiers extraits et un manifeste.
+    Les fichiers pcap sont fournis dans la requete (les captures originales
+    sont supprimees apres analyse).
+    """
+    logger.debug("extract_contents(analysis_id={})", analysis_id)
+    _completed_entry(analysis_id)
+    from netcross_core.extract.contents import parse_kinds, run_extraction
+
+    try:
+        kind_list = parse_kinds(kinds or None)
+    except ValueError as exc:
+        logger.warning("extract_contents: kinds invalide ({})", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    import json as _json
+    import zipfile
+
+    saved: list[tuple[str, str]] = []
+    tmpdir = tempfile.mkdtemp(prefix="netcross-api-extract-")
+    try:
+        label_list = _parse_labels(labels, len(files))
+        for i, upload in enumerate(files):
+            path = os.path.join(tmpdir, f"capture-{i}.pcap")
+            content = await upload.read()
+            Path(path).write_bytes(content)
+            saved.append((label_list[i], path))
+        out_dir = os.path.join(tmpdir, "extracted")
+        result = run_extraction(saved, out_dir=out_dir, kinds=kind_list)
+        zip_path = os.path.join(tmpdir, f"netcross-{analysis_id}-extract.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            extracted_root = Path(out_dir)
+            if extracted_root.is_dir():
+                for p in extracted_root.rglob("*"):
+                    if p.is_file() and p.name != "manifest.json":
+                        zf.write(p, p.relative_to(extracted_root))
+            zf.writestr("manifest.json", _json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        data = Path(zip_path).read_bytes()
+    finally:
+        import shutil
+
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    logger.debug("extract_contents: retour StreamingResponse(zip)")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-extract.zip"'},
+    )
+
+
+@app.post(
+    "/analyses/{analysis_id}/client-diff",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 409: {"model": ErrorResponse}, 400: {"model": ErrorResponse}},
+)
+async def client_comparison(
+    analysis_id: str,
+    body: dict,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Comparaison de postes clients sur une analyse terminee (issue #675,
+    equivalent de ``--client-group``, ``--client-reference``).
+
+    Corps JSON : ``groups`` (dict nom -> liste d'IP), ``reference`` (str, optionnel).
+    """
+    logger.debug("client_comparison(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    all_packets = entry.get("all_packets") or []
+    groups = body.get("groups")
+    if not groups or len(groups) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Au moins 2 groupes de clients sont requis pour la comparaison",
+        )
+    reference = body.get("reference")
+    if reference and reference not in groups:
+        raise HTTPException(
+            status_code=400,
+            detail=f"reference {reference!r} ne correspond a aucun groupe fourni",
+        )
+    from netcross_core.client_diff import compare_clients
+
+    client_groups: dict[str, set[str]] = {}
+    for name, ips in groups.items():
+        client_groups[name] = set(ips)
+    comparison = compare_clients(all_packets, client_groups, reference=reference)
+    payload = {
+        "analysis_id": analysis_id,
+        "reference": comparison.reference,
+        "clients": [
+            {
+                "name": name,
+                "ips": list(cr.ips),
+                "packet_count": cr.packet_count,
+                "signature": {
+                    "dhcp_vendor_classes": dict(cr.signature.dhcp_vendor_classes),
+                    "sip_user_agents": dict(cr.signature.sip_user_agents),
+                },
+            }
+            for name, cr in comparison.clients.items()
+        ],
+        "diffs": {
+            name: [
+                {
+                    "severity": d.severity,
+                    "category": d.category,
+                    "segment": d.segment,
+                    "message": d.message,
+                    "before": d.before,
+                    "after": d.after,
+                }
+                for d in findings
+            ]
+            for name, findings in comparison.diffs.items()
+        },
+    }
+    logger.debug("client_comparison: retour JSONResponse")
+    return JSONResponse(payload)
+
+
+@app.post(
+    "/analyses/{analysis_id}/netflow",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 400: {"model": ErrorResponse}},
+)
+async def netflow_summary(
+    analysis_id: str,
+    files: list[UploadFile] = _NETFLOW_FILES,
+    exporters: str = _NETFLOW_EXPORTERS_FORM,
+    top: int = _NETFLOW_TOP_FORM,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Resume d'exports NetFlow v5 (issue #675, equivalent de ``--netflow``
+    et ``--netflow-top``).
+
+    Les fichiers NetFlow sont fournis dans la requete. Retourne le resume
+    agrege (top flux, protocoles, destinations...).
+    """
+    logger.debug("netflow_summary(analysis_id={})", analysis_id)
+    _completed_entry(analysis_id)
+    from netcross_core.netflow import iter_netflow_v5_file, summarize_flow_records
+
+    records: list = []
+    exporter_list = [s.strip() for s in exporters.split(",") if s.strip()] if exporters else []
+    for i, upload in enumerate(files):
+        exporter = exporter_list[i] if i < len(exporter_list) else None
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".netflow")  # noqa: SIM115
+        try:
+            content = await upload.read()
+            tmp.write(content)
+            tmp.close()
+            records.extend(iter_netflow_v5_file(tmp.name, exporter=exporter))
+        except Exception as exc:
+            logger.warning("netflow_summary: erreur lecture NetFlow {} ({})", upload.filename, exc)
+            raise HTTPException(status_code=400, detail=f"NetFlow {upload.filename}: {exc}") from exc
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+    summary = summarize_flow_records(records, top=top)
+    payload = {"analysis_id": analysis_id, "netflow": summary, "flow_count": len(records)}
+    logger.debug("netflow_summary: retour JSONResponse")
+    return JSONResponse(payload)
 
 
 @app.get("/analyses", tags=["analyses"], responses={401: {"model": ErrorResponse}})

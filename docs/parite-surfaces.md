@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 14 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) |
+| API | 18 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -39,8 +39,8 @@ actif, non réglable.
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Captures en fichiers, un nom par point | oui (liste + « Ajouter une capture ») | `--capture` | `POST /captures` (`file`, `label`), `POST /captures/multi` (`files`, `labels`) |
-| Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | non |
-| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | non |
+| Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | `extra_files` (issue #671) |
+| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | `split_interfaces` (issue #671) |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
 | Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : les trois surfaces, « Fenêtre NAT (ms) » dans la GUI) | `nat_tolerant`, `nat_window_ms` |
@@ -69,10 +69,10 @@ actif, non réglable.
 | Qualité média (VoIP/vidéo) | non | `--media-quality` | non |
 | Statistiques tshark natives | non | `--tshark-stats` | non |
 | Chronologie des flux | non | `--flow-timeline`, `--flow-timeline-window` | non |
-| Recherche forensic | non | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | non |
-| Extraction des contenus | non | `--extract-contents`, `--extract-kinds` | non |
-| Comparaison de postes | non | `--client-group`, `--client-reference`, `--client-diff-csv` | non |
-| NetFlow / sFlow | non | `--netflow`, `--netflow-top` | non |
+| Recherche forensic | non | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | `POST /analyses/{analysis_id}/search` (issue #675), `body` |
+| Extraction des contenus | non | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
+| Comparaison de postes | non | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
+| NetFlow / sFlow | non | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
 | Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
 | Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | non |
 
@@ -215,8 +215,8 @@ son équivalent CLI ou API.
 | Route | Rôle |
 |---|---|
 | `GET /health` | Santé du service (sans authentification) |
-| `POST /captures` | Une capture ; `wait` pour attendre le résultat |
-| `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `wait` |
+| `POST /captures` | Un pcap : `file`, `label`, `extra_files`, `wait` | Une capture ; `wait` pour attendre le résultat |
+| `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `split_interfaces`, `wait` |
 
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
