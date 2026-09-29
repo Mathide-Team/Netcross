@@ -64,6 +64,12 @@ def _options_formulaire():
         "tls": False,
         "quic": False,
         "redact": False,
+        "max_packets": None,
+        "sample": None,
+        "test_net_external": False,
+        "names": None,
+        "known_destinations": None,
+        "known_hosts": None,
         "wait": False,
         "_auth": None,
     }

@@ -61,6 +61,12 @@ def test_options_par_defaut_enregistrees():
         "tls": False,
         "quic": False,
         "redact": False,
+        "max_packets": None,
+        "sample_n": None,
+        "test_net_external": False,
+        "known_destinations": None,
+        "known_hosts": None,
+        "names_path": None,
     }
 
 
