@@ -262,3 +262,24 @@ def test_un_service_sans_empreinte_reste_affiche_comme_avant():
     assert "nginx" in sortie
     assert "JA4=" not in sortie
     assert "None" not in sortie
+
+
+# -- Issue #707 : gardes du parseur ClientHello (JA4) -------------------------
+
+
+def test_parse_client_hello_gardes_et_troncatures():
+    """Lignes 108-111 : ClientHello tronque -> None ; lignes 132 et 139-140 :
+    corps trop court, on passe a l'enregistrement suivant ; lignes 207-208
+    et 222-223 : extensions ALPN et supported_versions vides."""
+    from netcross_core.fingerprint.tls_ja4 import (
+        _parse_alpn,
+        _parse_supported_versions,
+        parse_client_hello,
+    )
+
+    court = b"\x16\x03\x01\x00\x02\x01\x00"
+    assert parse_client_hello(court) is None
+    tronque = b"\x16\x03\x01\x00\x06\x01\x00\x00\x40\x03\x03"
+    assert parse_client_hello(tronque) is None
+    assert _parse_alpn(b"\x00") == []
+    assert _parse_supported_versions(b"") == []

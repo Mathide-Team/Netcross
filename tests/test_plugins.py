@@ -433,3 +433,48 @@ def test_cli_list_plugins_avec_plugin_path(monkeypatch, capsys):
     line = next(x for x in out.splitlines() if x.startswith("telnet_clair"))
     assert "detector" in line and "oui" in line
     assert "introuvable(s) : fantome" in out
+
+
+# -- Issue #691 : branches restantes de netcross_core/plugins/api.py ----------
+
+
+def test_freeze_dataclass_et_objet_quelconque():
+    """Lignes 63-69 : une dataclass devient une vue en lecture seule, un
+    objet quelconque est copie en profondeur."""
+    import dataclasses
+
+    from netcross_core.plugins.api import freeze
+
+    @dataclasses.dataclass
+    class Point:
+        x: int
+
+    vue = freeze(Point(3))
+    assert isinstance(vue, ReadOnlyView)
+    assert vue.x == 3
+
+    class Boite:
+        def __init__(self):
+            self.contenu = [1]
+
+    original = Boite()
+    copie = freeze(original)
+    copie.contenu.append(2)
+    assert original.contenu == [1]
+
+
+def test_vue_lecture_seule_dunder_et_repr():
+    """Lignes 87-88 : les attributs speciaux ne sont pas relayes ; lignes
+    101-102 : repr nomme le type encapsule."""
+    vue = ReadOnlyView(Report())
+    with pytest.raises(AttributeError):
+        vue.__wrapped__  # noqa: B018
+    assert repr(vue) == "ReadOnlyView(Report)"
+
+
+def test_constat_avec_cle_non_textuelle_refuse():
+    """Lignes 188-189 : toutes les cles d'un constat sont des chaines."""
+    from netcross_core.plugins.api import validate_finding
+
+    with pytest.raises(InvalidFindingError, match="cle non textuelle"):
+        validate_finding({"category": "c", "severity": "faible", "detail": "d", 1: "x"})

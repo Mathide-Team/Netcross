@@ -243,3 +243,53 @@ def test_collect_conversations_chaine_runner_et_parser(monkeypatch):
     convs = collect_conversations("capture.pcap", protocol="tcp")
     assert len(convs) == 2
     assert convs[0].endpoint_a == "192.168.0.1:5000"
+
+
+# -- Issues #693, #688, #687, #679 : cas limites des parseurs et du runner ---
+
+
+def test_split_endpoints_champ_sans_separateur():
+    """Lignes 38-39 : un champ d'un seul jeton -> (champ, "")."""
+    from netcross_core.tshark_stats.conversations import _split_endpoints
+
+    assert _split_endpoints("10.0.0.1") == ("10.0.0.1", "")
+
+
+def test_parse_http_et_dns_sans_metrique_renvoient_liste_vide():
+    """http.py 55-56 et dns.py 49-50 : aucune ligne etiquetee -> []."""
+    from netcross_core.tshark_stats.dns import parse_dns_stat
+    from netcross_core.tshark_stats.http import parse_http_stat
+
+    assert parse_http_stat("=====\nrien d'exploitable\n") == []
+    assert parse_dns_stat("=====\nrien d'exploitable\n") == []
+
+
+def test_run_tshark_stat_code_non_nul(monkeypatch):
+    """Lignes 60-64 : code non nul sans sortie -> CalledProcessError ;
+    code non nul avec sortie -> sortie conservee."""
+    from netcross_core.tshark_stats import runner
+
+    sorties = iter(["", "tableau partiel\n"])
+
+    def _faux_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 2, next(sorties), "erreur")
+
+    monkeypatch.setattr(runner.subprocess, "run", _faux_run)
+    with pytest.raises(subprocess.CalledProcessError):
+        runner.run_tshark_stat("x.pcap", "io,stat,1")
+    assert runner.run_tshark_stat("x.pcap", "io,stat,1") == "tableau partiel\n"
+
+
+# -- Issue #718 : mediane et valeurs illisibles du temps de reponse -----------
+
+
+def test_parse_response_time_mediane_et_valeur_illisible():
+    """Ligne 55 : une valeur non convertible est ignoree ; ligne 66 : la
+    mediane est reconnue."""
+    from netcross_core.tshark_stats.response_time import parse_response_time
+
+    texte = "Count       ...\nMedian      12.5\nMax         40\n"
+    stat = parse_response_time(texte)
+    assert stat is not None
+    assert stat.median_ms == 12.5
+    assert stat.count is None
