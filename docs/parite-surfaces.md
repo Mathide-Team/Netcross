@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (108 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 14 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) |
+| API | 17 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; diagramme de séquence, SIEM, ticket (#674) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -229,6 +229,9 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /analyses/{analysis_id}/text` | Rapport texte (issue #670) |
 | `GET /analyses/{analysis_id}/pdf` | Rapport PDF, `topn` (issue #670) |
 | `GET /analyses/{analysis_id}/detail.csv` | CSV du détail par flux (issue #670) |
+| `GET /analyses/{analysis_id}/sequence` | Diagramme de séquence des flux, `max_flows` (issue #674) |
+| `GET /analyses/{analysis_id}/siem` | Export SIEM, `format` (cef, leef, stix) (issue #674) |
+| `POST /analyses/{analysis_id}/support-ticket` | Ticket de support anonymisé, `consent`, `kind` (issue #674) |
 | `POST /comparisons` | Comparaison baseline/courant (issue #669) |
 | `GET /comparisons/{comparison_id}` | Résultat d'une comparaison (issue #669) |
 | `GET /comparisons/{comparison_id}/csv` | CSV des écarts (issue #669) |

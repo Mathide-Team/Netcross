@@ -506,6 +506,204 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/sequence:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Sequence
+      description: 'Diagramme de séquence des flux les plus volumineux (équiv. --sequence-diagram).
+
+
+        Retourne une liste de vues de séquence au format JSON, chacune
+
+        contenant les étapes (paquets) d''un flux triées chronologiquement.'
+      operationId: get_analysis_sequence_analyses__analysis_id__sequence_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: max_flows
+        in: query
+        required: false
+        schema:
+          type: integer
+          description: Nombre maximum de flux à représenter
+          default: 1
+          title: Max Flows
+        description: Nombre maximum de flux à représenter
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/siem:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Siem
+      description: 'Export SIEM des constats de sécurité (équiv. --siem-export).
+
+
+        Retourne l''export au format demandé (CEF, LEEF ou STIX) en texte brut.'
+      operationId: get_analysis_siem_analyses__analysis_id__siem_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Format d''export SIEM : cef, leef ou stix'
+          default: cef
+          title: Format
+        description: 'Format d''export SIEM : cef, leef ou stix'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/support-ticket:
+    post:
+      tags:
+      - analyses
+      summary: Create Support Ticket
+      description: 'Ticket de support anonymisé (équiv. --support-ticket).
+
+
+        Construit un ticket anonymisé en mémoire à partir des erreurs
+
+        d''analyse. Le consentement explicite (consent=true) est obligatoire.'
+      operationId: create_support_ticket_analyses__analysis_id__support_ticket_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: consent
+        in: query
+        required: true
+        schema:
+          type: boolean
+          description: 'true : l''utilisateur consent à la remontée d''un ticket anonymisé'
+          title: Consent
+        description: 'true : l''utilisateur consent à la remontée d''un ticket anonymisé'
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Type de ticket (diagnostic, erreur, etc.)
+          default: diagnostic
+          title: Kind
+        description: Type de ticket (diagnostic, erreur, etc.)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses:
     get:
       tags:

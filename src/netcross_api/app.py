@@ -1023,6 +1023,108 @@ async def get_analysis_csv(
     )
 
 
+# Issue #674 : diagramme de séquence, export SIEM, ticket de support
+
+
+@app.get(
+    "/analyses/{analysis_id}/sequence",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 404: {"model": ErrorResponse}},
+)
+async def get_analysis_sequence(
+    analysis_id: str,
+    max_flows: int = Query(default=1, description="Nombre maximum de flux à représenter"),
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Diagramme de séquence des flux les plus volumineux (équiv. --sequence-diagram).
+
+    Retourne une liste de vues de séquence au format JSON, chacune
+    contenant les étapes (paquets) d'un flux triées chronologiquement.
+    """
+    entry = store.get(analysis_id)
+    if entry is None or entry["status"] != COMPLETED:
+        raise HTTPException(status_code=404, detail="Analyse introuvable ou non terminée")
+    flows = entry.get("flows")
+    if not flows:
+        raise HTTPException(status_code=404, detail="Aucun flux disponible pour le diagramme de séquence")
+    from dataclasses import asdict
+
+    from netcross_report.sequence_view import top_flow_views
+
+    views = top_flow_views(flows, max_flows=max_flows)
+    return JSONResponse({"sequence_views": [asdict(v) for v in views]})
+
+
+@app.get(
+    "/analyses/{analysis_id}/siem",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}},
+)
+async def get_analysis_siem(
+    analysis_id: str,
+    format: str = Query(default="cef", description="Format d'export SIEM : cef, leef ou stix"),
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Export SIEM des constats de sécurité (équiv. --siem-export).
+
+    Retourne l'export au format demandé (CEF, LEEF ou STIX) en texte brut.
+    """
+    entry = store.get(analysis_id)
+    if entry is None or entry["status"] != COMPLETED:
+        raise HTTPException(status_code=404, detail="Analyse introuvable ou non terminée")
+    report_obj = entry.get("report_obj")
+    if report_obj is None:
+        raise HTTPException(status_code=404, detail="Rapport non disponible")
+    from netcross_report.siem_export import SIEM_FORMATS, export_cef, export_leef
+
+    if format not in SIEM_FORMATS:
+        raise HTTPException(
+            status_code=400, detail=f"Format SIEM inconnu : {format} (attendu : {', '.join(SIEM_FORMATS)})"
+        )
+    if format == "cef":
+        lines = export_cef(report_obj)
+    elif format == "leef":
+        lines = export_leef(report_obj)
+    else:  # stix
+        from netcross_report.stix_export import export_stix
+
+        lines = export_stix(report_obj)
+    data = "\n".join(lines)
+    return PlainTextResponse(
+        data,
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-siem.{format}"'},
+    )
+
+
+@app.post(
+    "/analyses/{analysis_id}/support-ticket",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}},
+)
+async def create_support_ticket(
+    analysis_id: str,
+    consent: bool = Query(..., description="true : l'utilisateur consent à la remontée d'un ticket anonymisé"),
+    kind: str = Query(default="diagnostic", description="Type de ticket (diagnostic, erreur, etc.)"),
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Ticket de support anonymisé (équiv. --support-ticket).
+
+    Construit un ticket anonymisé en mémoire à partir des erreurs
+    d'analyse. Le consentement explicite (consent=true) est obligatoire.
+    """
+    entry = store.get(analysis_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Analyse introuvable")
+    from netcross_core.support.ticket import Consent, build_ticket
+
+    consent_obj = Consent(granted=consent, source="api")
+    if not consent:
+        raise HTTPException(status_code=400, detail="Consentement explicite requis (consent=true)")
+    errors = entry.get("errors") or []
+    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors)
+    return JSONResponse({"ticket": ticket.to_dict()})
+
+
 @app.get("/analyses", tags=["analyses"], responses={401: {"model": ErrorResponse}})
 async def list_analyses(_auth: None = Depends(_verify_api_key)) -> dict:
     """Liste les IDs d'analyses disponibles (tous statuts)."""
