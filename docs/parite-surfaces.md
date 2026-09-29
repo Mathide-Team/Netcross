@@ -39,8 +39,8 @@ actif, non réglable.
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Captures en fichiers, un nom par point | oui (liste + « Ajouter une capture ») | `--capture` | `POST /captures` (`file`, `label`), `POST /captures/multi` (`files`, `labels`) |
-| Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | non |
-| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | non |
+| Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | `extra_files` (issue #671) |
+| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | `split_interfaces` (issue #671) |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
 | Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : les trois surfaces, « Fenêtre NAT (ms) » dans la GUI) | `nat_tolerant`, `nat_window_ms` |
@@ -215,8 +215,8 @@ son équivalent CLI ou API.
 | Route | Rôle |
 |---|---|
 | `GET /health` | Santé du service (sans authentification) |
-| `POST /captures` | Une capture ; `wait` pour attendre le résultat |
-| `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `wait` |
+| `POST /captures` | Un pcap : `file`, `label`, `extra_files`, `wait` | Une capture ; `wait` pour attendre le résultat |
+| `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `split_interfaces`, `wait` |
 
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
