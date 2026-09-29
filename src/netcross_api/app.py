@@ -1185,8 +1185,15 @@ async def forensic_search(
 
     index = ForensicSearchIndex(all_packets, flows=flows)
     allowed = {
-        "text", "point", "protocol", "address", "port",
-        "time_start", "time_end", "field", "field_value",
+        "text",
+        "point",
+        "protocol",
+        "address",
+        "port",
+        "time_start",
+        "time_end",
+        "field",
+        "field_value",
     }
     params = {k: v for k, v in body.items() if k in allowed}
     query = ForensicSearchQuery(**params)
@@ -1237,6 +1244,7 @@ async def extract_contents(
     try:
         kind_list = parse_kinds(kinds or None)
     except ValueError as exc:
+        logger.warning("extract_contents: kinds invalide ({})", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     import json as _json
@@ -1377,6 +1385,7 @@ async def netflow_summary(
             tmp.close()
             records.extend(iter_netflow_v5_file(tmp.name, exporter=exporter))
         except Exception as exc:
+            logger.warning("netflow_summary: erreur lecture NetFlow {} ({})", upload.filename, exc)
             raise HTTPException(status_code=400, detail=f"NetFlow {upload.filename}: {exc}") from exc
         finally:
             Path(tmp.name).unlink(missing_ok=True)
