@@ -34,8 +34,8 @@ flowchart TD
     pcap_parser["pcap_parser"]
     CLI -->|"18 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
-    CLI -->|"40 imports"| netcross_core
-    CLI -->|"6 imports"| pcap_parser
+    CLI -->|"41 imports"| netcross_core
+    CLI -->|"7 imports"| pcap_parser
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
