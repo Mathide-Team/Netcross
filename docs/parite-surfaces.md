@@ -215,8 +215,8 @@ son équivalent CLI ou API.
 | Route | Rôle |
 |---|---|
 | `GET /health` | Santé du service (sans authentification) |
-| `POST /captures` | Une capture ; `wait` pour attendre le résultat |
-| `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `wait` |
+| `POST /captures` | Un pcap : `file`, `label`, `extra_files`, `wait` | Une capture ; `wait` pour attendre le résultat |
+| `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `split_interfaces`, `wait` |
 
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,

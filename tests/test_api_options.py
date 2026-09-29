@@ -73,6 +73,7 @@ def test_options_par_defaut_enregistrees():
         "tshark_stats": False,
         "flow_timeline": False,
         "flow_timeline_window": 1.0,
+        "split_interfaces": False,
     }
 
 

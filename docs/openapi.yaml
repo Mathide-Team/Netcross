@@ -41,7 +41,16 @@ paths:
 
         ``known_destinations`` et ``known_hosts`` sont les équivalents des options
 
-        CLI de même nom (fichiers joints pour les trois derniers).'
+        CLI de même nom (fichiers joints pour les trois derniers).
+
+
+        Issue #671 : ``extra_files`` permet d''envoyer plusieurs fichiers pour le
+
+        même point (rotation, concaténation chronologique comme ``--capture
+
+        NOM=a,b``). ``split_interfaces`` sépare les interfaces d''un pcapng
+
+        multi-interfaces en points distincts (équiv. ``--split-interfaces``).'
       operationId: upload_capture_captures_post
       security:
       - APIKeyHeader: []
@@ -119,7 +128,18 @@ paths:
 
         ou ``/status``) détaille les pertes et le délai de chaque segment.
 
-        Options d''analyse : comme ``POST /captures`` (issue #330, #672).'
+        Options d''analyse : comme ``POST /captures`` (issue #330, #672).
+
+
+        Issue #671 : ``split_interfaces`` sépare les interfaces d''un pcapng
+
+        multi-interfaces en points distincts (équiv. ``--split-interfaces``).
+
+        Les étiquettes dupliquées sont autorisées : les fichiers portant le
+
+        même label sont concaténés dans l''ordre chronologique (rotation),
+
+        comme ``--capture NOM=a,b`` en CLI.'
       operationId: upload_multi_capture_captures_multi_post
       security:
       - APIKeyHeader: []
@@ -1492,6 +1512,22 @@ components:
           - type: 'null'
           title: Known Hosts
           description: Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts
+        extra_files:
+          anyOf:
+          - items:
+              type: string
+              contentMediaType: application/octet-stream
+            type: array
+          - type: 'null'
+          title: Extra Files
+          description: Fichiers pcap/pcapng supplémentaires pour le même point (rotation)
+            — équiv. --capture NOM=a,b
+        split_interfaces:
+          type: boolean
+          title: Split Interfaces
+          description: 'true : séparer les interfaces d''un pcapng multi-interfaces
+            (équiv. --split-interfaces)'
+          default: false
         rule_engine:
           type: boolean
           title: Rule Engine
@@ -1614,6 +1650,12 @@ components:
           - type: 'null'
           title: Known Hosts
           description: Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts
+        split_interfaces:
+          type: boolean
+          title: Split Interfaces
+          description: 'true : séparer les interfaces d''un pcapng multi-interfaces
+            (équiv. --split-interfaces)'
+          default: false
         rule_engine:
           type: boolean
           title: Rule Engine
