@@ -217,6 +217,7 @@ def _parse_ring_buffer_spec(spec):
         if max_duration <= 0:
             raise ValueError("SECONDES doit etre > 0")
     except ValueError as exc:
+        logger.warning("_parse_ring_buffer_spec: format invalide {} ({})", spec, exc)
         print(f"Format invalide pour --ring-buffer: {spec} ({exc})", file=sys.stderr)
         sys.exit(1)
     logger.debug("_parse_ring_buffer_spec: retour ({}, {})", max_files, max_duration)
@@ -2851,13 +2852,13 @@ def main():
                 live_specs.append(f"{label}:{iface}:{library_bpf}")
             args.live = live_specs
         # Issue #676 : --ring-buffer N:SECONDES
-        ring_max_files, ring_max_duration = _parse_ring_buffer_spec(
-            getattr(args, "ring_buffer", None)
-        )
+        ring_max_files, ring_max_duration = _parse_ring_buffer_spec(getattr(args, "ring_buffer", None))
         reporter, server = _start_live_report(args)
         try:
             all_packets = _run_live_captures(
-                args.live, args.live_duration, reporter,
+                args.live,
+                args.live_duration,
+                reporter,
                 ring_buffer=(ring_max_files, ring_max_duration),
             )
         finally:
