@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-161 modules · 243 classes · 553 fonctions publiques de module.
+161 modules · 243 classes · 559 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -39,8 +39,8 @@ flowchart TD
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
-    netcross_api -->|"3 imports"| netcross_report
-    netcross_api -->|"9 imports"| netcross_core
+    netcross_api -->|"7 imports"| netcross_report
+    netcross_api -->|"16 imports"| netcross_core
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
@@ -3756,6 +3756,18 @@ classDiagram
         +bool tls
         +bool quic
         +bool redact
+        +int? max_packets
+        +int? sample_n
+        +bool test_net_external
+        +frozenset~str~? known_destinations
+        +frozenset~str~? known_hosts
+        +str? names_path
+        +bool rule_engine
+        +bool expert_section
+        +bool media_quality
+        +bool tshark_stats
+        +bool flow_timeline
+        +float flow_timeline_window
     }
     class AnalysisError {
         <<Exception>>
@@ -3763,14 +3775,20 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
+        +get_analysis_text(analysis_id, _auth) PlainTextResponse
+        +get_analysis_pdf(analysis_id, topn, _auth) StreamingResponse
+        +get_analysis_csv(analysis_id, _auth) PlainTextResponse
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
+        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, wait, _auth) JSONResponse
+        +get_comparison(comparison_id, _auth) JSONResponse
+        +get_comparison_csv(comparison_id, _auth) PlainTextResponse
     }
 
     %% ===== netcross_api.models =====
@@ -3848,7 +3866,7 @@ classDiagram
     class AnalysesStore {
         +persistent() bool
         +create_pending(metadata) str
-        +complete(analysis_id, document, summary, report) None
+        +complete(analysis_id, document, summary, report, report_obj, flows, findings, security_report_obj, tls_findings, quic_findings) None
         +fail(analysis_id, error) None
         +get(analysis_id) dict?
         +get_status(analysis_id) str?

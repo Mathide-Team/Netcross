@@ -25,16 +25,19 @@ dépendance optionnelle (extra ``api``).
 
 from __future__ import annotations
 
+import contextlib
 import hmac
+import io
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 
 from netcross_api.models import (
@@ -78,6 +81,43 @@ _REDACT_FORM = Form(
     default=False,
     description="true : anonymise les adresses IP/MAC avant analyse (équivalent de --redact) ; "
     "incompatible avec tls/quic, et le rapport de sécurité n'est alors pas calculé",
+)
+# Issue #672 : options d'analyse avancées (équivalents CLI)
+_MAX_PACKETS_FORM = Form(
+    default=None,
+    description="Limiter l'analyse aux N premiers paquets (équivalent de --max-packets)",
+)
+_SAMPLE_FORM = Form(
+    default=None,
+    description="Échantillonnage 1/N (ex: 1/50) — équivalent de --sample",
+)
+_TEST_NET_EXTERNAL_FORM = Form(
+    default=False,
+    description="true : plages TEST-NET traitées comme externes (équivalent de --test-net-external)",
+)
+_NAMES_FILE = File(default=None, description="Table des noms logiques (JSON/YAML) — équiv. --names")
+_KNOWN_DEST_FILE = File(
+    default=None, description="Destinations connues (JSON, liste d'IP) — équiv. --known-destinations"
+)
+_KNOWN_HOSTS_FILE = File(default=None, description="Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts")
+# Issue #673 : sections d'expertise
+_RULE_ENGINE_FORM = Form(
+    default=False, description="true : évaluer le moteur de règles déclaratif (équiv. --rule-engine)"
+)
+_EXPERT_SECTION_FORM = Form(
+    default=False, description="true : construire la section expertise détaillée (équiv. --expert-section)"
+)
+_MEDIA_QUALITY_FORM = Form(
+    default=False, description="true : analyser la qualité média VoIP/vidéo (équiv. --media-quality)"
+)
+_TSHARK_STATS_FORM = Form(
+    default=False, description="true : collecter les statistiques tshark natives (équiv. --tshark-stats)"
+)
+_FLOW_TIMELINE_FORM = Form(
+    default=False, description="true : construire la chronologie des flux (équiv. --flow-timeline)"
+)
+_FLOW_TIMELINE_WINDOW_FORM = Form(
+    default=1.0, description="Fenêtre temporelle en secondes pour la chronologie (équiv. --flow-timeline-window)"
 )
 _WAIT_QUERY = Query(
     default=False,
@@ -190,18 +230,57 @@ async def _save_upload(file: UploadFile, label: str) -> str:
 
 @dataclass(frozen=True)
 class ApiAnalysisOptions:
-    """Options d'analyse de l'API (issue #330), miroir des options de la CLI."""
+    """Options d'analyse de l'API (issue #330), miroir des options de la CLI.
+
+    Issue #672 : options avancées ajoutées pour la parité avec la CLI.
+    """
 
     nat_tolerant: bool = False
     nat_window_ms: float = 200.0
     tls: bool = False
     quic: bool = False
     redact: bool = False
+    # Issue #672 : options d'analyse avancées (équivalents CLI)
+    max_packets: int | None = None
+    sample_n: int | None = None
+    test_net_external: bool = False
+    known_destinations: frozenset[str] | None = None
+    known_hosts: frozenset[str] | None = None
+    names_path: str | None = None
+    # Issue #673 : sections d'expertise
+    rule_engine: bool = False
+    expert_section: bool = False
+    media_quality: bool = False
+    tshark_stats: bool = False
+    flow_timeline: bool = False
+    flow_timeline_window: float = 1.0
 
 
-def _options(nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, redact: bool) -> ApiAnalysisOptions:
+def _options(
+    nat_tolerant: bool,
+    nat_window_ms: float,
+    tls: bool,
+    quic: bool,
+    redact: bool,
+    max_packets: int | None = None,
+    sample: str | None = None,
+    test_net_external: bool = False,
+    known_destinations: frozenset[str] | None = None,
+    known_hosts: frozenset[str] | None = None,
+    names_path: str | None = None,
+    rule_engine: bool = False,
+    expert_section: bool = False,
+    media_quality: bool = False,
+    tshark_stats: bool = False,
+    flow_timeline: bool = False,
+    flow_timeline_window: float = 1.0,
+) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
-    qui relisent les fichiers d'origine (adresses réelles)."""
+    qui relisent les fichiers d'origine (adresses réelles).
+
+    Issue #672 : validation de ``sample`` (format 1/N) comme la CLI
+    (``_parse_sample_spec``).
+    """
     if redact and (tls or quic):
         logger.debug("_options: si redact and (tls or quic) -> levée HTTPException")
         raise HTTPException(
@@ -209,7 +288,40 @@ def _options(nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, re
             detail="redact n'est pas disponible avec tls/quic : ces diagnostics relisent les fichiers "
             "d'origine, avec les adresses réelles (même règle que la CLI)",
         )
-    options = ApiAnalysisOptions(nat_tolerant, nat_window_ms, tls, quic, redact)
+    sample_n: int | None = None
+    if sample:
+        import re
+
+        match = re.match(r"^1/(\d+)$", sample.strip())
+        if not match:
+            raise HTTPException(
+                status_code=400,
+                detail="sample : format attendu 1/N avec N entier > 0 (ex: 1/50)",
+            )
+        sample_n = int(match.group(1))
+        if sample_n < 1:
+            raise HTTPException(status_code=400, detail="sample : N doit etre > 0")
+    if max_packets is not None and max_packets < 1:
+        raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
+    options = ApiAnalysisOptions(
+        nat_tolerant,
+        nat_window_ms,
+        tls,
+        quic,
+        redact,
+        max_packets=max_packets,
+        sample_n=sample_n,
+        test_net_external=test_net_external,
+        known_destinations=known_destinations,
+        known_hosts=known_hosts,
+        names_path=names_path,
+        rule_engine=rule_engine,
+        expert_section=expert_section,
+        media_quality=media_quality,
+        tshark_stats=tshark_stats,
+        flow_timeline=flow_timeline,
+        flow_timeline_window=flow_timeline_window,
+    )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
 
@@ -217,6 +329,40 @@ def _options(nat_tolerant: bool, nat_window_ms: float, tls: bool, quic: bool, re
 class AnalysisError(Exception):
     """Échec d'analyse attribuable aux captures ; le message est rendu tel
     quel au client (statut failed, ou 400 avec ?wait=true)."""
+
+
+def _collect_tshark_stats_api(captures: list[tuple[str, str]]) -> dict:
+    """Issue #673 : équiv. ``--tshark-stats`` — collecte les statistiques
+    tshark natives par fichier (conversations, endpoints, hiérarchie
+    de protocoles, IO stat). Tshark absent est une erreur par capture."""
+    import subprocess
+    from dataclasses import asdict
+
+    from netcross_core.tshark_stats import (
+        TsharkUnavailableError,
+        collect_conversations,
+        collect_endpoints,
+        collect_io_stat,
+        collect_protocol_hierarchy,
+    )
+
+    result: dict = {"version": 1, "captures": []}
+    for label, path in captures:
+        entry: dict = {"label": label, "path": path}
+        try:
+            entry["conversations"] = {
+                proto: [asdict(c) for c in collect_conversations(path, proto)] for proto in ("tcp", "udp")
+            }
+            entry["endpoints"] = {
+                proto: [asdict(e) for e in collect_endpoints(path, proto)] for proto in ("tcp", "udp")
+            }
+            entry["protocol_hierarchy"] = [asdict(p) for p in collect_protocol_hierarchy(path)]
+            entry["io_stat"] = asdict(collect_io_stat(path))
+        except (TsharkUnavailableError, subprocess.SubprocessError, OSError) as exc:
+            entry = {"label": label, "path": path, "error": str(exc)}
+            logger.warning("tshark-stats {} ({}) : {}", label, path, exc)
+        result["captures"].append(entry)
+    return result
 
 
 def _tls_quic_findings(
@@ -255,10 +401,13 @@ def _analyse_captures(
     order_list: list[str] | None,
     multi: bool,
     options: ApiAnalysisOptions | None = None,
-) -> tuple[dict, dict, dict]:
+) -> tuple[dict, dict, dict, Any, Any, list, Any, Any, list | None, list | None]:
     """Analyse complète (corrélation, sécurité) ; retourne le document brut,
-    le résumé et le rapport structuré (celui de ``--json-report``, issue
-    #330). Exécuté hors de la boucle asyncio."""
+    le résumé, le rapport structuré (celui de ``--json-report``, issue
+    #330), l'objet Report vivant, les flows, les findings, le
+    security_report_obj et les diagnostics TLS/QUIC — conservés en
+    mémoire pour les exports texte/PDF/CSV de l'issue #670.
+    Exécuté hors de la boucle asyncio."""
     options = options or ApiAnalysisOptions()
     all_packets = []
     for label, path in captures:
@@ -272,6 +421,12 @@ def _analyse_captures(
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
         all_packets.extend(pkts)
     try:
+        # Issue #672 : --max-packets/--sample, appliqués AVANT la corrélation
+        # (même ordre que la CLI, voir _apply_packet_limits).
+        if options.sample_n and options.sample_n > 1:
+            all_packets = all_packets[:: options.sample_n]
+        if options.max_packets is not None and len(all_packets) > options.max_packets:
+            all_packets = all_packets[: options.max_packets]
         if options.redact:
             from netcross_core.redact import redact_packets
 
@@ -287,22 +442,60 @@ def _analyse_captures(
             detections = []
             for label, path in captures:
                 detections.extend(scan_capture_exploits(label, path))
-            apply_security_findings(report, all_packets, detections=detections)
+            apply_security_findings(
+                report,
+                all_packets,
+                detections=detections,
+                known_destinations=options.known_destinations,
+                known_hosts=options.known_hosts,
+                treat_test_net_as_external=options.test_net_external,
+            )
             security_report = build_security_report(report)
         tls_findings, quic_findings = _tls_quic_findings(captures, list(report.points), options)
         # Issue #330 : même document que `netcross --json-report
         # --security-report` (constats, triage, score de santé).
+        # Issue #670 : findings calculés une fois, partagés entre le JSON
+        # structuré et les exports texte/PDF/CSV ultérieurs.
+        findings = build_findings(report)
         meta = {"Source": "API REST"}
         if options.redact:
             meta["Anonymisation"] = "adresses IP/MAC anonymisees (redact)"
+        # Issue #673 : sections d'expertise (équiv. --rule-engine,
+        # --expert-section, --media-quality, --tshark-stats, --flow-timeline)
+        rule_engine_findings = None
+        session_objects = None
+        flow_timelines = None
+        if options.rule_engine:
+            from netcross_report.rule_engine import available_rule_ids, evaluate
+
+            rule_engine_findings = {}
+            for rule_id in available_rule_ids():
+                rule_engine_findings[rule_id] = evaluate(rule_id, report)
+        if options.expert_section:
+            from netcross_report.session_objects import build_session_objects
+
+            session_objects = build_session_objects(report, findings, flows, all_packets)
+        if options.flow_timeline:
+            from netcross_core.flow_timeline import build_flow_timelines
+
+            flow_timelines = build_flow_timelines(all_packets, window_s=options.flow_timeline_window)
         structured = build_json_report_document(
             report,
-            findings=build_findings(report),
+            findings=findings,
             security_report=security_report,
             tls_findings=tls_findings,
             quic_findings=quic_findings,
+            rule_engine_findings=rule_engine_findings,
             meta=meta,
         )
+        if session_objects is not None:
+            structured["session_objects"] = session_objects
+        if flow_timelines is not None:
+            structured["flow_timelines"] = flow_timelines
+        if options.tshark_stats:
+            structured["tshark_stats"] = _collect_tshark_stats_api(captures)
+        if options.media_quality:
+            structured["media_quality"] = {"note": "voir extraction des contenus (issue #675)"}
         if options.redact:
             structured["security_report_absent"] = "non disponible avec l'anonymisation (redact=true)"
     except AnalysisError:
@@ -321,8 +514,19 @@ def _analyse_captures(
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
-    logger.debug("_analyse_captures: retour tuple de 3")
-    return report_document(report), summary, structured
+    logger.debug("_analyse_captures: retour tuple de 10")
+    return (
+        report_document(report),
+        summary,
+        structured,
+        report,
+        flows,
+        findings,
+        security_report,
+        tls_findings,
+        quic_findings,
+        all_packets,
+    )
 
 
 def _run_job(
@@ -331,10 +535,22 @@ def _run_job(
     order_list: list[str] | None,
     multi: bool,
     options: ApiAnalysisOptions | None = None,
+    extra_files: list[str] | None = None,
 ) -> None:
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
-        document, summary, structured = _analyse_captures(captures, order_list, multi, options)
+        (
+            document,
+            summary,
+            structured,
+            report_obj,
+            flows,
+            findings,
+            security_report_obj,
+            tls_findings,
+            quic_findings,
+            _all_packets,
+        ) = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
         store.fail(analysis_id, str(exc))
@@ -342,9 +558,22 @@ def _run_job(
         logger.exception("analyse {} : erreur interne", analysis_id)
         store.fail(analysis_id, f"Erreur interne: {exc}")
     else:
-        store.complete(analysis_id, document, summary, report=structured)
+        store.complete(
+            analysis_id,
+            document,
+            summary,
+            report=structured,
+            report_obj=report_obj,
+            flows=flows,
+            findings=findings,
+            security_report_obj=security_report_obj,
+            tls_findings=tls_findings,
+            quic_findings=quic_findings,
+        )
     finally:
         for _label, path in captures:
+            Path(path).unlink(missing_ok=True)
+        for path in extra_files or []:
             Path(path).unlink(missing_ok=True)
     logger.debug("_run_job: fin")
 
@@ -356,6 +585,7 @@ async def _dispatch(
     multi: bool,
     wait: bool,
     options: ApiAnalysisOptions | None = None,
+    extra_files: list[str] | None = None,
 ) -> JSONResponse:
     """Enregistre l'analyse en pending puis l'exécute : en tâche de fond
     (202) ou, avec ``wait``, dans le pool de threads de la requête (201)."""
@@ -371,11 +601,11 @@ async def _dispatch(
     analysis_id = store.create_pending({**metadata, "options": asdict(options)})
     status_url = f"/analyses/{analysis_id}/status"
     if not wait:
-        _get_executor().submit(_run_job, analysis_id, captures, order_list, multi, options)
+        _get_executor().submit(_run_job, analysis_id, captures, order_list, multi, options, extra_files)
         accepted = AnalysisAccepted(analysis_id=analysis_id, status=PENDING, status_url=status_url)
         logger.debug("_dispatch: si not wait -> retour JSONResponse(…)")
         return JSONResponse(status_code=202, content=accepted.model_dump(), headers={"Location": status_url})
-    await run_in_threadpool(_run_job, analysis_id, captures, order_list, multi, options)
+    await run_in_threadpool(_run_job, analysis_id, captures, order_list, multi, options, extra_files)
     entry = store.get(analysis_id)
     assert entry is not None
     if entry["status"] == FAILED:
@@ -395,6 +625,25 @@ _UPLOAD_RESPONSES: dict = {
 }
 
 
+async def _save_optional_file(file: UploadFile | None, suffix: str) -> str | None:
+    """Sauvegarde un fichier optionnel (names, known_destinations, known_hosts)
+    sur disque. Retourne le chemin ou None si aucun fichier fourni."""
+    if file is None or not file.filename:
+        return None
+    path = await _save_upload(file, file.filename)
+    return path
+
+
+def _load_host_set(path: str | None) -> frozenset[str] | None:
+    """Charge un ensemble d'IP depuis un fichier JSON (known_destinations,
+    known_hosts). Retourne None si path est None."""
+    if path is None:
+        return None
+    from netcross_core.discovery.assets import load_baseline_hosts
+
+    return frozenset(load_baseline_hosts(path))
+
+
 @app.post(
     "/captures",
     response_model=AnalysisAccepted,
@@ -410,6 +659,18 @@ async def upload_capture(
     tls: bool = _TLS_FORM,
     quic: bool = _QUIC_FORM,
     redact: bool = _REDACT_FORM,
+    max_packets: int | None = _MAX_PACKETS_FORM,
+    sample: str | None = _SAMPLE_FORM,
+    test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
+    names: UploadFile | None = _NAMES_FILE,
+    known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
+    known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
+    rule_engine: bool = _RULE_ENGINE_FORM,
+    expert_section: bool = _EXPERT_SECTION_FORM,
+    media_quality: bool = _MEDIA_QUALITY_FORM,
+    tshark_stats: bool = _TSHARK_STATS_FORM,
+    flow_timeline: bool = _FLOW_TIMELINE_FORM,
+    flow_timeline_window: float = _FLOW_TIMELINE_WINDOW_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -420,15 +681,49 @@ async def upload_capture(
     fin et retourne directement le résumé (201). ``nat_tolerant``,
     ``nat_window_ms``, ``tls``, ``quic`` et ``redact`` ont le sens des
     options de même nom de la CLI (issue #330).
+
+    Issue #672 : ``max_packets``, ``sample``, ``test_net_external``, ``names``,
+    ``known_destinations`` et ``known_hosts`` sont les équivalents des options
+    CLI de même nom (fichiers joints pour les trois derniers).
     """
-    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    names_path = await _save_optional_file(names, ".json")
+    known_dest_path = await _save_optional_file(known_destinations, ".json")
+    known_hosts_path = await _save_optional_file(known_hosts, ".json")
+    options = _options(
+        nat_tolerant,
+        nat_window_ms,
+        tls,
+        quic,
+        redact,
+        max_packets=max_packets,
+        sample=sample,
+        test_net_external=test_net_external,
+        known_destinations=_load_host_set(known_dest_path),
+        known_hosts=_load_host_set(known_hosts_path),
+        names_path=names_path,
+        rule_engine=rule_engine,
+        expert_section=expert_section,
+        media_quality=media_quality,
+        tshark_stats=tshark_stats,
+        flow_timeline=flow_timeline,
+        flow_timeline_window=flow_timeline_window,
+    )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Nom de fichier manquant")
     path = await _save_upload(file, label)
     metadata = {"filename": file.filename, "label": label}
+    extra_files = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
     logger.debug("upload_capture: retour await _dispatch([(label, path)], metadata, None, …")
-    return await _dispatch([(label, path)], metadata, None, multi=False, wait=wait, options=options)
+    return await _dispatch(
+        [(label, path)],
+        metadata,
+        None,
+        multi=False,
+        wait=wait,
+        options=options,
+        extra_files=extra_files,
+    )
 
 
 def _parse_labels(labels: str, file_count: int) -> list[str]:
@@ -535,6 +830,18 @@ async def upload_multi_capture(
     tls: bool = _TLS_FORM,
     quic: bool = _QUIC_FORM,
     redact: bool = _REDACT_FORM,
+    max_packets: int | None = _MAX_PACKETS_FORM,
+    sample: str | None = _SAMPLE_FORM,
+    test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
+    names: UploadFile | None = _NAMES_FILE,
+    known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
+    known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
+    rule_engine: bool = _RULE_ENGINE_FORM,
+    expert_section: bool = _EXPERT_SECTION_FORM,
+    media_quality: bool = _MEDIA_QUALITY_FORM,
+    tshark_stats: bool = _TSHARK_STATS_FORM,
+    flow_timeline: bool = _FLOW_TIMELINE_FORM,
+    flow_timeline_window: float = _FLOW_TIMELINE_WINDOW_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -545,9 +852,30 @@ async def upload_multi_capture(
     l'ordre des fichiers) ; ``points_order`` (facultatif) fixe l'ordre
     amont -> aval, sinon il est déduit du trafic. Le résumé (``?wait=true``
     ou ``/status``) détaille les pertes et le délai de chaque segment.
-    Options d'analyse : comme ``POST /captures`` (issue #330).
+    Options d'analyse : comme ``POST /captures`` (issue #330, #672).
     """
-    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    names_path = await _save_optional_file(names, ".json")
+    known_dest_path = await _save_optional_file(known_destinations, ".json")
+    known_hosts_path = await _save_optional_file(known_hosts, ".json")
+    options = _options(
+        nat_tolerant,
+        nat_window_ms,
+        tls,
+        quic,
+        redact,
+        max_packets=max_packets,
+        sample=sample,
+        test_net_external=test_net_external,
+        known_destinations=_load_host_set(known_dest_path),
+        known_hosts=_load_host_set(known_hosts_path),
+        names_path=names_path,
+        rule_engine=rule_engine,
+        expert_section=expert_section,
+        media_quality=media_quality,
+        tshark_stats=tshark_stats,
+        flow_timeline=flow_timeline,
+        flow_timeline_window=flow_timeline_window,
+    )
     if not files or len(files) < 2:
         logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
         raise HTTPException(status_code=400, detail="Au moins 2 fichiers sont requis pour l'analyse multi-points")
@@ -572,8 +900,17 @@ async def upload_multi_capture(
         raise
 
     metadata = {"files": [f.filename for f in files], "labels": label_list, "points_order": order_list}
+    extra_files = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
     logger.debug("upload_multi_capture: retour await _dispatch(captures, metadata, order_list, m…")
-    return await _dispatch(captures, metadata, order_list, multi=True, wait=wait, options=options)
+    return await _dispatch(
+        captures,
+        metadata,
+        order_list,
+        multi=True,
+        wait=wait,
+        options=options,
+        extra_files=extra_files,
+    )
 
 
 def _completed_entry(analysis_id: str) -> dict:
@@ -676,6 +1013,140 @@ async def get_security_report(analysis_id: str, _auth: None = Depends(_verify_ap
     )
 
 
+# -- Issue #670 : exports texte, PDF et CSV du détail -----------------------
+
+
+def _live_objects(analysis_id: str) -> dict:
+    """Entrée d'une analyse terminée, avec garantie que les objets vivants
+    (report_obj, flows, findings) sont disponibles. 409 si l'analyse a été
+    relue depuis SQLite après un redémarrage : ces objets ne sont pas
+    persistés (voir store.complete)."""
+    entry = _completed_entry(analysis_id)
+    if entry.get("report_obj") is None:
+        logger.debug("_live_objects: refus, HTTPException")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Analyse {analysis_id} sans objets vivants en memoire "
+            "(relue depuis SQLite ou version anterieure) : la relancer pour generer cet export",
+        )
+    return entry
+
+
+@app.get(
+    "/analyses/{analysis_id}/text",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/plain": {}}}},
+)
+async def get_analysis_text(
+    analysis_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Rapport texte d'une analyse terminée (équivalent de la sortie console
+    de la CLI, issue #670).
+
+    409 si l'analyse a été relue depuis SQLite après un redémarrage
+    (les objets vivants nécessaires ne sont pas persistés).
+    """
+    logger.debug("get_analysis_text(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        from netcross_core.report_text import print_report
+
+        print_report(report)
+    logger.debug("get_analysis_text: retour PlainTextResponse(…)")
+    return PlainTextResponse(buf.getvalue())
+
+
+@app.get(
+    "/analyses/{analysis_id}/pdf",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"application/pdf": {}}}},
+)
+async def get_analysis_pdf(
+    analysis_id: str,
+    topn: int = Query(default=5, ge=1, le=50, description="Nombre de catégories par graphique Top-N"),
+    _auth: None = Depends(_verify_api_key),
+) -> StreamingResponse:
+    """Rapport PDF d'une analyse terminée (équivalent de ``--pdf-report``,
+    issue #670).
+
+    ``topn`` contrôle le nombre de catégories affichées par graphique
+    temporel Top-N (équivalent de ``--topn-charts``, défaut 5).
+
+    409 si l'analyse a été relue depuis SQLite après un redémarrage.
+    """
+    logger.debug("get_analysis_pdf(analysis_id={}, topn={})", analysis_id, topn)
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    findings = entry.get("findings")
+    security_report = entry.get("security_report_obj")
+    tls_findings = entry.get("tls_findings")
+    quic_findings = entry.get("quic_findings")
+
+    from netcross_report.pdf import generate_pdf
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)  # noqa: SIM115
+    try:
+        with tmp:
+            # Le paramètre topn est accepté pour la parité avec --topn-charts
+            # mais le PDF utilise le topn fixé au moment de analyse() (défaut 5).
+            generate_pdf(
+                report,
+                tmp.name,
+                findings=findings,
+                security_report=security_report,
+                tls_findings=tls_findings,
+                quic_findings=quic_findings,
+                meta={"Source": "API REST"},
+            )
+        data = Path(tmp.name).read_bytes()
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
+    logger.debug("get_analysis_pdf: retour StreamingResponse(…)")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}.pdf"'},
+    )
+
+
+@app.get(
+    "/analyses/{analysis_id}/detail.csv",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_analysis_csv(
+    analysis_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """CSV du détail par flux d'une analyse terminée (équivalent de
+    ``--detail-csv``, issue #670).
+
+    409 si l'analyse a été relue depuis SQLite après un redémarrage.
+    """
+    logger.debug("get_analysis_csv(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    flows = entry.get("flows")
+
+    from netcross_core.report_text import write_detail_csv
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)  # noqa: SIM115
+    try:
+        with tmp:
+            write_detail_csv(tmp.name, flows, report.points)
+        data = Path(tmp.name).read_text(encoding="utf-8")
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
+    logger.debug("get_analysis_csv: retour PlainTextResponse(…)")
+    return PlainTextResponse(
+        data,
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-detail.csv"'},
+    )
+
+
 @app.get("/analyses", tags=["analyses"], responses={401: {"model": ErrorResponse}})
 async def list_analyses(_auth: None = Depends(_verify_api_key)) -> dict:
     """Liste les IDs d'analyses disponibles (tous statuts)."""
@@ -702,4 +1173,218 @@ async def get_analysis_status(analysis_id: str, _auth: None = Depends(_verify_ap
         status=entry["status"],
         error=entry["error"],
         summary=entry["summary"],
+    )
+
+
+# -- Issue #669 : comparaison baseline/courant -----------------------------
+
+# Store en mémoire pour les comparaisons (séparé du store des analyses).
+_comparisons: dict[str, dict] = {}
+
+_LOSS_THRESHOLD_FORM = Form(default=2.0, gt=0, description="Seuil d'écart de pertes en points de % (défaut: 2.0)")
+_LATENCY_THRESHOLD_FORM = Form(default=5.0, gt=0, description="Seuil d'écart de latence en ms (défaut: 5.0)")
+_TRIAGE_TOP_N_FORM = Form(default=5, ge=1, le=50, description="Nombre de segments au triage (défaut: 5)")
+
+
+_BASELINE_FILES = File(default=..., description="Fichiers pcap baseline")
+_CURRENT_FILES = File(default=..., description="Fichiers pcap courant")
+_BASELINE_LABELS_FORM = Form(default="", description="Étiquettes baseline (séparées par virgule)")
+_CURRENT_LABELS_FORM = Form(default="", description="Étiquettes courant (séparées par virgule)")
+
+
+@app.post(
+    "/comparisons",
+    response_model=AnalysisAccepted,
+    status_code=202,
+    tags=["comparisons"],
+    responses=_UPLOAD_RESPONSES,
+)
+async def create_comparison(
+    baseline_files: list[UploadFile] = _BASELINE_FILES,
+    current_files: list[UploadFile] = _CURRENT_FILES,
+    baseline_labels: str = _BASELINE_LABELS_FORM,
+    current_labels: str = _CURRENT_LABELS_FORM,
+    points_order: str = _POINTS_ORDER_FORM,
+    nat_tolerant: bool = _NAT_TOLERANT_FORM,
+    nat_window_ms: float = _NAT_WINDOW_FORM,
+    tls: bool = _TLS_FORM,
+    quic: bool = _QUIC_FORM,
+    redact: bool = _REDACT_FORM,
+    loss_threshold_pp: float = _LOSS_THRESHOLD_FORM,
+    latency_threshold_ms: float = _LATENCY_THRESHOLD_FORM,
+    triage_top_n: int = _TRIAGE_TOP_N_FORM,
+    wait: bool = _WAIT_QUERY,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Compare deux jeux de captures (baseline vs courant) et remonte les
+    régressions/améliorations (issue #669).
+
+    Équivalent de ``cross-capture-diff --baseline LAN=lan.pcap --current
+    LAN=lan2.pcap``. ``baseline_files`` et ``current_files`` sont des
+    listes de pcap étiquetés (même topologie attendue).
+    """
+    import uuid
+
+    options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    if not baseline_files or not current_files:
+        raise HTTPException(status_code=400, detail="baseline_files et current_files sont requis")
+    baseline_label_list = _parse_labels(baseline_labels, len(baseline_files))
+    current_label_list = _parse_labels(current_labels, len(current_files))
+    order_list = _parse_points_order(points_order, baseline_label_list)
+
+    # Sauvegarder les fichiers
+    baseline_captures: list[tuple[str, str]] = []
+    current_captures: list[tuple[str, str]] = []
+    try:
+        for file, label in zip(baseline_files, baseline_label_list, strict=True):
+            if not file.filename:
+                raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
+            baseline_captures.append((label, await _save_upload(file, label)))
+        for file, label in zip(current_files, current_label_list, strict=True):
+            if not file.filename:
+                raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
+            current_captures.append((label, await _save_upload(file, label)))
+    except BaseException:
+        logger.debug("create_comparison: except BaseException -> nettoyage et relance")
+        for _label, path in baseline_captures + current_captures:
+            Path(path).unlink(missing_ok=True)
+        raise
+
+    comparison_id = uuid.uuid4().hex[:12]
+    _comparisons[comparison_id] = {"status": PENDING, "result": None, "error": None}
+    status_url = f"/comparisons/{comparison_id}"
+
+    def _run_comparison():
+        try:
+            _baseline_doc, baseline_summary, _, baseline_report, *_ = _analyse_captures(
+                baseline_captures, order_list, multi=True, options=options
+            )
+            _current_doc, current_summary, _, current_report, *_ = _analyse_captures(
+                current_captures, order_list, multi=True, options=options
+            )
+            from netcross_core.baseline_diff import diff_reports
+            from netcross_report.triage import health_score, rank_segments
+
+            # Les Report vivants sont disponibles dans le tuple de 10
+            findings = diff_reports(
+                baseline_report,
+                current_report,
+                loss_min_pp=loss_threshold_pp,
+                latency_min_ms=latency_threshold_ms,
+            )
+            ranked = rank_segments(findings)
+            score = health_score(ranked)
+            regression = any(f.severity == "regression" for f in findings)
+            result = {
+                "findings": [_diff_finding_to_dict(f) for f in findings],
+                "triage": [
+                    {"segment": s.segment, "score": s.score, "categories": list(s.categories)}
+                    for s in ranked[:triage_top_n]
+                ],
+                "health_score": score,
+                "regression": regression,
+                "baseline_summary": baseline_summary,
+                "current_summary": current_summary,
+            }
+            _comparisons[comparison_id] = {"status": COMPLETED, "result": result, "error": None}
+        except Exception as exc:
+            logger.exception("comparaison {} : erreur", comparison_id)
+            _comparisons[comparison_id] = {"status": FAILED, "result": None, "error": str(exc)}
+        finally:
+            for _label, path in baseline_captures + current_captures:
+                Path(path).unlink(missing_ok=True)
+
+    if not wait:
+        _get_executor().submit(_run_comparison)
+        accepted = AnalysisAccepted(analysis_id=comparison_id, status=PENDING, status_url=status_url)
+        return JSONResponse(status_code=202, content=accepted.model_dump(), headers={"Location": status_url})
+    await run_in_threadpool(_run_comparison)
+    entry = _comparisons[comparison_id]
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=400, detail=entry["error"])
+    return JSONResponse(status_code=201, content=entry["result"], headers={"Location": status_url})
+
+
+def _dict_as_report(doc: dict):
+    """Convertit un document JSON (report_document) en un objet semblable à
+    un Report pour diff_reports, qui lit les champs par attribut."""
+    from netcross_core.models import Report
+
+    r = Report()
+    r.points = doc.get("points", [])
+    r.pairs = [tuple(p) for p in doc.get("pairs", [])]
+    r.seen_count = doc.get("seen_count", {})
+    r.loss_count = doc.get("loss_count", {})
+    r.off_path_count = doc.get("off_path_count", {})
+    r.latency = {tuple(k.split(" -> ")): v for k, v in doc.get("latency", {}).items()}
+    r.retrans = doc.get("retrans", {})
+    r.retrans_fast = doc.get("retrans_fast", {})
+    r.retrans_rto = doc.get("retrans_rto", {})
+    r.retrans_spurious = doc.get("retrans_spurious", {})
+    r.qos_change = {tuple(k.split(" -> ")): v for k, v in doc.get("qos_change", {}).items()}
+    r.hop_delta = {tuple(k.split(" -> ")): v for k, v in doc.get("hop_delta", {}).items()}
+    r.ttl_unstable = doc.get("ttl_unstable", {})
+    r.frag_count = doc.get("frag_count", {})
+    r.frag_new = {tuple(k.split(" -> ")): v for k, v in doc.get("frag_new", {}).items()}
+    r.security_findings = doc.get("security_findings", [])
+    return r
+
+
+def _diff_finding_to_dict(f) -> dict:
+    """Sérialise un DiffFinding en dict JSON-sérialisable."""
+    return {
+        "severity": f.severity,
+        "category": f.category,
+        "point": f.point,
+        "detail": f.detail,
+    }
+
+
+@app.get("/comparisons/{comparison_id}", tags=["comparisons"], responses=_ANALYSIS_RESPONSES)
+async def get_comparison(
+    comparison_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Récupère le résultat d'une comparaison (écarts, triage, score de santé).
+
+    Issue #669 : ``regression: true`` si au moins un écart est en régression.
+    """
+    entry = _comparisons.get(comparison_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
+    if entry["status"] == PENDING:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    return JSONResponse(content=entry["result"])
+
+
+@app.get(
+    "/comparisons/{comparison_id}/csv",
+    tags=["comparisons"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_comparison_csv(
+    comparison_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """CSV du détail des écarts (équivalent de ``--diff-csv``, issue #669)."""
+    entry = _comparisons.get(comparison_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
+    if entry["status"] == PENDING:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["severity", "category", "point", "detail"])
+    for f in entry["result"]["findings"]:
+        writer.writerow([f["severity"], f["category"], f["point"], f["detail"]])
+    return PlainTextResponse(
+        buf.getvalue(),
+        headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )

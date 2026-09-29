@@ -34,7 +34,14 @@ paths:
 
         ``nat_window_ms``, ``tls``, ``quic`` et ``redact`` ont le sens des
 
-        options de même nom de la CLI (issue #330).'
+        options de même nom de la CLI (issue #330).
+
+
+        Issue #672 : ``max_packets``, ``sample``, ``test_net_external``, ``names``,
+
+        ``known_destinations`` et ``known_hosts`` sont les équivalents des options
+
+        CLI de même nom (fichiers joints pour les trois derniers).'
       operationId: upload_capture_captures_post
       security:
       - APIKeyHeader: []
@@ -112,7 +119,7 @@ paths:
 
         ou ``/status``) détaille les pertes et le délai de chaque segment.
 
-        Options d''analyse : comme ``POST /captures`` (issue #330).'
+        Options d''analyse : comme ``POST /captures`` (issue #330, #672).'
       operationId: upload_multi_capture_captures_multi_post
       security:
       - APIKeyHeader: []
@@ -324,6 +331,181 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/text:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Text
+      description: 'Rapport texte d''une analyse terminée (équivalent de la sortie
+        console
+
+        de la CLI, issue #670).
+
+
+        409 si l''analyse a été relue depuis SQLite après un redémarrage
+
+        (les objets vivants nécessaires ne sont pas persistés).'
+      operationId: get_analysis_text_analyses__analysis_id__text_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/plain: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/pdf:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Pdf
+      description: 'Rapport PDF d''une analyse terminée (équivalent de ``--pdf-report``,
+
+        issue #670).
+
+
+        ``topn`` contrôle le nombre de catégories affichées par graphique
+
+        temporel Top-N (équivalent de ``--topn-charts``, défaut 5).
+
+
+        409 si l''analyse a été relue depuis SQLite après un redémarrage.'
+      operationId: get_analysis_pdf_analyses__analysis_id__pdf_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: topn
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50
+          minimum: 1
+          description: Nombre de catégories par graphique Top-N
+          default: 5
+          title: Topn
+        description: Nombre de catégories par graphique Top-N
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/pdf: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/detail.csv:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Csv
+      description: 'CSV du détail par flux d''une analyse terminée (équivalent de
+
+        ``--detail-csv``, issue #670).
+
+
+        409 si l''analyse a été relue depuis SQLite après un redémarrage.'
+      operationId: get_analysis_csv_analyses__analysis_id__detail_csv_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses:
     get:
       tags:
@@ -386,6 +568,178 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /comparisons:
+    post:
+      tags:
+      - comparisons
+      summary: Create Comparison
+      description: 'Compare deux jeux de captures (baseline vs courant) et remonte
+        les
+
+        régressions/améliorations (issue #669).
+
+
+        Équivalent de ``cross-capture-diff --baseline LAN=lan.pcap --current
+
+        LAN=lan2.pcap``. ``baseline_files`` et ``current_files`` sont des
+
+        listes de pcap étiquetés (même topologie attendue).'
+      operationId: create_comparison_comparisons_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: wait
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: 'true : attendre la fin de l''analyse (201 + résumé) au lieu
+            de 202 + statut pending'
+          default: false
+          title: Wait
+        description: 'true : attendre la fin de l''analyse (201 + résumé) au lieu
+          de 202 + statut pending'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_create_comparison_comparisons_post'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisAccepted'
+        '201':
+          description: Analyse terminée (?wait=true)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisSummary'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Content Too Large
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /comparisons/{comparison_id}:
+    get:
+      tags:
+      - comparisons
+      summary: Get Comparison
+      description: 'Récupère le résultat d''une comparaison (écarts, triage, score
+        de santé).
+
+
+        Issue #669 : ``regression: true`` si au moins un écart est en régression.'
+      operationId: get_comparison_comparisons__comparison_id__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: comparison_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Comparison Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /comparisons/{comparison_id}/csv:
+    get:
+      tags:
+      - comparisons
+      summary: Get Comparison Csv
+      description: 'CSV du détail des écarts (équivalent de ``--diff-csv``, issue
+        #669).'
+      operationId: get_comparison_csv_comparisons__comparison_id__csv_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: comparison_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Comparison Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
         '422':
           description: Validation Error
           content:
@@ -469,6 +823,90 @@ components:
       - analysis_id
       title: AnalysisSummary
       description: Résumé d'une analyse (retourné par POST /captures).
+    Body_create_comparison_comparisons_post:
+      properties:
+        baseline_files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Baseline Files
+          description: Fichiers pcap baseline
+        current_files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Current Files
+          description: Fichiers pcap courant
+        baseline_labels:
+          type: string
+          title: Baseline Labels
+          description: Étiquettes baseline (séparées par virgule)
+          default: ''
+        current_labels:
+          type: string
+          title: Current Labels
+          description: Étiquettes courant (séparées par virgule)
+          default: ''
+        points_order:
+          type: string
+          title: Points Order
+          description: 'Ordre des points séparé par virgule (ex: lan,wan,dc)'
+          default: ''
+        nat_tolerant:
+          type: boolean
+          title: Nat Tolerant
+          description: 'true : corrélation tolérante au NAT (équivalent de --nat-tolerant)'
+          default: false
+        nat_window_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Nat Window Ms
+          description: Fenêtre de corrélation NAT en ms, avec nat_tolerant (équivalent
+            de --nat-window-ms)
+          default: 200.0
+        tls:
+          type: boolean
+          title: Tls
+          description: 'true : diagnostic TLS (équivalent de --tls)'
+          default: false
+        quic:
+          type: boolean
+          title: Quic
+          description: 'true : diagnostic QUIC/HTTP3 (équivalent de --quic)'
+          default: false
+        redact:
+          type: boolean
+          title: Redact
+          description: 'true : anonymise les adresses IP/MAC avant analyse (équivalent
+            de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
+            alors pas calculé'
+          default: false
+        loss_threshold_pp:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Loss Threshold Pp
+          description: 'Seuil d''écart de pertes en points de % (défaut: 2.0)'
+          default: 2.0
+        latency_threshold_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Latency Threshold Ms
+          description: 'Seuil d''écart de latence en ms (défaut: 5.0)'
+          default: 5.0
+        triage_top_n:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Triage Top N
+          description: 'Nombre de segments au triage (défaut: 5)'
+          default: 5
+      type: object
+      required:
+      - baseline_files
+      - current_files
+      title: Body_create_comparison_comparisons_post
     Body_upload_capture_captures_post:
       properties:
         file:
@@ -510,6 +948,76 @@ components:
             de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
             alors pas calculé'
           default: false
+        max_packets:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Packets
+          description: Limiter l'analyse aux N premiers paquets (équivalent de --max-packets)
+        sample:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sample
+          description: 'Échantillonnage 1/N (ex: 1/50) — équivalent de --sample'
+        test_net_external:
+          type: boolean
+          title: Test Net External
+          description: 'true : plages TEST-NET traitées comme externes (équivalent
+            de --test-net-external)'
+          default: false
+        names:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Names
+          description: Table des noms logiques (JSON/YAML) — équiv. --names
+        known_destinations:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Known Destinations
+          description: Destinations connues (JSON, liste d'IP) — équiv. --known-destinations
+        known_hosts:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Known Hosts
+          description: Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts
+        rule_engine:
+          type: boolean
+          title: Rule Engine
+          description: 'true : évaluer le moteur de règles déclaratif (équiv. --rule-engine)'
+          default: false
+        expert_section:
+          type: boolean
+          title: Expert Section
+          description: 'true : construire la section expertise détaillée (équiv. --expert-section)'
+          default: false
+        media_quality:
+          type: boolean
+          title: Media Quality
+          description: 'true : analyser la qualité média VoIP/vidéo (équiv. --media-quality)'
+          default: false
+        tshark_stats:
+          type: boolean
+          title: Tshark Stats
+          description: 'true : collecter les statistiques tshark natives (équiv. --tshark-stats)'
+          default: false
+        flow_timeline:
+          type: boolean
+          title: Flow Timeline
+          description: 'true : construire la chronologie des flux (équiv. --flow-timeline)'
+          default: false
+        flow_timeline_window:
+          type: number
+          title: Flow Timeline Window
+          description: Fenêtre temporelle en secondes pour la chronologie (équiv.
+            --flow-timeline-window)
+          default: 1.0
       type: object
       required:
       - file
@@ -562,6 +1070,76 @@ components:
             de --redact) ; incompatible avec tls/quic, et le rapport de sécurité n''est
             alors pas calculé'
           default: false
+        max_packets:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Packets
+          description: Limiter l'analyse aux N premiers paquets (équivalent de --max-packets)
+        sample:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sample
+          description: 'Échantillonnage 1/N (ex: 1/50) — équivalent de --sample'
+        test_net_external:
+          type: boolean
+          title: Test Net External
+          description: 'true : plages TEST-NET traitées comme externes (équivalent
+            de --test-net-external)'
+          default: false
+        names:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Names
+          description: Table des noms logiques (JSON/YAML) — équiv. --names
+        known_destinations:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Known Destinations
+          description: Destinations connues (JSON, liste d'IP) — équiv. --known-destinations
+        known_hosts:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Known Hosts
+          description: Hôtes connus (JSON, liste d'IP) — équiv. --known-hosts
+        rule_engine:
+          type: boolean
+          title: Rule Engine
+          description: 'true : évaluer le moteur de règles déclaratif (équiv. --rule-engine)'
+          default: false
+        expert_section:
+          type: boolean
+          title: Expert Section
+          description: 'true : construire la section expertise détaillée (équiv. --expert-section)'
+          default: false
+        media_quality:
+          type: boolean
+          title: Media Quality
+          description: 'true : analyser la qualité média VoIP/vidéo (équiv. --media-quality)'
+          default: false
+        tshark_stats:
+          type: boolean
+          title: Tshark Stats
+          description: 'true : collecter les statistiques tshark natives (équiv. --tshark-stats)'
+          default: false
+        flow_timeline:
+          type: boolean
+          title: Flow Timeline
+          description: 'true : construire la chronologie des flux (équiv. --flow-timeline)'
+          default: false
+        flow_timeline_window:
+          type: number
+          title: Flow Timeline Window
+          description: Fenêtre temporelle en secondes pour la chronologie (équiv.
+            --flow-timeline-window)
+          default: 1.0
       type: object
       required:
       - files

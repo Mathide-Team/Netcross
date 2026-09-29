@@ -61,6 +61,18 @@ def test_options_par_defaut_enregistrees():
         "tls": False,
         "quic": False,
         "redact": False,
+        "max_packets": None,
+        "sample_n": None,
+        "test_net_external": False,
+        "known_destinations": None,
+        "known_hosts": None,
+        "names_path": None,
+        "rule_engine": False,
+        "expert_section": False,
+        "media_quality": False,
+        "tshark_stats": False,
+        "flow_timeline": False,
+        "flow_timeline_window": 1.0,
     }
 
 
