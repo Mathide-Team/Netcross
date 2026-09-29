@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-161 modules · 243 classes · 553 fonctions publiques de module.
+161 modules · 243 classes · 556 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -39,8 +39,8 @@ flowchart TD
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
-    netcross_api -->|"3 imports"| netcross_report
-    netcross_api -->|"9 imports"| netcross_core
+    netcross_api -->|"4 imports"| netcross_report
+    netcross_api -->|"11 imports"| netcross_core
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
@@ -3769,6 +3769,9 @@ classDiagram
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
+        +get_analysis_text(analysis_id, _auth) PlainTextResponse
+        +get_analysis_pdf(analysis_id, topn, _auth) StreamingResponse
+        +get_analysis_csv(analysis_id, _auth) PlainTextResponse
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
     }
@@ -3848,7 +3851,7 @@ classDiagram
     class AnalysesStore {
         +persistent() bool
         +create_pending(metadata) str
-        +complete(analysis_id, document, summary, report) None
+        +complete(analysis_id, document, summary, report, report_obj, flows, findings, security_report_obj, tls_findings, quic_findings) None
         +fail(analysis_id, error) None
         +get(analysis_id) dict?
         +get_status(analysis_id) str?
