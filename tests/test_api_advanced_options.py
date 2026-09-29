@@ -172,10 +172,7 @@ def test_advanced_options_in_openapi_spec():
     captures_post = spec["paths"]["/captures"]["post"]
     # Vérifier que les nouveaux paramètres de formulaire existent
     body_schema = (
-        captures_post.get("requestBody", {})
-        .get("content", {})
-        .get("multipart/form-data", {})
-        .get("schema", {})
+        captures_post.get("requestBody", {}).get("content", {}).get("multipart/form-data", {}).get("schema", {})
     )
     ref = body_schema.get("$ref", "")
     # Le schema peut être en référence — vérifier les composants

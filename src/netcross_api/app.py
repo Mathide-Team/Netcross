@@ -604,7 +604,13 @@ async def upload_capture(
     extra_files = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
     logger.debug("upload_capture: retour await _dispatch([(label, path)], metadata, None, …")
     return await _dispatch(
-        [(label, path)], metadata, None, multi=False, wait=wait, options=options, extra_files=extra_files,
+        [(label, path)],
+        metadata,
+        None,
+        multi=False,
+        wait=wait,
+        options=options,
+        extra_files=extra_files,
     )
 
 
@@ -773,7 +779,13 @@ async def upload_multi_capture(
     extra_files = [p for p in (names_path, known_dest_path, known_hosts_path) if p]
     logger.debug("upload_multi_capture: retour await _dispatch(captures, metadata, order_list, m…")
     return await _dispatch(
-        captures, metadata, order_list, multi=True, wait=wait, options=options, extra_files=extra_files,
+        captures,
+        metadata,
+        order_list,
+        multi=True,
+        wait=wait,
+        options=options,
+        extra_files=extra_files,
     )
 
 
