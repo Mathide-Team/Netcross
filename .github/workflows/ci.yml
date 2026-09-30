@@ -23,12 +23,20 @@ name: CI
 jobs:
   quality:
     name: Qualité (lint, format, import-linter, tests)
-    runs-on: [self-hosted, netcross]
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
 
     steps:
+      - name: Prérequis du conteneur (git, certificats, compilateur)
+        # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Checkout du dépôt
         uses: actions/checkout@v7
 
@@ -157,12 +165,20 @@ jobs:
     # GTK4 tout en passant en CI). Ici : GTK4 + pygobject + serveur X
     # virtuel (Xvfb), suite complète, et échec si un test GTK est sauté.
     name: Tests GTK4 (Xvfb)
-    runs-on: [self-hosted, netcross]
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
 
     steps:
+      - name: Prérequis du conteneur (git, certificats, compilateur)
+        # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Checkout du dépôt
         uses: actions/checkout@v7
 
@@ -213,12 +229,20 @@ jobs:
     # stricts (bascule : retirer continue-on-error + ajouter les modules
     # dans [[tool.mypy.overrides]] de pyproject.toml).
     name: Types (mypy)
-    runs-on: [self-hosted, netcross]
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
 
     steps:
+      - name: Prérequis du conteneur (git, certificats, compilateur)
+        # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Checkout du dépôt
         uses: actions/checkout@v7
 
@@ -243,12 +267,20 @@ jobs:
     # recoit : installation apt, --help de chaque lanceur, import de chaque
     # module avec /usr/bin/python3, analyse reelle d'une capture.
     name: Paquets (deb installé, rpm vérifié)
-    runs-on: [self-hosted, netcross]
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
 
     steps:
+      - name: Prérequis du conteneur (git, certificats, compilateur)
+        # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Checkout du dépôt
         uses: actions/checkout@v7
 
@@ -289,19 +321,31 @@ jobs:
     # Pas de if: -- check_branch_protection.py --hors-ligne ignore les jobs
     # conditionnels.
     name: Construction (mkdocs build --strict)
-    runs-on: [self-hosted, netcross]
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
 
     steps:
+      - name: Prérequis du conteneur (git, certificats, compilateur)
+        # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Checkout du dépôt
         uses: actions/checkout@v7
 
-      - name: Installation de Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
+      - name: Installation de Python 3.14 (paquet Ubuntu 26.04)
+        # setup-python ne publie pas de build pour ubuntu 26.04 : Python du
+        # système dans un venv (PEP 668 interdit pip hors venv).
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv
+          python3 --version
+          python3 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
 
       - name: Installation de mkdocs-material
         run: pip install mkdocs-material pymdown-extensions
@@ -322,21 +366,33 @@ jobs:
     # les fichiers concernés (src/**/*.py, lang/**) couvrent la majeure partie
     # du code, donc le job tourne sur toutes les PR/push.
     name: i18n (catalogues à jour)
-    runs-on: [self-hosted, netcross]
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
 
     steps:
+      - name: Prérequis du conteneur (git, certificats, compilateur)
+        # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Checkout du dépôt (historique complet pour le diff)
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Installation de Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
+      - name: Installation de Python 3.14 (paquet Ubuntu 26.04)
+        # setup-python ne publie pas de build pour ubuntu 26.04 : Python du
+        # système dans un venv (PEP 668 interdit pip hors venv).
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv
+          python3 --version
+          python3 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
 
       - name: Installer gettext
         run: |
