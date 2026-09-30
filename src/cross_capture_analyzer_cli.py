@@ -817,6 +817,54 @@ def _run_replay(capture_specs, interface, speed, loop):
     logger.debug("_run_replay: fin")
 
 
+def _start_ring_recorders(points, ring_buffer):
+    """Issue #676 : lance un enregistreur en ring buffer par point si
+    ``ring_buffer`` vaut (N, SECONDES). Renvoie {label: (processus, repertoire)}.
+    Quitte avec un message si une source ne le permet pas (pipe://)."""
+    if not ring_buffer or ring_buffer[0] is None:
+        logger.debug("_start_ring_recorders: pas de ring buffer -> retour dict vide")
+        return {}
+    from pcap_parser.capture import start_ring_recorder
+
+    max_files, max_duration = ring_buffer
+    recorders = {}
+    for label, iface, bpf in points:
+        directory = tempfile.mkdtemp(prefix=f"netcross-ring-{label}-")
+        try:
+            proc = start_ring_recorder(
+                iface,
+                directory,
+                max_files=max_files,
+                max_duration_per_file=max_duration,
+                prefix=label,
+                bpf_filter=bpf,
+            )
+        except (CaptureSourceError, TsharkNotFoundError) as exc:
+            logger.warning("_start_ring_recorders: point {} refuse ({})", label, exc)
+            _stop_ring_recorders(recorders)
+            print(f"--ring-buffer [{label}] : {exc}", file=sys.stderr)
+            sys.exit(1)
+        recorders[label] = (proc, directory)
+        print(f"[{label}] rotation de capture : {max_files} fichier(s) de {max_duration:g} s max dans {directory}")
+    logger.debug("_start_ring_recorders: retour {} enregistreur(s)", len(recorders))
+    return recorders
+
+
+def _stop_ring_recorders(recorders):
+    """Arrete les enregistreurs et affiche les fichiers conserves par point."""
+    if not recorders:
+        return
+    from pcap_parser.capture import stop_ring_recorder
+
+    for label, (proc, directory) in recorders.items():
+        err = stop_ring_recorder(proc)
+        files = sorted(f for f in os.listdir(directory) if not f.startswith("."))
+        print(f"[{label}] rotation de capture : {len(files)} fichier(s) conserve(s) dans {directory}")
+        if proc.returncode not in (0, -signal.SIGTERM, None) and err:
+            print(f"[{label}] enregistreur tshark : {err}", file=sys.stderr)
+    logger.debug("_stop_ring_recorders: fin")
+
+
 def _run_live_captures(live_specs, duration, reporter=None, ring_buffer=None):
     """Capture en direct sur un ou plusieurs points simultanement (un thread
     par point, comme l'interface graphique -- voir netcross_gtk4.app
@@ -832,35 +880,22 @@ def _run_live_captures(live_specs, duration, reporter=None, ring_buffer=None):
     points = [_parse_live_spec(s) for s in live_specs]
     _check_single_stdin(points)
     stop_event = threading.Event()
-    # Issue #676 : ring buffer de capture (equivalent GUI)
-    ring_buffers = {}
-    if ring_buffer and ring_buffer[0] is not None:
-        from pcap_parser.capture import CaptureRingBuffer
-
-        for label, _iface, _bpf in points:
-            import tempfile as _tf
-
-            rb_dir = _tf.mkdtemp(prefix=f"netcross-ring-{label}-")
-            ring_buffers[label] = CaptureRingBuffer(
-                directory=rb_dir,
-                max_files=ring_buffer[0],
-                max_duration_per_file=ring_buffer[1],
-            )
+    # Issue #676 : ring buffer de capture. Un tshark d'enregistrement par
+    # point ecrit les trames brutes en rotation native (-b files/duration) ;
+    # l'analyse, elle, continue sur le flux de dissection habituel.
+    recorders = _start_ring_recorders(points, ring_buffer)
     packets_by_point = {label: [] for label, _iface, _bpf in points}
     lock = threading.Lock()
 
     def _worker(label, iface, bpf):
         count = 0
         last_log = time.monotonic()
-        rb = ring_buffers.get(label)
         try:
             for pkt in parse_live(label, iface, bpf_filter=bpf, stop_event=stop_event):
                 with lock:
                     packets_by_point[label].append(pkt)
                 if reporter is not None:
                     reporter.add(pkt)
-                if rb is not None:
-                    rb.maybe_rotate()
                 count += 1
                 now = time.monotonic()
                 if now - last_log >= 2.0:
@@ -924,6 +959,7 @@ def _run_live_captures(live_specs, duration, reporter=None, ring_buffer=None):
         signal.signal(signal.SIGINT, old_handler)
         if reporter is not None:
             reporter.stop()
+        _stop_ring_recorders(recorders)
 
     all_packets = []
     for label, _iface, _bpf in points:
@@ -1538,10 +1574,12 @@ def main():
     ap.add_argument(
         "--ring-buffer",
         metavar="N:SECONDES",
-        help="Avec --live : rotation de capture (ring buffer). Garde au plus N fichiers "
-        "de SECONDES secondes chacun dans un repertoire temporaire, supprime "
-        "automatiquement le plus ancien. Ex: 5:60 (5 fichiers de 60 s). "
-        "Equivalent GUI de la rotation de capture (issue #676).",
+        help="Avec --live : enregistre aussi la capture brute de chaque point en "
+        "rotation (ring buffer tshark) : au plus N fichiers pcapng de SECONDES "
+        "secondes chacun dans un repertoire temporaire affiche au demarrage, le "
+        "plus ancien supprime automatiquement. L'analyse finale porte toujours "
+        "sur toute la session. SECONDES est arrondi a l'entier superieur. "
+        "Ex: 5:60 (5 fichiers de 60 s). Incompatible avec pipe:// (issue #676).",
     )
     ap.add_argument(
         "--bpf-library",

@@ -36,31 +36,31 @@ class _Minuteur:
 
 
 def test_capture_en_direct_ring_buffer_un_par_point(monkeypatch, tmp_path):
-    """Lignes 838-844 et 863 : --ring-buffer N:S cree un CaptureRingBuffer par
-    point et avance sa rotation a chaque paquet."""
-    import tempfile
-
+    """--ring-buffer N:S lance un enregistreur tshark en rotation par point
+    (issue #676), l'arrete en fin de session, et l'analyse recoit toujours
+    tous les paquets du flux de dissection."""
     from pcap_parser import capture
 
-    crees = []
+    lances, arretes = [], []
 
-    class _Anneau:
-        def __init__(self, directory, max_files, max_duration_per_file):
-            self.directory = directory
-            self.max_files = max_files
-            self.max_duration_per_file = max_duration_per_file
-            self.rotations = 0
-            crees.append(self)
+    class _Proc:
+        returncode = 0
 
-        def maybe_rotate(self):
-            self.rotations += 1
+    def _start(iface, directory, **kwargs):
+        lances.append((iface, directory, kwargs["max_files"], kwargs["max_duration_per_file"], kwargs["prefix"]))
+        return _Proc()
+
+    def _stop(proc):
+        arretes.append(proc)
+        return ""
 
     def _live(label, iface, bpf_filter=None, stop_event=None):
         yield make_pkt(point=label)
         yield make_pkt(point=label, ts=1.0)
 
-    monkeypatch.setattr(capture, "CaptureRingBuffer", _Anneau)
-    monkeypatch.setattr(tempfile, "mkdtemp", lambda prefix: str(tmp_path / prefix))
+    monkeypatch.setattr(capture, "start_ring_recorder", _start)
+    monkeypatch.setattr(capture, "stop_ring_recorder", _stop)
+    monkeypatch.setattr(cli.tempfile, "mkdtemp", lambda prefix: str(tmp_path))
     monkeypatch.setattr(cli, "parse_live", _live)
     monkeypatch.setattr(cli.signal, "signal", lambda signum, handler: None)
     monkeypatch.setattr(cli.threading, "Timer", _Minuteur)
@@ -68,11 +68,11 @@ def test_capture_en_direct_ring_buffer_un_par_point(monkeypatch, tmp_path):
     paquets = cli._run_live_captures(["LAN:eth0", "WAN:eth1"], 0, ring_buffer=(3, 30.0))
 
     assert len(paquets) == 4
-    assert [(a.max_files, a.max_duration_per_file, a.rotations) for a in crees] == [(3, 30.0, 2), (3, 30.0, 2)]
-    assert [a.directory for a in crees] == [
-        str(tmp_path / "netcross-ring-LAN-"),
-        str(tmp_path / "netcross-ring-WAN-"),
+    assert lances == [
+        ("eth0", str(tmp_path), 3, 30.0, "LAN"),
+        ("eth1", str(tmp_path), 3, 30.0, "WAN"),
     ]
+    assert len(arretes) == 2
 
 
 def test_capture_en_direct_erreur_sans_rapport_temps_reel(monkeypatch, capsys):

@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-161 modules · 243 classes · 566 fonctions publiques de module.
+161 modules · 243 classes · 569 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -35,7 +35,7 @@ flowchart TD
     CLI -->|"18 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"41 imports"| netcross_core
-    CLI -->|"7 imports"| pcap_parser
+    CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"14 imports"| netcross_report
     netcross_gtk4 -->|"55 imports"| netcross_core
     netcross_gtk4 -->|"2 imports"| pcap_parser
@@ -228,6 +228,9 @@ classDiagram
         +parse_capture(path, raise_on_error) list~RawPacket~
         +parse_captures_parallel(captures, max_workers) tuple~list~RawPacket~, list~dict~~
         +iter_live(interface, bpf_filter, stop_event) Iterator~RawPacket~
+        +ring_recorder_args(interface, directory, max_files, max_duration_per_file, prefix, bpf_filter) list
+        +start_ring_recorder(interface, directory, max_files, max_duration_per_file, prefix, bpf_filter) subprocess.Popen
+        +stop_ring_recorder(proc, timeout) str
         +merge_captures(paths, output_path, dedup) None
         +replay_capture(path, interface, speed, loop) None
         +split_capture(path, output_dir, by, value) list~str~
