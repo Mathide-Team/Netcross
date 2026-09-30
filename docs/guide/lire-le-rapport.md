@@ -77,8 +77,36 @@ Chaque constat indique :
 | Débit, corrélation débit/pertes | Charge par point, et type de perte | Saturation progressive, limitation nette (policing) ou pertes sans lien avec le débit |
 | TCP | Fenêtre à zéro, ACK dupliqués, RST, retransmissions classées par cause | Une retransmission « rapide » est un fonctionnement normal |
 | Trous de séquence TCP | Données jamais vues à un point | « de capture » : défaut de la capture, pas du réseau |
+| Checksums IP/TCP/UDP | Paquets reçus avec un checksum invalide, par point | Un checksum à `0x0000` n'est jamais signalé : c'est l'offload de la carte réseau, pas une corruption |
 | DNS, HTTP, DHCP, SIP, RTP | Transactions incomplètes, erreurs, durées | Une erreur 5xx ou un SERVFAIL est souvent un problème **applicatif**, pas réseau |
 | Décomposition réseau / serveur | Part du temps passée sur le réseau et côté serveur | Tranche entre « le réseau est lent » et « l'application est lente » |
+
+### Checksums IP/TCP/UDP
+
+La section « Intégrité de capture : checksums IP/TCP/UDP » liste, point par
+point, les paquets dont le checksum IP, TCP ou UDP est invalide. Chaque ligne
+donne le protocole, le numéro de trame (à retrouver dans Wireshark) et la
+valeur reçue. Au-delà de 50 exemples par point, le rapport indique seulement
+combien d'autres ont été trouvés.
+
+```text
+-- Integrite de capture : checksums IP/TCP/UDP --
+  A               : 1 checksum(s) invalide(s)
+      ex: checksum TCP invalide (trame 2, recu 0x1111)
+```
+
+Deux cas ne sont volontairement pas signalés :
+
+- **l'offload matériel** : un checksum valant `0x0000` est calculé par la
+  carte réseau au moment de l'émission. Il n'est donc jamais rempli dans la
+  capture prise sur la machine émettrice. Ce n'est pas une corruption ;
+- **l'absence de verdict** : IPv6 n'a pas de checksum d'en-tête, et un paquet
+  que tshark n'a pas pu vérifier n'est pas compté comme invalide.
+
+Sans erreur, le rapport affiche « aucun
+checksum IP/TCP/UDP invalide detecte ». Le rapport JSON (`--json-report`)
+expose les mêmes données dans `checksum_errors` (point, numéro de trame,
+protocole, valeur reçue).
 
 Quand Netcross ne peut pas conclure, il l'écrit (« indéterminé »,
 « impossible de conclure ») plutôt que de deviner. C'est volontaire.
