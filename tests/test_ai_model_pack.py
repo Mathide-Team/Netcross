@@ -356,3 +356,77 @@ def test_is_online_connexion_reussie_et_echouee(monkeypatch):
 
     monkeypatch.setattr(outbox.socket, "create_connection", _ko)
     assert outbox.is_online() is False
+
+
+# -- Issue #703 : refus restants de read_pack / import_pack --------------------
+
+
+def _resigne(path, replace=None, drop=()):
+    """Reecrit l'archive en recalculant les empreintes du manifeste, pour
+    atteindre les controles situes apres la verification SHA-256."""
+    import hashlib
+
+    with zipfile.ZipFile(path) as zf:
+        entries = {n: zf.read(n) for n in zf.namelist() if n not in drop}
+    entries.update(replace or {})
+    manifest = json.loads(entries[MANIFEST])
+    manifest["files"] = {n: hashlib.sha256(b).hexdigest() for n, b in entries.items() if n != MANIFEST}
+    entries[MANIFEST] = json.dumps(manifest).encode()
+    with zipfile.ZipFile(path, "w") as zf:
+        for n, b in entries.items():
+            zf.writestr(n, b)
+
+
+def test_limites_de_taille(tmp_path, baseline, monkeypatch):
+    """Lignes 220-221 : archive trop volumineuse ; lignes 236-237 : entree
+    trop volumineuse."""
+    from netcross_ai import model_pack
+
+    path = _pack(tmp_path, baseline)
+    monkeypatch.setattr(model_pack, "MAX_PACK_BYTES", 10)
+    with pytest.raises(ModelPackError, match="archive trop volumineuse"):
+        read_pack(path)
+    monkeypatch.setattr(model_pack, "MAX_PACK_BYTES", 64 * 1024 * 1024)
+    monkeypatch.setattr(model_pack, "MAX_ENTRY_BYTES", 10)
+    with pytest.raises(ModelPackError, match="trop volumineux"):
+        read_pack(path)
+
+
+def test_manifeste_non_json(tmp_path, baseline):
+    """Lignes 255-257 : manifeste qui n'est pas du JSON UTF-8."""
+    path = _pack(tmp_path, baseline)
+    _rewrite(path, replace={MANIFEST: b"\xff\xfe"})
+    with pytest.raises(ModelPackError, match=r"manifest\.json invalide"):
+        read_pack(path)
+
+
+def test_baseline_et_entrainement_invalides_et_paquet_vide(tmp_path, baseline):
+    """Lignes 291-293 : baseline refusee ; lignes 301-304 : jeu
+    d'entrainement d'un autre schema ; lignes 314-315 : paquet sans
+    contenu."""
+    path = _pack(tmp_path, baseline)
+    _resigne(path, replace={BASELINE_FILE: json.dumps({"vectors": "non"}).encode()})
+    with pytest.raises(ModelPackError):
+        read_pack(path)
+
+    path = _pack(tmp_path, training=[([1.0] * W, "a")], name="entrainement")
+    _resigne(path, replace={TRAINING_FILE: json.dumps({"schema": "autre", "samples": []}).encode()})
+    with pytest.raises(ModelPackError, match=r"training\.json invalide"):
+        read_pack(path)
+
+    path = _pack(tmp_path, baseline, name="vide")
+    _resigne(path, drop=(BASELINE_FILE,))
+    with pytest.raises(ModelPackError, match="paquet vide"):
+        read_pack(path)
+
+
+def test_import_dans_un_jeu_local_illisible_ou_d_un_autre_schema(tmp_path):
+    """Lignes 342-344 : jeu local non JSON ; lignes 346-349 : autre schema."""
+    path = _pack(tmp_path, training=[([1.0] * W, "a")])
+    local = tmp_path / "local.json"
+    local.write_text("{pas du json", encoding="utf-8")
+    with pytest.raises(ModelPackError, match="jeu local illisible"):
+        import_pack(path, training_path=local)
+    local.write_text(json.dumps({"schema": "autre"}), encoding="utf-8")
+    with pytest.raises(ModelPackError, match="n'est pas un jeu"):
+        import_pack(path, training_path=local)

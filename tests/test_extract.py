@@ -369,3 +369,47 @@ def test_extracted_file_dataclass():
     assert f.proto_source == "http"
     assert f.size == 1024
     assert f.type_detected == "pdf"
+
+
+# --- Issue #708 : branches restantes du carver ---------------------------------
+
+
+def test_mime_absent_et_hash_non_sha256():
+    """Lignes 119-120 : Content-Type absent ; lignes 143-144 : empreinte de
+    longueur inconnue rangee en MD5."""
+    from netcross_core.extract.carver import _hash_payload, _mime_to_type
+
+    assert _mime_to_type(None) is None
+    assert _mime_to_type("") is None
+    assert _hash_payload("abc123") == ("abc123", None)
+
+
+def test_http_reponse_d_erreur_ignoree():
+    """Ligne 197 : une reponse >= 400 n'est pas un fichier extrait."""
+    from netcross_core.extract.carver import _extract_http
+
+    assert _extract_http([_http_response(status_code=404)]) == []
+
+
+def test_email_smb_ftp_hors_tcp_ignores_et_banniere_non_mail_sautee():
+    """Lignes 235, 279, 316 : ports connus mais UDP -> ignores ; ligne 242 :
+    une banniere d'un autre protocole est sautee avant la banniere SMTP."""
+    from netcross_core.extract.carver import _extract_email, _extract_ftp, _extract_smb
+
+    udp = {"proto": "UDP", "src": "192.168.1.50", "dst": "10.0.0.9", "sport": 50000}
+    assert _extract_email([make_pkt(dport=25, **udp)]) == []
+    assert _extract_smb([make_pkt(dport=445, **udp)]) == []
+    assert _extract_ftp([make_pkt(dport=21, **udp)]) == []
+
+    http = Banner(protocol="http", service="nginx", version="1.25", raw="application/json", role="server")
+    smtp = Banner(protocol="smtp", service="Postfix", version="3.5", raw="multipart/mixed", role="server")
+    pkt = make_pkt(proto="TCP", sport=50000, dport=25, service_banners=(http, smtp))
+    (fichier,) = _extract_email([pkt])
+    assert fichier.proto_source == "email"
+
+
+def test_smb_sans_banniere_smb_ignore():
+    """Ligne 287 : port 445 en TCP mais aucune banniere SMB."""
+    from netcross_core.extract.carver import _extract_smb
+
+    assert _extract_smb([make_pkt(proto="TCP", sport=50000, dport=445)]) == []

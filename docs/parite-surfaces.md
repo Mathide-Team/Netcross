@@ -14,9 +14,9 @@ ici fait donc échouer la CI.
 
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
-| CLI | `cross_capture_analyzer_cli.py` (108 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
+| CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 8 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation |
+| API | 21 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -39,8 +39,8 @@ actif, non réglable.
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Captures en fichiers, un nom par point | oui (liste + « Ajouter une capture ») | `--capture` | `POST /captures` (`file`, `label`), `POST /captures/multi` (`files`, `labels`) |
-| Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | non |
-| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | non |
+| Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | `extra_files` (issue #671) |
+| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | `split_interfaces` (issue #671) |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
 | Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : les trois surfaces, « Fenêtre NAT (ms) » dans la GUI) | `nat_tolerant`, `nat_window_ms` |
@@ -49,9 +49,9 @@ actif, non réglable.
 | Fenêtre temporelle du débit | oui | `--bucket-ms` | non |
 | Cadence RTP | oui | `--rtp-clock-rate` | non |
 | Seuil de coupure NAT/pare-feu silencieuse | oui (« Coupure silencieuse (s) », 0 = défaut 60 s) | `--idle-timeout-seconds` | non |
-| Limiter ou échantillonner les paquets | non | `--max-packets`, `--sample` | non |
-| Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | non |
-| Plages TEST-NET traitées comme externes | non | `--test-net-external` | non |
+| Limiter ou échantillonner les paquets | non | `--max-packets`, `--sample` | `max_packets`, `sample` (issue #672) |
+| Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | `names` (fichier joint, issue #672) |
+| Plages TEST-NET traitées comme externes | non | `--test-net-external` | `test_net_external` (issue #672) |
 | Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` (table de correspondance : CLI seule) | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) |
 
 ## Diagnostics et triage
@@ -63,16 +63,16 @@ actif, non réglable.
 | Diagnostic QUIC/HTTP3 | oui (« Diagnostic QUIC/HTTP3 ») | `--quic` | `quic` (clé `quic_findings` de `/report`) |
 | Rapport de sécurité (détecteurs, signatures d'exploit, CVE) | oui (« Rapport de securite ») | `--security-report` | auto (toujours exécuté, sauf avec `redact`), `GET /analyses/{analysis_id}/security` |
 | Base CVE complète (NVD) | non (base embarquée seule) | `--cve-db` | non (base embarquée seule) |
-| Destinations et hôtes connus (sécurité) | non | `--known-destinations`, `--known-hosts` | non |
+| Destinations et hôtes connus (sécurité) | non | `--known-destinations`, `--known-hosts` | `known_destinations`, `known_hosts` (fichiers joints, issue #672) |
 | Moteur de règles | non | `--rule-engine` | non |
 | Section expertise détaillée | non | `--expert-section` | non |
 | Qualité média (VoIP/vidéo) | non | `--media-quality` | non |
 | Statistiques tshark natives | non | `--tshark-stats` | non |
 | Chronologie des flux | non | `--flow-timeline`, `--flow-timeline-window` | non |
-| Recherche forensic | non | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | non |
-| Extraction des contenus | non | `--extract-contents`, `--extract-kinds` | non |
-| Comparaison de postes | non | `--client-group`, `--client-reference`, `--client-diff-csv` | non |
-| NetFlow / sFlow | non | `--netflow`, `--netflow-top` | non |
+| Recherche forensic | non | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | `POST /analyses/{analysis_id}/search` (issue #675), `body` |
+| Extraction des contenus | non | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
+| Comparaison de postes | non | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
+| NetFlow / sFlow | non | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
 | Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
 | Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | non |
 
@@ -80,17 +80,17 @@ actif, non réglable.
 
 | Sortie | GUI | CLI | API |
 |---|---|---|---|
-| Rapport texte | oui (page Résultats) | sortie standard | non |
-| PDF | oui (« Exporter en PDF ») | `--pdf-report` | non |
+| Rapport texte | oui (page Résultats) | sortie standard | `GET /analyses/{id}/text` (issue #670) |
+| PDF | oui (« Exporter en PDF ») | `--pdf-report` | `GET /analyses/{id}/pdf?topn=N` (issue #670) |
 | JSON structuré | oui (« Exporter en JSON », mêmes clés que la CLI) | `--json-report` | `GET /analyses/{analysis_id}/report` (mêmes clés) ; `GET /analyses/{analysis_id}` sert le format brut, voir ci-dessous |
 | Markdown | non | `--md-report` | non |
-| CSV du détail par flux | oui (« Exporter en CSV ») | `--detail-csv` | non |
+| CSV du détail par flux | oui (« Exporter en CSV ») | `--detail-csv` | `GET /analyses/{id}/detail.csv` (issue #670) |
 | Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | non |
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
-| Diagramme de séquence | non | `--sequence-diagram` | non |
-| Export SIEM (CEF, LEEF, STIX) | non | `--siem-export`, `--siem-output` | non |
+| Diagramme de séquence | non | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
+| Export SIEM (CEF, LEEF, STIX) | non | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
 | Historique SQLite | non | `--history-db`, `--history-label`, `--history-show` ; `netcross-history` | persistance propre (`NETCROSS_DB_PATH`), `GET /analyses` |
-| Ticket de support anonymisé | non | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | non |
+| Ticket de support anonymisé | non | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind` |
 
 ### Deux JSON côté API
 
@@ -119,29 +119,35 @@ est conservée telle quelle pour les clients existants.
 | Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | non |
 | Durée maximale | oui | `--live-duration` | non |
 | Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | non |
-| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée) | non | non |
+| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée) | `--ring-buffer N:SECONDES` (issue #676) | non |
 | Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | non (`--live LABEL:IF:FILTRE` sans bibliothèque) | non |
-| Rapport HTML rafraîchi en continu | non | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
-| Notifications (webhook, Slack, e-mail) | non | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
+| Rapport HTML rafraîchi en continu | oui (case « Rapport en continu ») | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
+| Notifications (webhook, Slack, e-mail) | oui (réglages de notification) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
 
 ## Comparaison avant/après
 
 | Fonction | GUI | CLI (`cross_capture_diff_cli.py`) | API |
 |---|---|---|---|
-| Baseline et courant en fichiers | oui (case « Mode comparaison ») | `--baseline`, `--current` | non |
+| Baseline et courant en fichiers | oui (case « Mode comparaison ») | `--baseline`, `--current` | `POST /comparisons` (issue #669) |
 | Courant capturé en direct | non (modes exclusifs) | `--live-current`, `--live-duration` | non |
-| Seuils de régression | oui (pertes, latence) | `--loss-threshold-pp`, `--latency-threshold-ms` | non |
-| TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | non |
-| Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | non |
-| Exports | oui (PDF, CSV, JSON) | `--pdf-report`, `--diff-csv`, `--json-report` | non |
-| Anonymisation partagée | oui | `--redact`, `--redact-map` | non |
+| Seuils de régression | oui (pertes, latence) | `--loss-threshold-pp`, `--latency-threshold-ms` | `loss_threshold_pp`, `latency_threshold_ms` (issue #669) |
+| TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
+| Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
+| Exports | oui (PDF, CSV, JSON) | `--pdf-report`, `--diff-csv`, `--json-report` | `GET /comparisons/{id}/csv` (issue #669) |
+| Anonymisation partagée | oui | `--redact`, `--redact-map` | `redact` (issue #669) |
 | Historique | non | `--history-db`, `--history-label`, `--history-show` | non |
-| Code de sortie 1 sur régression | sans objet | oui | sans objet |
+| Code de sortie 1 sur régression | sans objet | oui | `regression: true` dans la réponse (issue #669) |
 
 Options de la CLI de comparaison reprises de l'analyse principale, avec
 le même sens : `--order`, `--nat-tolerant`, `--nat-window-ms`,
 `--bucket-ms`, `--rtp-clock-rate`, `--idle-timeout-seconds`,
 `--parallel`, `--parallel-workers`, `--debug`.
+
+Paramètres de l'API de comparaison (issue #669) : `baseline_files`,
+`current_files` (fichiers pcap), `baseline_labels`, `current_labels`
+(étiquettes), `points_order`, `nat_tolerant`, `nat_window_ms`, `tls`,
+`quic`, `redact`, `loss_threshold_pp`, `latency_threshold_ms`,
+`triage_top_n`, `wait`.
 
 ## Manipulation de captures (CLI uniquement, par choix)
 
@@ -189,7 +195,7 @@ son équivalent CLI ou API.
 | Case | Page | Équivalent |
 |---|---|---|
 | Mode comparaison (baseline / courant) -- equivalent de cross_capture_diff_cli.py | Configuration | `cross_capture_diff_cli.py` |
-| Capture en direct (interfaces reseau, au lieu de fichiers) | Configuration | `--live` |
+| Capture en direct (interfaces reseau, au lieu de fichiers) | Configuration | `--live`, `--ring-buffer`, `--bpf-library` |
 | Rotation de capture (ring buffer) | Configuration | aucun |
 | Correlation tolérante au NAT | Configuration | `--nat-tolerant` |
 | Détecter les doublons inter-captures | Configuration | `--detect-duplicates` |
@@ -209,17 +215,26 @@ son équivalent CLI ou API.
 | Route | Rôle |
 |---|---|
 | `GET /health` | Santé du service (sans authentification) |
-| `POST /captures` | Une capture ; `wait` pour attendre le résultat |
-| `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `wait` |
+| `POST /captures` | Un pcap : `file`, `label`, `extra_files`, `wait` | Une capture ; `wait` pour attendre le résultat |
+| `POST /captures/multi` | Plusieurs captures : `files`, `labels`, `points_order`, `split_interfaces`, `wait` |
 
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
-`quic`, `redact`.
+`quic`, `redact`, `max_packets`, `sample`, `test_net_external`, `names`,
+`known_destinations`, `known_hosts` (issue #672), `rule_engine`,
+`expert_section`, `media_quality`, `tshark_stats`, `flow_timeline`,
+`flow_timeline_window` (issue #673).
 | `GET /analyses` | Liste des analyses |
 | `GET /analyses/{analysis_id}` | Mesures brutes (voir plus haut) |
 | `GET /analyses/{analysis_id}/report` | Rapport structuré, identique à `--json-report` |
 | `GET /analyses/{analysis_id}/status` | État d'une analyse en tâche de fond |
 | `GET /analyses/{analysis_id}/security` | Constats de sécurité |
+| `GET /analyses/{analysis_id}/text` | Rapport texte (issue #670) |
+| `GET /analyses/{analysis_id}/pdf` | Rapport PDF, `topn` (issue #670) |
+| `GET /analyses/{analysis_id}/detail.csv` | CSV du détail par flux (issue #670) |
+| `POST /comparisons` | Comparaison baseline/courant (issue #669) |
+| `GET /comparisons/{comparison_id}` | Résultat d'une comparaison (issue #669) |
+| `GET /comparisons/{comparison_id}/csv` | CSV des écarts (issue #669) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,

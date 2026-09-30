@@ -21,6 +21,7 @@ import-linter>=2.13
 pre-commit>=4.0
 mypy>=1.10
 stix2-validator<3.3,>=3.2
+pyyaml>=6.0
 
 [docs]
 mkdocs>=1.6
