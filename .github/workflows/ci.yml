@@ -20,6 +20,12 @@ name: CI
     branches: [main, dev]
   workflow_dispatch:
 
+# Dans un conteneur, le shell par défaut des étapes run est sh (dash) :
+# les scripts du workflow utilisent des tableaux bash (i18n) -> bash imposé.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   quality:
     name: Qualité (lint, format, import-linter, tests)
@@ -31,10 +37,11 @@ jobs:
     steps:
       - name: Prérequis du conteneur (git, certificats, compilateur)
         # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
-        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement),
+        # ni python3 (scripts du dépôt), ni sudo (scripts/smoke-test-packages.sh).
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential sudo python3 python3-venv
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout du dépôt
@@ -173,10 +180,11 @@ jobs:
     steps:
       - name: Prérequis du conteneur (git, certificats, compilateur)
         # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
-        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement),
+        # ni python3 (scripts du dépôt), ni sudo (scripts/smoke-test-packages.sh).
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential sudo python3 python3-venv
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout du dépôt
@@ -237,10 +245,11 @@ jobs:
     steps:
       - name: Prérequis du conteneur (git, certificats, compilateur)
         # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
-        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement),
+        # ni python3 (scripts du dépôt), ni sudo (scripts/smoke-test-packages.sh).
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential sudo python3 python3-venv
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout du dépôt
@@ -275,10 +284,11 @@ jobs:
     steps:
       - name: Prérequis du conteneur (git, certificats, compilateur)
         # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
-        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement),
+        # ni python3 (scripts du dépôt), ni sudo (scripts/smoke-test-packages.sh).
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential sudo python3 python3-venv
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout du dépôt
@@ -329,10 +339,11 @@ jobs:
     steps:
       - name: Prérequis du conteneur (git, certificats, compilateur)
         # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
-        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement),
+        # ni python3 (scripts du dépôt), ni sudo (scripts/smoke-test-packages.sh).
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential sudo python3 python3-venv
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout du dépôt
@@ -342,7 +353,6 @@ jobs:
         # setup-python ne publie pas de build pour ubuntu 26.04 : Python du
         # système dans un venv (PEP 668 interdit pip hors venv).
         run: |
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv
           python3 --version
           python3 -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
@@ -374,10 +384,11 @@ jobs:
     steps:
       - name: Prérequis du conteneur (git, certificats, compilateur)
         # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
-        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement).
+        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement),
+        # ni python3 (scripts du dépôt), ni sudo (scripts/smoke-test-packages.sh).
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential sudo python3 python3-venv
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout du dépôt (historique complet pour le diff)
@@ -389,7 +400,6 @@ jobs:
         # setup-python ne publie pas de build pour ubuntu 26.04 : Python du
         # système dans un venv (PEP 668 interdit pip hors venv).
         run: |
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv
           python3 --version
           python3 -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
