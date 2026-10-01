@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-161 modules · 243 classes · 569 fonctions publiques de module.
+162 modules · 244 classes · 571 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,8 +37,8 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"14 imports"| netcross_report
-    netcross_gtk4 -->|"55 imports"| netcross_core
-    netcross_gtk4 -->|"2 imports"| pcap_parser
+    netcross_gtk4 -->|"56 imports"| netcross_core
+    netcross_gtk4 -->|"4 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"21 imports"| netcross_core
     netcross_api -->|"1 import"| pcap_parser
@@ -3912,6 +3912,7 @@ classDiagram
 | `netcross_gtk4.duplicate_view` | Presentation helpers for cross-capture duplicate detection (Job 41). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
 | `netcross_gtk4.panel_state` | decisions de visibilite, de sensibilite et de selection des panneaux de la GUI (issue #285, troisieme lot). |
+| `netcross_gtk4.ring_recorders` | rotation de capture (ring buffer) de la GUI en capture en direct (issue #676). |
 | `netcross_gtk4.row_labels` | libelles et cles de tri des lignes affichees par la GUI (issue #285, premier lot d'extraction de `app.py`). |
 | `netcross_gtk4.run_outcome` | etat de resultat et decisions d'affichage a la fin d'une analyse ou d'une comparaison (issue #285, deuxieme lot). |
 | `netcross_gtk4.security_view` | section Securite de la GUI (issue #357). |
@@ -4206,6 +4207,16 @@ classDiagram
         +selected_protocol(index, n_items, lire) str?
         +comm_map_filters(protocole, top_n, only_anomalies) dict~str, Any~
         +apply_dashboard_selection(kind, selection, key, flow_par_cle, evenements) Any
+    }
+
+    %% ===== netcross_gtk4.ring_recorders =====
+    class RingRecorderError {
+        <<Exception>>
+    }
+    class mod_netcross_gtk4_ring_recorders["netcross_gtk4.ring_recorders"] {
+        <<module>>
+        +start_ring_recorders(points, max_files, max_duration, starter, mkdtemp) tuple~dict, list~str~~
+        +stop_ring_recorders(recorders, stopper) list~str~
     }
 
     %% ===== netcross_gtk4.row_labels =====

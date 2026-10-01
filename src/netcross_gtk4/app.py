@@ -89,6 +89,7 @@ from netcross_gtk4.panel_state import (  # noqa: E402
     run_button_state,
     selected_protocol,
 )
+from netcross_gtk4.ring_recorders import RingRecorderError, start_ring_recorders, stop_ring_recorders  # noqa: E402
 from netcross_gtk4.run_outcome import analysis_outcome, diff_outcome  # noqa: E402
 from netcross_gtk4.security_view import export_security_report, security_view_text  # noqa: E402
 from netcross_gtk4.stats_view import (  # noqa: E402
@@ -778,8 +779,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.ring_buffer_check.set_tooltip_text(
             "Active la rotation des fichiers de capture : ecrit dans des "
             "fichiers de duree fixe et supprime automatiquement le plus "
-            "ancien au-dela du nombre maximal. Option preparatoire : "
-            "non cablee au moteur de capture pour l'instant."
+            "ancien au-dela du nombre maximal. Enregistre la capture brute "
+            "de chaque point (pcapng, tshark) en parallele de l'analyse ; "
+            "incompatible avec une source pipe:// (issue #676)."
         )
         self.ring_buffer_check.connect("toggled", self._on_ring_buffer_toggled)
         self.ring_buffer_box.append(self.ring_buffer_check)
@@ -1715,6 +1717,24 @@ class MainWindow(Gtk.ApplicationWindow):
         self._live_nat_window_ms, self._live_idle_timeout_seconds = self._fine_settings()
         self._live_duplicate_threshold_ms = self.duplicate_threshold_spin.get_value()
 
+        # Issue #676 : rotation de capture -- un enregistreur tshark par point,
+        # lance AVANT les threads d'analyse ; refus d'un point -> rien ne demarre.
+        self._live_ring_recorders = {}
+        if self.ring_buffer_box.get_visible() and self.ring_buffer_check.get_active():
+            try:
+                self._live_ring_recorders, ring_messages = start_ring_recorders(
+                    rows_data,
+                    int(self.ring_max_files_spin.get_value()),
+                    self.ring_max_duration_spin.get_value(),
+                )
+            except RingRecorderError as e:
+                logger.warning("MainWindow._begin_live_capture: rotation de capture refusee ({})", e)
+                self.stack.set_visible_child_name("log")
+                self._log(f"Rotation de capture impossible -- capture annulee : {e}")
+                return
+            for message in ring_messages:
+                self._log(message)
+
         self._live_capturing = True
         self._live_stop_event = threading.Event()
         self._live_packets = []
@@ -1810,6 +1830,12 @@ class MainWindow(Gtk.ApplicationWindow):
     def _join_live_and_analyze(self):
         for t in self._live_threads:
             t.join()
+        # Issue #676 : arret des enregistreurs en ring buffer (fichiers conserves).
+        recorders = getattr(self, "_live_ring_recorders", None)
+        if recorders:
+            for message in stop_ring_recorders(recorders):
+                GLib.idle_add(self._log, message)
+            self._live_ring_recorders = {}
         with self._live_lock:
             all_packets = list(self._live_packets)
         logger.debug("_join_live_and_analyze: {} paquet(s) capturé(s)", len(all_packets))
