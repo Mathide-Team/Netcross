@@ -1720,6 +1720,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # Issue #676 : rotation de capture -- un enregistreur tshark par point,
         # lance AVANT les threads d'analyse ; refus d'un point -> rien ne demarre.
         self._live_ring_recorders = {}
+        ring_messages = []
         if self.ring_buffer_box.get_visible() and self.ring_buffer_check.get_active():
             try:
                 self._live_ring_recorders, ring_messages = start_ring_recorders(
@@ -1732,8 +1733,6 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.stack.set_visible_child_name("log")
                 self._log(f"Rotation de capture impossible -- capture annulee : {e}")
                 return
-            for message in ring_messages:
-                self._log(message)
 
         self._live_capturing = True
         self._live_stop_event = threading.Event()
@@ -1748,6 +1747,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
         self.log_view.get_buffer().set_text("")
+        # Apres la remise a zero du journal, sinon ces messages seraient effaces.
+        for message in ring_messages:
+            self._log(message)
         self.work_status_label.set_text(
             'Capture en direct en cours -- cliquez sur "Arreter et analyser" quand vous avez assez de trafic capture.'
         )
