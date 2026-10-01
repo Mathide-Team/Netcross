@@ -119,10 +119,10 @@ est conservée telle quelle pour les clients existants.
 | Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | non |
 | Durée maximale | oui | `--live-duration` | non |
 | Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | non |
-| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée) | `--ring-buffer N:SECONDES` (issue #676) | non |
-| Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | non (`--live LABEL:IF:FILTRE` sans bibliothèque) | non |
-| Rapport HTML rafraîchi en continu | oui (case « Rapport en continu ») | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
-| Notifications (webhook, Slack, e-mail) | oui (réglages de notification) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
+| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
+| Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | non |
+| Rapport HTML rafraîchi en continu | non (issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
+| Notifications (webhook, Slack, e-mail) | non (issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
 
 ## Comparaison avant/après
 
@@ -196,7 +196,7 @@ son équivalent CLI ou API.
 |---|---|---|
 | Mode comparaison (baseline / courant) -- equivalent de cross_capture_diff_cli.py | Configuration | `cross_capture_diff_cli.py` |
 | Capture en direct (interfaces reseau, au lieu de fichiers) | Configuration | `--live`, `--ring-buffer`, `--bpf-library` |
-| Rotation de capture (ring buffer) | Configuration | aucun |
+| Rotation de capture (ring buffer) | Configuration | `--ring-buffer` |
 | Correlation tolérante au NAT | Configuration | `--nat-tolerant` |
 | Détecter les doublons inter-captures | Configuration | `--detect-duplicates` |
 | Exclure les doublons des statistiques | Configuration | `--exclude-duplicates` |

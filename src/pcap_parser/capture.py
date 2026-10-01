@@ -51,11 +51,12 @@ from pcap_parser.ek_source import (
     CaptureAccessError,
     TsharkError,
     TsharkNotFoundError,
+    _tshark_path,
     is_permission_error,
     iter_ek_records,
 )
 from pcap_parser.packet import RawPacket, build_packet
-from pcap_parser.remote import CaptureSource, parse_source
+from pcap_parser.remote import CaptureSource, CaptureSourceError, parse_source
 
 
 def _collect_packets(packets: list[RawPacket], path: str, *, read_via_stdin: bool) -> None:
@@ -347,6 +348,114 @@ class CaptureRingBuffer:
                 logger.debug("CaptureRingBuffer._prune: suppression de {}", oldest)
                 os.remove(oldest)
         logger.debug("CaptureRingBuffer._prune: fin")
+
+
+def ring_recorder_args(
+    interface: str,
+    directory: str,
+    *,
+    max_files: int,
+    max_duration_per_file: float,
+    prefix: str = "capture",
+    bpf_filter: str | None = None,
+) -> list:
+    """Arguments d'un ``tshark`` d'enregistrement en ring buffer natif
+    (issue #676) : ``-w <directory>/<prefix>.pcapng -b files:N -b duration:S``.
+
+    tshark ecrit lui-meme les trames brutes, fait tourner les fichiers et
+    supprime le plus ancien au-dela de ``max_files`` -- ce que
+    ``CaptureRingBuffer`` ne peut pas faire seul (il ne voit jamais les
+    octets des trames, voir sa docstring). ``-q`` : aucune dissection
+    imprimee, le processus ne fait qu'enregistrer.
+
+    Leve ``CaptureSourceError`` pour une source ``pipe://`` : un second
+    lecteur prendrait les octets du flux au processus d'analyse.
+    """
+    if max_files < 1:
+        raise ValueError("max_files doit etre >= 1")
+    if max_duration_per_file <= 0:
+        raise ValueError("max_duration_per_file doit etre > 0")
+    source = parse_source(interface)
+    if source.kind == "pipe":
+        logger.debug("ring_recorder_args: source pipe {} -> refus", source.display or interface)
+        raise CaptureSourceError(
+            "rotation de capture impossible sur une source pipe:// : "
+            "un second lecteur prendrait les octets du flux a l'analyse"
+        )
+    # tshark attend un nombre entier de secondes pour -b duration.
+    duration = max(1, math.ceil(max_duration_per_file))
+    args = [_tshark_path(), "-i", source.interface, "-q"]
+    if bpf_filter:
+        args += ["-f", bpf_filter]
+    args += list(source.extra_args)
+    args += [
+        "-w",
+        os.path.join(directory, f"{prefix}.pcapng"),
+        "-b",
+        f"files:{max_files}",
+        "-b",
+        f"duration:{duration}",
+    ]
+    logger.debug(
+        "ring_recorder_args: {} fichier(s) de {} s dans {} (filtre BPF : {})",
+        max_files,
+        duration,
+        directory,
+        bpf_filter or "aucun",
+    )
+    return args
+
+
+def start_ring_recorder(
+    interface: str,
+    directory: str,
+    *,
+    max_files: int,
+    max_duration_per_file: float,
+    prefix: str = "capture",
+    bpf_filter: str | None = None,
+) -> subprocess.Popen:
+    """Lance l'enregistrement en ring buffer (voir ``ring_recorder_args``).
+    Le repertoire est cree au besoin. A arreter avec ``stop_ring_recorder``."""
+    os.makedirs(directory, exist_ok=True)
+    args = ring_recorder_args(
+        interface,
+        directory,
+        max_files=max_files,
+        max_duration_per_file=max_duration_per_file,
+        prefix=prefix,
+        bpf_filter=bpf_filter,
+    )
+    # stderr vers un fichier temporaire, pas un tube : un tube non lu se
+    # remplirait sur une longue capture et bloquerait tshark.
+    err_file = tempfile.TemporaryFile()  # noqa: SIM115 -- ferme par stop_ring_recorder
+    proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=err_file)
+    proc.netcross_err_file = err_file  # type: ignore[attr-defined]
+    logger.debug("start_ring_recorder: pid {} pour {}", proc.pid, prefix)
+    return proc
+
+
+def stop_ring_recorder(proc: subprocess.Popen, timeout: float = 5.0) -> str:
+    """Arrete proprement l'enregistreur (SIGTERM, puis SIGKILL apres
+    ``timeout``) : tshark ferme alors le fichier courant, qui reste lisible.
+    Renvoie le stderr de tshark (vide si tout s'est bien passe)."""
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning("stop_ring_recorder: pid {} ne repond pas -> kill", proc.pid)
+            proc.kill()
+            proc.wait()
+    err = b""
+    err_file = getattr(proc, "netcross_err_file", None)
+    if err_file is not None:
+        with contextlib.suppress(OSError, ValueError):
+            err_file.seek(0)
+            err = err_file.read() or b""
+        err_file.close()
+    logger.debug("stop_ring_recorder: pid {} arrete (code {})", proc.pid, proc.returncode)
+    return err.decode("utf-8", "replace").strip()
 
 
 def _wireshark_tool_path(name: str) -> str:
