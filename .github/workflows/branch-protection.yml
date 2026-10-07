@@ -28,7 +28,7 @@ permissions:
 jobs:
   verification:
     name: "Protection de dev conforme a la règle versionnée"
-    runs-on: ubuntu-latest
+    runs-on: self-hosted,linux,maison
     steps:
       - name: Checkout du depot
         uses: actions/checkout@v7

@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted,linux,maison
     steps:
       - uses: actions/checkout@v7
 
