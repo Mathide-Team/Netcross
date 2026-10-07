@@ -60,6 +60,7 @@ nav:
       - Interface graphique: guide/interface-graphique.md
       - Lire le rapport: guide/lire-le-rapport.md
       - Comparer deux situations: guide/comparer.md
+      - Automatiser avec l'API: guide/api.md
       - Dépannage: guide/depannage.md
   - Utilisation:
       - API REST: api-rest.md
