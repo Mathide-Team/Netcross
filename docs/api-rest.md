@@ -60,7 +60,7 @@ La spécification OpenAPI est disponible sur :
 | Méthode | Path | Description |
 |---------|------|-------------|
 | `POST` | `/captures` | Upload d'un pcap, lance l'analyse |
-| `POST` | `/captures/multi` | Plusieurs pcaps étiquetés, analyse croisée entre points |
+| `POST` | `/captures/multi` | Plusieurs pcaps étiquetés, analyse croisée entre points ; un seul pcapng multi-interfaces suffit avec `split_interfaces=true` (#474) |
 | `GET` | `/analyses/{id}/status` | Statut `pending` / `completed` / `failed` (+ résumé) |
 | `GET` | `/analyses/{id}` | Mesures brutes (copie de chaque champ du `Report`) |
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |

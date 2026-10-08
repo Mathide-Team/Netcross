@@ -43,7 +43,9 @@ adresse `status_url` à consulter jusqu'à ce que l'état passe à
 
 Un pcapng pris sur plusieurs interfaces peut être envoyé seul, avec
 `split_interfaces=true` : chaque interface devient un point, nommé
-`ETIQUETTE:INTERFACE`, comme avec `--split-interfaces`.
+`ETIQUETTE:INTERFACE`, comme avec `--split-interfaces`. `points_order`, s'il est
+fourni, cite alors ces étiquettes (`SW:eth0,SW:eth1`) ; il est vérifié après
+la séparation.
 
 ```bash
 curl -X POST "http://localhost:8000/captures/multi?wait=true" \
