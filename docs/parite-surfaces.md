@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 18 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 19 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 21 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -122,7 +122,7 @@ est conservée telle quelle pour les clients existants.
 | Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
 | Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | non |
 | Rapport HTML rafraîchi en continu | non (issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
-| Notifications (webhook, Slack, e-mail) | non (issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
+| Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
 
 ## Comparaison avant/après
 
@@ -209,6 +209,7 @@ son équivalent CLI ou API.
 | Diagnostic TLS | Configuration (2 cases : analyse et comparaison) | `--tls` |
 | Diagnostic QUIC/HTTP3 | Configuration (2 cases : analyse et comparaison) | `--quic` |
 | Rapport de securite | Configuration | `--security-report` |
+| Detail complet (--notify-detail complet) | Configuration | `--notify-detail complet` |
 | Anomalies seulement | Résultats (cartographie) | aucun |
 
 ## API : routes et réglages

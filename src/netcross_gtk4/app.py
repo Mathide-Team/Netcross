@@ -82,6 +82,12 @@ from netcross_gtk4.dashboard_context import (  # noqa: E402
     build_dashboard_snapshot,
 )
 from netcross_gtk4.live_capture_points import duplicate_labels, expand_live_points, invalid_sources  # noqa: E402
+from netcross_gtk4.notifications import (  # noqa: E402
+    THRESHOLD_CHOICES,
+    NotifySettings,
+    settings_from_widgets,
+    validate_settings,
+)
 from netcross_gtk4.panel_state import (  # noqa: E402
     apply_dashboard_selection,
     comm_map_filters,
@@ -990,6 +996,34 @@ class MainWindow(Gtk.ApplicationWindow):
         single_checks.append(self.security_check)
         single_checks.append(topn_box)
         self.single_options_box.append(single_checks)
+
+        # Issue #676 : notifications (webhook, Slack, courriel), equivalent de
+        # --notify-on/--notify-webhook/--notify-slack/--notify-email/
+        # --notify-detail. Portent sur le rapport de securite, comme la CLI.
+        notify_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        notify_box.append(Gtk.Label(label="Notifier si (--notify-on) :", halign=Gtk.Align.START))
+        self.notify_threshold_drop = Gtk.DropDown.new_from_strings([label for _val, label in THRESHOLD_CHOICES])
+        self.notify_threshold_drop.set_tooltip_text(
+            "Envoie un resume (jamais un message par constat) quand le pire constat du rapport de "
+            "securite atteint ce niveau. Necessite « Rapport de securite ». Serveur SMTP et URL par "
+            "defaut : .netcross.toml [notify] ou NETCROSS_SLACK_WEBHOOK / NETCROSS_SMTP_*."
+        )
+        self.notify_threshold_drop.connect("notify::selected", self._on_notify_threshold_changed)
+        notify_box.append(self.notify_threshold_drop)
+        self.notify_webhook_entry = Gtk.Entry(placeholder_text="URL webhook (--notify-webhook)")
+        self.notify_slack_entry = Gtk.Entry(placeholder_text="Webhook Slack (--notify-slack)")
+        self.notify_email_entry = Gtk.Entry(placeholder_text="Courriel(s) (--notify-email)")
+        for entry in (self.notify_webhook_entry, self.notify_slack_entry, self.notify_email_entry):
+            entry.set_hexpand(True)
+            notify_box.append(entry)
+        self.notify_complete_check = Gtk.CheckButton(label="Detail complet (--notify-detail complet)")
+        self.notify_complete_check.set_tooltip_text(
+            "Par defaut, adresses, noms d'hote et chemins sont anonymises dans le message. "
+            "Detail complet : texte brut des constats, a reserver a un canal de confiance."
+        )
+        notify_box.append(self.notify_complete_check)
+        self.single_options_box.append(notify_box)
+        self._on_notify_threshold_changed(None)
         page.append(self.single_options_box)
 
         # -- options specifiques au mode comparaison (masquees par defaut) --
@@ -1183,6 +1217,28 @@ class MainWindow(Gtk.ApplicationWindow):
         self.ring_max_files_spin.set_sensitive(active)
         self.ring_max_duration_spin.set_sensitive(active)
         logger.debug("MainWindow._on_ring_buffer_toggled: fin")
+
+    def _on_notify_threshold_changed(self, *_args):
+        """Canaux et niveau de detail reglables seulement avec un seuil."""
+        active = self.notify_threshold_drop.get_selected() > 0
+        for widget in (
+            self.notify_webhook_entry,
+            self.notify_slack_entry,
+            self.notify_email_entry,
+            self.notify_complete_check,
+        ):
+            widget.set_sensitive(active)
+        logger.debug("MainWindow._on_notify_threshold_changed: actif={}", active)
+
+    def _notify_settings(self) -> NotifySettings:
+        """Reglages de notification, lus sur le thread principal."""
+        return settings_from_widgets(
+            self.notify_threshold_drop.get_selected(),
+            self.notify_webhook_entry.get_text(),
+            self.notify_slack_entry.get_text(),
+            self.notify_email_entry.get_text(),
+            self.notify_complete_check.get_active(),
+        )
 
     def _sync_panel_visibility(self):
         """Point unique qui decide, a partir des deux cases a cocher, quels
@@ -1594,6 +1650,17 @@ class MainWindow(Gtk.ApplicationWindow):
             )
             return
 
+        notify = None
+        if not diff_mode:
+            notify = self._notify_settings()
+            notify_errors = validate_settings(notify, self.security_check.get_active())
+            if notify_errors:
+                # Echec immediat plutot qu'apres l'analyse, comme la CLI.
+                self.stack.set_visible_child_name("log")
+                self._log(f"Notifications : {'; '.join(notify_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si notify_errors -> retour")
+                return
+
         self.run_btn.set_sensitive(False)
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
@@ -1676,6 +1743,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "nat_window_ms": nat_window_ms,
                     "idle_timeout_seconds": idle_timeout_seconds,
                     "split_interfaces": self.split_interfaces_check.get_active(),
+                    "notify": notify,
                 },
                 daemon=True,
             ).start()
@@ -2008,6 +2076,7 @@ class MainWindow(Gtk.ApplicationWindow):
         nat_window_ms=200.0,
         idle_timeout_seconds=None,
         split_interfaces=False,
+        notify=None,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -2038,6 +2107,7 @@ class MainWindow(Gtk.ApplicationWindow):
             nat_window_ms=nat_window_ms,
             idle_timeout_seconds=idle_timeout_seconds,
             split_interfaces=split_interfaces,
+            notify=notify,
         )
 
         def _on_progress(msg):
