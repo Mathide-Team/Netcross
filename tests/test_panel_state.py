@@ -44,38 +44,39 @@ def test_le_panneau_simple_n_apparait_que_hors_diff_et_hors_live():
     assert panel_visibility(True, True, False).single_panel is False
 
 
-def test_un_seul_panneau_de_saisie_est_visible_a_la_fois():
-    """Deux panneaux de saisie visibles ensemble laisseraient l'utilisateur
-    remplir celui qui ne sera pas lu.
-
-    Les quatre combinaisons sont verifiees, y compris `diff_mode` et
-    `live_mode` ensemble. Cette derniere est normalement inatteignable -- les
-    bascules decochent et grisent l'autre case -- mais la regle doit rester
-    coherente si elle survenait, par exemple apres un futur ajout de mode.
-    L'ancien code affichait la le panneau live ET ceux de comparaison.
-    """
+def test_chaque_cote_a_un_seul_panneau_de_saisie():
+    """Deux panneaux de saisie pour un meme cote laisseraient l'utilisateur
+    remplir celui qui ne sera pas lu : le courant vient soit des fichiers
+    (panneau « Courant »), soit de la capture en direct, jamais des deux."""
     for diff_mode, live_mode in MODES:
         vue = panel_visibility(diff_mode, live_mode, False)
-        visibles = [vue.single_panel, vue.live_panel, vue.diff_panels]
-        assert sum(visibles) == 1, (diff_mode, live_mode, visibles)
+        assert not (vue.current_panel and vue.live_panel), (diff_mode, live_mode)
+        assert not (vue.single_panel and (vue.live_panel or vue.diff_panels)), (diff_mode, live_mode)
 
 
-def test_le_live_a_priorite_sur_la_comparaison():
-    """Priorite alignee sur `on_run_analysis`, qui teste `live_check` en
-    premier et s'arrete la. Le panneau affiche designe donc le mode qui
-    serait reellement execute, au lieu d'en montrer deux dont un serait
-    rempli pour rien.
-
-    Le cas est signale comme inatteignable dans l'interface actuelle ; il est
-    verifie quand meme, parce qu'une regle qui ne repond pas a une entree
-    possible est une regle incomplete, et que l'exclusivite est garantie
-    ailleurs -- dans deux gestionnaires de bascule distincts, donc a deux
-    endroits qui peuvent diverger l'un de l'autre.
-    """
+def test_comparaison_avec_un_courant_capture_en_direct():
+    """Issue #676 (equivalent de --live-current) : baseline enregistre +
+    courant capture en direct. Le panneau live remplace le panneau
+    « Courant » des fichiers ; le tampon circulaire, propre a la capture
+    simple, est masque ; TLS/QUIC et la lecture parallele sont indisponibles,
+    comme dans la CLI."""
     vue = panel_visibility(True, True, False)
+    assert vue.diff_panels is True  # contient le baseline
+    assert vue.current_panel is False
     assert vue.live_panel is True
-    assert vue.diff_panels is False
+    assert vue.live_extra is True  # duree de capture
+    assert vue.ring_buffer is False
     assert vue.single_panel is False
+    assert vue.diff_options is True
+    assert vue.single_options is False
+    assert vue.force_tls_off and vue.force_quic_off
+    assert vue.parallel_sensitive is False
+
+
+def test_le_panneau_courant_et_le_tampon_circulaire_hors_combinaison():
+    assert panel_visibility(True, False, False).current_panel is True
+    assert panel_visibility(False, True, False).ring_buffer is True
+    assert panel_visibility(False, False, False).ring_buffer is False
 
 
 def test_au_moins_un_panneau_de_saisie_reste_visible():
@@ -215,6 +216,18 @@ def test_la_comparaison_exige_deux_captures_de_chaque_cote():
     assert _bouton(diff_mode=True, baseline_rows=2, current_rows=1).enabled is False
     assert _bouton(diff_mode=True, baseline_rows=1, current_rows=2).enabled is False
     assert _bouton(diff_mode=True, baseline_rows=2, current_rows=2).enabled is True
+
+
+def test_comparaison_avec_courant_en_direct_compte_baseline_et_points_live():
+    """Issue #676 : le courant vient de la capture en direct ; le panneau
+    « Courant » des fichiers (masque) n'est pas compte."""
+    assert _bouton(diff_mode=True, live_mode=True, baseline_rows=2, live_points=1).enabled is False
+    assert _bouton(diff_mode=True, live_mode=True, baseline_rows=1, live_points=2).enabled is False
+    etat = _bouton(diff_mode=True, live_mode=True, baseline_rows=2, current_rows=0, live_points=2)
+    assert etat.enabled is True
+    assert etat.label == LABEL_DEMARRER_CAPTURE
+    refus = _bouton(diff_mode=True, live_mode=True, baseline_rows=2, current_rows=5, live_points=1)
+    assert "points de capture : 1" in refus.raison
 
 
 def test_la_capture_live_compte_les_points_apres_eclatement():
