@@ -125,6 +125,14 @@ est conservée telle quelle pour les clients existants.
 | Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
 | Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
 
+**API : hors périmètre (issue #676).** Aucune route ne lance de capture en
+direct : elle exigerait les droits de capture sur la machine du serveur et
+une session longue (démarrage, arrêt, rapport rafraîchi), alors que l'API
+travaille en requête/réponse sur des fichiers téléversés. Rotation de
+capture, bibliothèque BPF, rapport en continu et courant capturé en direct
+restent donc en GUI et en CLI ; les notifications portent sur le rapport
+de sécurité, déjà produit par `POST /analyses`.
+
 ## Comparaison avant/après
 
 | Fonction | GUI | CLI (`cross_capture_diff_cli.py`) | API |
