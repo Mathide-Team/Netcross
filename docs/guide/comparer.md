@@ -60,6 +60,19 @@ netcross-diff --baseline LAN=reference.pcapng --current LAN=nouvelle.pcapng \
     --diff-csv ecarts.csv || echo "Régression réseau détectée, voir ecarts.csv"
 ```
 
+## Dans l'interface graphique
+
+Cochez **Mode comparaison** dans l'onglet Configuration : deux listes
+apparaissent, **Baseline** et **Courant**. Ajoutez les captures de chaque
+côté avec les mêmes noms de points, puis lancez l'analyse. Le rapport
+affiché est celui de `netcross-diff`.
+
+La case « Triage des écarts (classement des segments) » et son champ
+« Top » ajoutent au rapport le classement des segments à regarder en
+premier, ainsi que le score de santé, comme `--triage` et
+`--triage-top-n` (défaut : 5). Les options d'analyse (fenêtre NAT,
+coupure silencieuse, doublons...) s'appliquent aux deux côtés.
+
 ## Options utiles
 
 | Besoin | Option |

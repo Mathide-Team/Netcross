@@ -50,7 +50,14 @@ paths:
 
         NOM=a,b``). ``split_interfaces`` sépare les interfaces d''un pcapng
 
-        multi-interfaces en points distincts (équiv. ``--split-interfaces``).'
+        multi-interfaces en points distincts (équiv. ``--split-interfaces``).
+
+
+        Issue #330 (suite) : ``bucket_ms``, ``rtp_clock_rate``, ``idle_timeout_seconds``,
+
+        ``detect_duplicates``, ``exclude_duplicates`` et ``duplicate_threshold_ms``
+
+        sont les équivalents des options de même nom de la CLI.'
       operationId: upload_capture_captures_post
       security:
       - APIKeyHeader: []
@@ -1559,6 +1566,44 @@ components:
           description: Fenêtre temporelle en secondes pour la chronologie (équiv.
             --flow-timeline-window)
           default: 1.0
+        bucket_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Bucket Ms
+          description: Fenêtre temporelle du débit en ms (équivalent de --bucket-ms)
+          default: 1000
+        rtp_clock_rate:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rtp Clock Rate
+          description: Horloge RTP en Hz pour la gigue (équivalent de --rtp-clock-rate)
+          default: 8000
+        idle_timeout_seconds:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Idle Timeout Seconds
+          description: Seuil de coupure NAT/pare-feu silencieuse en secondes, défaut
+            du cœur (60 s) si absent (équivalent de --idle-timeout-seconds)
+        detect_duplicates:
+          type: boolean
+          title: Detect Duplicates
+          description: 'true : compte les doublons inter-captures (équivalent de --detect-duplicates)'
+          default: false
+        exclude_duplicates:
+          type: boolean
+          title: Exclude Duplicates
+          description: 'true : exclut les doublons inter-captures de l''analyse (équivalent
+            de --exclude-duplicates, implique detect_duplicates)'
+          default: false
+        duplicate_threshold_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Duplicate Threshold Ms
+          description: Fenêtre de tolérance pour la détection des doublons en ms (équivalent
+            de --duplicate-threshold-ms)
+          default: 1.0
       type: object
       required:
       - file
@@ -1686,6 +1731,44 @@ components:
           title: Flow Timeline Window
           description: Fenêtre temporelle en secondes pour la chronologie (équiv.
             --flow-timeline-window)
+          default: 1.0
+        bucket_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Bucket Ms
+          description: Fenêtre temporelle du débit en ms (équivalent de --bucket-ms)
+          default: 1000
+        rtp_clock_rate:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rtp Clock Rate
+          description: Horloge RTP en Hz pour la gigue (équivalent de --rtp-clock-rate)
+          default: 8000
+        idle_timeout_seconds:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Idle Timeout Seconds
+          description: Seuil de coupure NAT/pare-feu silencieuse en secondes, défaut
+            du cœur (60 s) si absent (équivalent de --idle-timeout-seconds)
+        detect_duplicates:
+          type: boolean
+          title: Detect Duplicates
+          description: 'true : compte les doublons inter-captures (équivalent de --detect-duplicates)'
+          default: false
+        exclude_duplicates:
+          type: boolean
+          title: Exclude Duplicates
+          description: 'true : exclut les doublons inter-captures de l''analyse (équivalent
+            de --exclude-duplicates, implique detect_duplicates)'
+          default: false
+        duplicate_threshold_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Duplicate Threshold Ms
+          description: Fenêtre de tolérance pour la détection des doublons en ms (équivalent
+            de --duplicate-threshold-ms)
           default: 1.0
       type: object
       required:

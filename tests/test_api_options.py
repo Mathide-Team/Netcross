@@ -74,6 +74,13 @@ def test_options_par_defaut_enregistrees():
         "flow_timeline": False,
         "flow_timeline_window": 1.0,
         "split_interfaces": False,
+        # Issue #330 (suite, #841) : réglages d'analyse alignés sur la CLI
+        "bucket_ms": 1000.0,
+        "rtp_clock_rate": 8000,
+        "idle_timeout_seconds": None,
+        "detect_duplicates": False,
+        "exclude_duplicates": False,
+        "duplicate_threshold_ms": 1.0,
     }
 
 

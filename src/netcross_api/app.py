@@ -53,6 +53,7 @@ from netcross_api.models import (
 )
 from netcross_api.store import COMPLETED, FAILED, PENDING, report_document, store
 from netcross_core import analyse, correlate, parse_capture
+from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
 from netcross_core.logging_config import get_logger, summarize
 from netcross_core.security.findings import apply_security_findings, scan_capture_exploits
 from netcross_report.json_report import build_json_report_document
@@ -121,6 +122,30 @@ _MEDIA_QUALITY_FORM = Form(
 )
 _TSHARK_STATS_FORM = Form(
     default=False, description="true : collecter les statistiques tshark natives (équiv. --tshark-stats)"
+)
+# Issue #330 (suite) : réglages de l'analyse déjà présents en GUI et en CLI.
+_BUCKET_MS_FORM = Form(default=1000, gt=0, description="Fenêtre temporelle du débit en ms (équivalent de --bucket-ms)")
+_RTP_CLOCK_FORM = Form(
+    default=8000, gt=0, description="Horloge RTP en Hz pour la gigue (équivalent de --rtp-clock-rate)"
+)
+_IDLE_TIMEOUT_FORM = Form(
+    default=None,
+    gt=0,
+    description="Seuil de coupure NAT/pare-feu silencieuse en secondes, défaut du cœur (60 s) si absent "
+    "(équivalent de --idle-timeout-seconds)",
+)
+_DETECT_DUPLICATES_FORM = Form(
+    default=False, description="true : compte les doublons inter-captures (équivalent de --detect-duplicates)"
+)
+_EXCLUDE_DUPLICATES_FORM = Form(
+    default=False,
+    description="true : exclut les doublons inter-captures de l'analyse (équivalent de --exclude-duplicates, "
+    "implique detect_duplicates)",
+)
+_DUPLICATE_THRESHOLD_FORM = Form(
+    default=DEFAULT_DUPLICATE_THRESHOLD_MS,
+    gt=0,
+    description="Fenêtre de tolérance pour la détection des doublons en ms (équivalent de --duplicate-threshold-ms)",
 )
 
 # -- Issue #675 : singletons pour les parametres de formulaire --
@@ -273,6 +298,13 @@ class ApiAnalysisOptions:
     tshark_stats: bool = False
     flow_timeline: bool = False
     flow_timeline_window: float = 1.0
+    # Issue #330 (suite) : réglages d'analyse (débit, RTP, coupure, doublons)
+    bucket_ms: float = 1000.0
+    rtp_clock_rate: int = 8000
+    idle_timeout_seconds: float | None = None
+    detect_duplicates: bool = False
+    exclude_duplicates: bool = False
+    duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS
 
 
 def _options(
@@ -294,6 +326,12 @@ def _options(
     tshark_stats: bool = False,
     flow_timeline: bool = False,
     flow_timeline_window: float = 1.0,
+    bucket_ms: float = 1000.0,
+    rtp_clock_rate: int = 8000,
+    idle_timeout_seconds: float | None = None,
+    detect_duplicates: bool = False,
+    exclude_duplicates: bool = False,
+    duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS,
 ) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
     qui relisent les fichiers d'origine (adresses réelles).
@@ -342,6 +380,12 @@ def _options(
         tshark_stats=tshark_stats,
         flow_timeline=flow_timeline,
         flow_timeline_window=flow_timeline_window,
+        bucket_ms=bucket_ms,
+        rtp_clock_rate=rtp_clock_rate,
+        idle_timeout_seconds=idle_timeout_seconds,
+        detect_duplicates=detect_duplicates,
+        exclude_duplicates=exclude_duplicates,
+        duplicate_threshold_ms=duplicate_threshold_ms,
     )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
@@ -452,9 +496,27 @@ def _analyse_captures(
             from netcross_core.redact import redact_packets
 
             redact_packets(all_packets)
-        flows = correlate(all_packets, options.nat_tolerant, options.nat_window_ms)
+        # Issue #330 : détection des doublons inter-captures (même enchaînement
+        # que la CLI : détection, puis retrait de la liste pour que tout l'aval
+        # voie la même population).
+        duplicate_counts = None
+        if options.detect_duplicates or options.exclude_duplicates:
+            duplicate_counts = detect_cross_capture_duplicates(all_packets, options.duplicate_threshold_ms)
+        if options.exclude_duplicates:
+            all_packets = [pk for pk in all_packets if not pk.is_duplicate]
+        flows = correlate(all_packets, options.nat_tolerant, options.nat_window_ms, options.exclude_duplicates)
         points_order = order_list if multi else [captures[0][0]]
-        report = analyse(flows, points_order=points_order, all_packets=all_packets, nat_tolerant=options.nat_tolerant)
+        report = analyse(
+            flows,
+            points_order=points_order,
+            all_packets=all_packets,
+            nat_tolerant=options.nat_tolerant,
+            bucket_seconds=options.bucket_ms / 1000,
+            rtp_clock_rate=options.rtp_clock_rate,
+            idle_timeout_seconds=options.idle_timeout_seconds,
+            exclude_duplicates=options.exclude_duplicates,
+            duplicate_counts=duplicate_counts,
+        )
         security_report = None
         if not options.redact:
             # CVE-2 : scanner les exploits sur chaque fichier. Pas avec redact :
@@ -728,6 +790,12 @@ async def upload_capture(
     tshark_stats: bool = _TSHARK_STATS_FORM,
     flow_timeline: bool = _FLOW_TIMELINE_FORM,
     flow_timeline_window: float = _FLOW_TIMELINE_WINDOW_FORM,
+    bucket_ms: float = _BUCKET_MS_FORM,
+    rtp_clock_rate: int = _RTP_CLOCK_FORM,
+    idle_timeout_seconds: float | None = _IDLE_TIMEOUT_FORM,
+    detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
+    exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
+    duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -747,6 +815,10 @@ async def upload_capture(
     même point (rotation, concaténation chronologique comme ``--capture
     NOM=a,b``). ``split_interfaces`` sépare les interfaces d'un pcapng
     multi-interfaces en points distincts (équiv. ``--split-interfaces``).
+
+    Issue #330 (suite) : ``bucket_ms``, ``rtp_clock_rate``, ``idle_timeout_seconds``,
+    ``detect_duplicates``, ``exclude_duplicates`` et ``duplicate_threshold_ms``
+    sont les équivalents des options de même nom de la CLI.
     """
     names_path = await _save_optional_file(names, ".json")
     known_dest_path = await _save_optional_file(known_destinations, ".json")
@@ -770,6 +842,12 @@ async def upload_capture(
         tshark_stats=tshark_stats,
         flow_timeline=flow_timeline,
         flow_timeline_window=flow_timeline_window,
+        bucket_ms=bucket_ms,
+        rtp_clock_rate=rtp_clock_rate,
+        idle_timeout_seconds=idle_timeout_seconds,
+        detect_duplicates=detect_duplicates,
+        exclude_duplicates=exclude_duplicates,
+        duplicate_threshold_ms=duplicate_threshold_ms,
     )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
@@ -919,6 +997,12 @@ async def upload_multi_capture(
     tshark_stats: bool = _TSHARK_STATS_FORM,
     flow_timeline: bool = _FLOW_TIMELINE_FORM,
     flow_timeline_window: float = _FLOW_TIMELINE_WINDOW_FORM,
+    bucket_ms: float = _BUCKET_MS_FORM,
+    rtp_clock_rate: int = _RTP_CLOCK_FORM,
+    idle_timeout_seconds: float | None = _IDLE_TIMEOUT_FORM,
+    detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
+    exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
+    duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -959,6 +1043,12 @@ async def upload_multi_capture(
         tshark_stats=tshark_stats,
         flow_timeline=flow_timeline,
         flow_timeline_window=flow_timeline_window,
+        bucket_ms=bucket_ms,
+        rtp_clock_rate=rtp_clock_rate,
+        idle_timeout_seconds=idle_timeout_seconds,
+        detect_duplicates=detect_duplicates,
+        exclude_duplicates=exclude_duplicates,
+        duplicate_threshold_ms=duplicate_threshold_ms,
     )
     if not files or len(files) < 2:
         logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
