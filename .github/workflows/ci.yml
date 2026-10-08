@@ -29,7 +29,7 @@ defaults:
 jobs:
   quality:
     name: Qualité (lint, format, import-linter, tests)
-    runs-on: self-hosted,linux,maison
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -172,7 +172,7 @@ jobs:
     # GTK4 tout en passant en CI). Ici : GTK4 + pygobject + serveur X
     # virtuel (Xvfb), suite complète, et échec si un test GTK est sauté.
     name: Tests GTK4 (Xvfb)
-    runs-on: self-hosted,linux,maison
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -237,7 +237,7 @@ jobs:
     # stricts (bascule : retirer continue-on-error + ajouter les modules
     # dans [[tool.mypy.overrides]] de pyproject.toml).
     name: Types (mypy)
-    runs-on: self-hosted,linux,maison
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -276,7 +276,7 @@ jobs:
     # recoit : installation apt, --help de chaque lanceur, import de chaque
     # module avec /usr/bin/python3, analyse reelle d'une capture.
     name: Paquets (deb installé, rpm vérifié)
-    runs-on: self-hosted,linux,maison
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -331,7 +331,7 @@ jobs:
     # Pas de if: -- check_branch_protection.py --hors-ligne ignore les jobs
     # conditionnels.
     name: Construction (mkdocs build --strict)
-    runs-on: self-hosted,linux,maison
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -376,7 +376,7 @@ jobs:
     # les fichiers concernés (src/**/*.py, lang/**) couvrent la majeure partie
     # du code, donc le job tourne sur toutes les PR/push.
     name: i18n (catalogues à jour)
-    runs-on: self-hosted,linux,maison
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
     container:
       image: ubuntu:26.04
       options: --privileged

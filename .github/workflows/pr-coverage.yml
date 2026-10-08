@@ -21,7 +21,7 @@ permissions:
 jobs:
   commentaire-couverture:
     name: Couverture (delta vs dev)
-    runs-on: self-hosted,linux,maison
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout de la PR (ref de fusion)
         uses: actions/checkout@v4

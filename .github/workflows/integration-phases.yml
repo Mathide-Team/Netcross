@@ -15,7 +15,7 @@ permissions:
 jobs:
   rapport-phases:
     name: Rapport d'avancement par phase
-    runs-on: self-hosted,linux,maison
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4

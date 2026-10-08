@@ -28,7 +28,7 @@ permissions:
 jobs:
   build-deb:
     name: Paquet .deb (Ubuntu/Debian)
-    runs-on: self-hosted,linux,maison
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout du depot
@@ -57,7 +57,7 @@ jobs:
 
   build-rpm:
     name: Paquet .rpm (RHEL/Rocky)
-    runs-on: self-hosted,linux,maison
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout du depot
