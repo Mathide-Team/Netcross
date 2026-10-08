@@ -21,7 +21,9 @@ permissions:
 jobs:
   commentaire-couverture:
     name: Couverture (delta vs dev)
-    runs-on: ubuntu-latest
+    # Runners maison (groupe maison, Ubuntu 20.04, root) ; repli GitHub :
+    # variable NETCROSS_RUNS_ON_LEGER = '"ubuntu-latest"'.
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON_LEGER || '{"group":"maison","labels":["self-hosted","linux"]}') }}
     steps:
       - name: Checkout de la PR (ref de fusion)
         uses: actions/checkout@v4
@@ -34,12 +36,17 @@ jobs:
       - name: Installation de Python
         run: uv python install 3.14
 
+      # test_catalogues_a_jour_avec_les_sources compare les catalogues
+      # regeneres par le gettext installe : celui des runners maison
+      # (0.19, Ubuntu 20.04) formate autrement que celui du projet. Ce test
+      # reste execute par ci.yml (conteneur ubuntu:26.04) ; il est retire ici
+      # des deux mesures (PR et base), le delta reste donc comparable.
       - name: Dépendances + couverture de la PR
         run: |
           uv sync --extra dev
-          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-pr.json -q
+          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
           uv sync --extra dev --extra ai
-          uv run pytest --cov --cov-report=json:coverage-pr.json -q
+          uv run pytest --cov --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
 
       - name: Couverture de la base (SHA de dev)
         run: |
@@ -47,14 +54,14 @@ jobs:
           git worktree add ../base ${{ github.event.pull_request.base.sha }}
           cd ../base
           uv sync --extra dev
-          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-base.json -q
+          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-base.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
           mv coverage-base.json "$OLDPWD/"
 
       - name: Publication du commentaire de couverture
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 scripts/pr_coverage_comment.py \
+          uv run --no-project --python 3.14 scripts/pr_coverage_comment.py \
             --pr-json coverage-pr.json \
             --base-json coverage-base.json \
             --pr-number "${{ github.event.pull_request.number }}"

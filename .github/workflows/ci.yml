@@ -237,20 +237,11 @@ jobs:
     # stricts (bascule : retirer continue-on-error + ajouter les modules
     # dans [[tool.mypy.overrides]] de pyproject.toml).
     name: Types (mypy)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
-    container:
-      image: ubuntu:26.04
-      options: --privileged
+    # Python seul : natif sur les runners maison (Ubuntu 20.04, Python par
+    # uv), sans conteneur. Repli GitHub : variable NETCROSS_RUNS_ON_LEGER.
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON_LEGER || '{"group":"maison","labels":["self-hosted","linux"]}') }}
 
     steps:
-      - name: Prérequis du conteneur (git, certificats, compilateur)
-        # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
-        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement),
-        # ni python3 (scripts du dépôt), ni sudo (scripts/smoke-test-packages.sh).
-        run: |
-          DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential sudo python3 python3-venv
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout du dépôt
         uses: actions/checkout@v7
@@ -331,30 +322,22 @@ jobs:
     # Pas de if: -- check_branch_protection.py --hors-ligne ignore les jobs
     # conditionnels.
     name: Construction (mkdocs build --strict)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
-    container:
-      image: ubuntu:26.04
-      options: --privileged
+    # Python seul : natif sur les runners maison (Ubuntu 20.04, Python par
+    # uv), sans conteneur. Repli GitHub : variable NETCROSS_RUNS_ON_LEGER.
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON_LEGER || '{"group":"maison","labels":["self-hosted","linux"]}') }}
 
     steps:
-      - name: Prérequis du conteneur (git, certificats, compilateur)
-        # ubuntu:26.04 est une image minimale : ni git (checkout et diff i18n),
-        # ni certificats, ni gcc (roues pygobject/pycairo compilées localement),
-        # ni python3 (scripts du dépôt), ni sudo (scripts/smoke-test-packages.sh).
-        run: |
-          DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates curl build-essential sudo python3 python3-venv
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout du dépôt
         uses: actions/checkout@v7
 
-      - name: Installation de Python 3.14 (paquet Ubuntu 26.04)
-        # setup-python ne publie pas de build pour ubuntu 26.04 : Python du
-        # système dans un venv (PEP 668 interdit pip hors venv).
+      - name: Installation de uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Installation de Python 3.14 (uv)
+        # Python système trop ancien sur les runners maison (3.8) : venv uv.
         run: |
-          python3 --version
-          python3 -m venv "$RUNNER_TEMP/venv"
+          uv venv --python 3.14 --seed "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
 
       - name: Installation de mkdocs-material
