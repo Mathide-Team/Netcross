@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-168 modules · 251 classes · 586 fonctions publiques de module.
+170 modules · 253 classes · 589 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"15 imports"| netcross_report
-    netcross_gtk4 -->|"74 imports"| netcross_core
+    netcross_gtk4 -->|"78 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
@@ -3916,6 +3916,8 @@ classDiagram
 | `netcross_gtk4.app` | interface GTK4 pour netcross_core / netcross_report. |
 | `netcross_gtk4.bpf_panel` | Decisions du panneau de filtres BPF de la capture live, sorties de ``netcross_gtk4/app.py`` (issue #285, quatrieme lot). |
 | `netcross_gtk4.capture_list` | Enumeration, ordre et retrait des lignes des panneaux de captures, sortis de ``netcross_gtk4/app.py`` (issue #285, cinquieme lot). |
+| `netcross_gtk4.client_compare_panel` | panneau GTK « Comparaison de postes » de la page Resultats (issue #675). |
+| `netcross_gtk4.client_compare_view` | comparaison de postes dans la GUI (issue #675). |
 | `netcross_gtk4.dashboard_context` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
 | `netcross_gtk4.diff_pipeline` | pipeline de comparaison baseline/courant extrait de MainWindow._run_diff_thread (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.duplicate_view` | Presentation helpers for cross-capture duplicate detection (Job 41). |
@@ -3961,6 +3963,8 @@ classDiagram
         +float duplicate_threshold_ms
         +bool split_interfaces
         +bool forensic_index
+        +dict? client_groups
+        +str? client_reference
         +NotifySettings? notify
     }
     class AnalysisResult {
@@ -3975,6 +3979,7 @@ classDiagram
         +list wireshark_expert_events
         +Any security_report
         +Any search_index
+        +Any client_comparison
     }
     class mod_netcross_gtk4_analysis_pipeline["netcross_gtk4.analysis_pipeline"] {
         <<module>>
@@ -4108,6 +4113,24 @@ classDiagram
         +captures_live(contenus) list~tuple~str, str, str?~~
         +deplacer_ligne(row, vers_le_haut) bool
         +retirer_ligne(row, on_change) bool
+    }
+
+    %% ===== netcross_gtk4.client_compare_panel =====
+    class ClientComparisonPanel {
+        <<Gtk.Box>>
+        +set_comparison(comparison) None
+        +export_to(path) None
+    }
+
+    %% ===== netcross_gtk4.client_compare_view =====
+    class ClientGroupError {
+        <<ValueError>>
+    }
+    class mod_netcross_gtk4_client_compare_view["netcross_gtk4.client_compare_view"] {
+        <<module>>
+        +parse_client_groups(text) dict~str, set~str~~
+        +validate_client_settings(groups, reference, redact) list~str~
+        +comparison_summary(comparison) str
     }
 
     %% ===== netcross_gtk4.dashboard_context =====

@@ -101,4 +101,8 @@ python3 src/cross_capture_analyzer_cli.py \
     --client-diff-csv postes.csv
 ```
 
+Dans l'interface graphique, en analyse simple : champ « Postes à
+comparer » (`PosteOK=10.0.0.5; PosteKO=10.0.0.12`) et champ « Référence » ;
+l'export CSV est sur la page Résultats, section « Comparaison de postes ».
+
 Chaque poste est analysé séparément, puis comparé au poste de référence.

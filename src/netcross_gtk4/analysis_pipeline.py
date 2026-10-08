@@ -67,6 +67,9 @@ class AnalysisOptions:
     # Issue #675 : index de recherche forensic (--forensic-search), construit
     # ici pendant que les paquets sont encore en memoire
     forensic_index: bool = False
+    # Issue #675 : comparaison de postes (--client-group, --client-reference)
+    client_groups: dict | None = None
+    client_reference: str | None = None
     # Issue #676 : notifications (webhook, Slack, courriel) sur le rapport de
     # securite, comme --notify-on de la CLI. None ou sans seuil : aucune.
     notify: NotifySettings | None = None
@@ -90,6 +93,8 @@ class AnalysisResult:
     security_report: Any = None
     # Issue #675 : ForensicSearchIndex, None sans « Index de recherche forensic »
     search_index: Any = None
+    # Issue #675 : ClientComparisonResult, None sans groupes de postes
+    client_comparison: Any = None
 
 
 def load_packets(
@@ -167,6 +172,12 @@ def run_analysis_pipeline(
         # pseudonymes
         logger.debug("run_analysis_pipeline: si options.security and options.redact -> levée ValueError")
         raise ValueError("le rapport de securite n'est pas disponible avec l'anonymisation des adresses")
+
+    if options.client_groups and options.redact:
+        # meme refus que --client-group --redact (CLI) : les groupes portent
+        # des IP reelles, introuvables dans des paquets anonymises
+        logger.debug("run_analysis_pipeline: client_groups and redact -> levée ValueError")
+        raise ValueError("la comparaison de postes n'est pas disponible avec l'anonymisation des adresses")
 
     def _log(msg: str) -> None:
         # Avec la GUI, on_progress aboutit a MainWindow._log qui trace deja
@@ -325,6 +336,25 @@ def _run_pipeline(
             print_triage(ranked, options.triage_topn)
             print(format_health_line(health_score(ranked)))
 
+    # 9 bis. Comparaison de postes (issue #675) -- meme appel que la CLI
+    client_comparison = None
+    if options.client_groups:
+        _log("Comparaison de postes...")
+        from netcross_core.client_diff import compare_clients, print_client_comparison
+
+        client_comparison = compare_clients(
+            all_packets,
+            options.client_groups,
+            reference=options.client_reference,
+            points_order=points_order,
+            bucket_seconds=options.bucket_ms / 1000.0,
+            nat_tolerant=options.nat_tolerant,
+            nat_window_ms=options.nat_window_ms,
+            rtp_clock_rate=options.rtp_rate,
+        )
+        with contextlib.redirect_stdout(buf):
+            print_client_comparison(client_comparison)
+
     # 10. TLS
     tls_findings = None
     if options.tls:
@@ -402,6 +432,7 @@ def _run_pipeline(
         quic_findings=quic_findings,
         wireshark_expert_events=wireshark_expert_events,
         search_index=search_index,
+        client_comparison=client_comparison,
         security_report=security_report,
     )
 
