@@ -21,7 +21,9 @@ permissions:
 jobs:
   commentaire-couverture:
     name: Couverture (delta vs dev)
-    runs-on: ubuntu-latest
+    # Runners maison (groupe maison, Ubuntu 20.04, root) ; repli GitHub :
+    # variable NETCROSS_RUNS_ON_LEGER = '"ubuntu-latest"'.
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON_LEGER || '{"group":"maison","labels":["self-hosted","linux"]}') }}
     steps:
       - name: Checkout de la PR (ref de fusion)
         uses: actions/checkout@v4
@@ -54,7 +56,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 scripts/pr_coverage_comment.py \
+          uv run --no-project --python 3.14 scripts/pr_coverage_comment.py \
             --pr-json coverage-pr.json \
             --base-json coverage-base.json \
             --pr-number "${{ github.event.pull_request.number }}"
