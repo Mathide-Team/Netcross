@@ -39,6 +39,7 @@ actif, non réglable.
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Captures en fichiers, un nom par point | oui (liste + « Ajouter une capture ») | `--capture` | `POST /captures` (`file`, `label`), `POST /captures/multi` (`files`, `labels`) |
+| Capture unique (tout sauf la corrélation multi-points) | oui, une ligne suffit (issue #474) | un seul `--capture` | `POST /captures/multi` avec un fichier |
 | Plusieurs fichiers pour un même point (rotation) | deux lignes de même nom (issue #671) | `--capture NOM=a,b` | `extra_files` (issue #671) |
 | Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | case « Séparer les interfaces d'un pcapng » (issue #474) | `--split-interfaces` | `split_interfaces` (issue #671) |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
