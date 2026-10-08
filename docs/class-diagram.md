@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-165 modules · 249 classes · 580 fonctions publiques de module.
+166 modules · 250 classes · 583 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"15 imports"| netcross_report
-    netcross_gtk4 -->|"63 imports"| netcross_core
+    netcross_gtk4 -->|"69 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
@@ -56,6 +56,7 @@ du graphe de dépendances ci-dessus (qui ne compte que des `import`).
 
 ```mermaid
 flowchart LR
+    AnalysisOptions["netcross_gtk4.analysis_pipeline.AnalysisOptions"]
     AnalysisResult["netcross_gtk4.analysis_pipeline.AnalysisResult"]
     AnnotationStore["netcross_gtk4.annotations_view.AnnotationStore"]
     BPFFilter["netcross_core.models.BPFFilter"]
@@ -79,6 +80,7 @@ flowchart LR
     LiveDiffState["netcross_core.live_diff.LiveDiffState"]
     LoadedPlugins["netcross_core.plugins.loader.LoadedPlugins"]
     ModelPack["netcross_ai.model_pack.ModelPack"]
+    NotifySettings["netcross_gtk4.notifications.NotifySettings"]
     OsGuess["netcross_core.discovery.os_detect.OsGuess"]
     PacketAnnotation["netcross_core.models.PacketAnnotation"]
     Pkt["netcross_core.models.Pkt"]
@@ -87,6 +89,7 @@ flowchart LR
     StreamQuality["netcross_core.extract.media.StreamQuality"]
     _Detector["netcross_core.exploit_signatures._Detector"]
     netcross_core_security_expert_correlation__FlowState["netcross_core.security.expert_correlation._FlowState"]
+    AnalysisOptions -->|notify| NotifySettings
     AnalysisResult -->|report| Report
     AnnotationStore -->|by_label| PacketAnnotation
     CaptureInfo -->|interfaces| InterfaceRecord
@@ -3920,6 +3923,7 @@ classDiagram
 | `netcross_gtk4.forensic_view` | recherche forensic de la GUI (issue #675). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
 | `netcross_gtk4.live_report_session` | rapport HTML rafraichi en continu pendant une capture en direct de la GUI (issue #676). |
+| `netcross_gtk4.notifications` | notifications sortantes (webhook, Slack, courriel) apres une analyse de la GUI (issue #676). |
 | `netcross_gtk4.panel_state` | decisions de visibilite, de sensibilite et de selection des panneaux de la GUI (issue #285, troisieme lot). |
 | `netcross_gtk4.ring_recorders` | rotation de capture (ring buffer) de la GUI en capture en direct (issue #676). |
 | `netcross_gtk4.row_labels` | libelles et cles de tri des lignes affichees par la GUI (issue #285, premier lot d'extraction de `app.py`). |
@@ -3955,6 +3959,7 @@ classDiagram
         +float duplicate_threshold_ms
         +bool split_interfaces
         +bool forensic_index
+        +NotifySettings? notify
     }
     class AnalysisResult {
         <<dataclass>>
@@ -4227,6 +4232,23 @@ classDiagram
         +start_live_report(labels, out_dir, interval, serve_port, render, mkdtemp, server_factory) tuple~LiveReportSession, list~str~~
     }
 
+    %% ===== netcross_gtk4.notifications =====
+    class NotifySettings {
+        <<dataclass, frozen>>
+        +str? threshold
+        +str? webhook
+        +str? slack
+        +str? email
+        +str detail
+        +active() bool
+    }
+    class mod_netcross_gtk4_notifications["netcross_gtk4.notifications"] {
+        <<module>>
+        +settings_from_widgets(threshold_index, webhook, slack, email, complete_detail) NotifySettings
+        +validate_settings(settings, security) list~str~
+        +send_notifications(report, security_report, settings, report_path, runner, config_loader) list~dict~
+    }
+
     %% ===== netcross_gtk4.panel_state =====
     class PanelVisibility {
         <<dataclass, frozen>>
@@ -4347,6 +4369,9 @@ classDiagram
         +run_stats(flows, report, query, events_by_segment) list~StatRow~
         +build_events_by_segment(findings, flows) dict~str, list~Any~~
     }
+
+    %% ===== relations =====
+    AnalysisOptions --> NotifySettings : notify
 ```
 
 ## CLI (`src/*.py`)
