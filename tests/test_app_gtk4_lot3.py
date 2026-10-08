@@ -322,15 +322,22 @@ def test_run_button_devient_sensible_avec_deux_captures_simples(window):
     assert window.run_btn.get_tooltip_text() is None
 
 
-def test_run_button_reste_insensible_avec_une_seule_capture_simple(window):
-    window.single_panel.add_row("/tmp/a.pcap", default_label="A")
-
+def test_run_button_insensible_sans_capture_simple(window):
     window._update_run_sensitivity()
     window._update_run_button_label()
 
     assert window.run_btn.get_sensitive() is False
     assert window.run_btn.get_label() == LABEL_LANCER_ANALYSE
     assert window.run_btn.get_tooltip_text()  # raison du refus affichee en infobulle
+
+
+def test_run_button_sensible_avec_une_seule_capture_simple(window):
+    """Issue #474 : une capture unique s'analyse (tout sauf le croise)."""
+    window.single_panel.add_row("/tmp/a.pcap", default_label="A")
+
+    window._update_run_sensitivity()
+
+    assert window.run_btn.get_sensitive() is True
 
 
 def test_run_button_libelle_et_sensibilite_en_mode_live(window):
