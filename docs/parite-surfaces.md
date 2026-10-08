@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 17 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 18 cases à cocher, 15 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 21 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -39,8 +39,8 @@ actif, non réglable.
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Captures en fichiers, un nom par point | oui (liste + « Ajouter une capture ») | `--capture` | `POST /captures` (`file`, `label`), `POST /captures/multi` (`files`, `labels`) |
-| Plusieurs fichiers pour un même point (rotation) | non | `--capture NOM=a,b` | `extra_files` (issue #671) |
-| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | non | `--split-interfaces` | `split_interfaces` (issue #671) |
+| Plusieurs fichiers pour un même point (rotation) | deux lignes de même nom (issue #671) | `--capture NOM=a,b` | `extra_files` (issue #671) |
+| Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | case « Séparer les interfaces d'un pcapng » (issue #474) | `--split-interfaces` | `split_interfaces` (issue #671) |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
 | Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : les trois surfaces, « Fenêtre NAT (ms) » dans la GUI) | `nat_tolerant`, `nat_window_ms` |
@@ -203,6 +203,7 @@ son équivalent CLI ou API.
 | Lecture parallele des captures | Configuration | `--parallel` |
 | Anonymiser les adresses IP/MAC (--redact) | Configuration | `--redact` |
 | Deduire la topologie automatiquement (ignore l'ordre de la liste) | Configuration | absence de `--order` |
+| Séparer les interfaces d'un pcapng (--split-interfaces) | Configuration | `--split-interfaces` |
 | Triage (classement des segments) | Configuration | `--triage` |
 | Triage des ecarts (classement des segments) | Configuration (mode comparaison) | `--triage` (CLI de comparaison) |
 | Diagnostic TLS | Configuration (2 cases : analyse et comparaison) | `--tls` |
