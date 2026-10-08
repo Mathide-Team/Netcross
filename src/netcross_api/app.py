@@ -655,6 +655,9 @@ def _run_job(
     """Tâche de fond : analyse puis completed/failed ; supprime les fichiers."""
     try:
         captures = _apply_split_interfaces(captures, options)
+        if multi and options and options.split_interfaces and order_list is not None:
+            # Issue #474 lot 2 : ordre validé sur les points réellement obtenus.
+            order_list = _parse_points_order(",".join(order_list), [label for label, _ in captures])
         (
             document,
             summary,
@@ -670,6 +673,9 @@ def _run_job(
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
         store.fail(analysis_id, str(exc))
+    except HTTPException as exc:
+        logger.warning("analyse {} refusée : {}", analysis_id, exc.detail)
+        store.fail(analysis_id, str(exc.detail))
     except Exception as exc:  # défense : une tâche ne doit jamais rester pending
         logger.exception("analyse {} : erreur interne", analysis_id)
         store.fail(analysis_id, f"Erreur interne: {exc}")
@@ -1015,6 +1021,10 @@ async def upload_multi_capture(
     ou ``/status``) détaille les pertes et le délai de chaque segment.
     Options d'analyse : comme ``POST /captures`` (issue #330, #672).
 
+    Issue #474 lot 2 : avec ``split_interfaces=true``, un seul fichier est
+    accepté (pcapng multi-interfaces) ; ``points_order`` cite alors les
+    étiquettes ``ETIQUETTE:INTERFACE`` et est validé après la séparation.
+
     Issue #671 : ``split_interfaces`` sépare les interfaces d'un pcapng
     multi-interfaces en points distincts (équiv. ``--split-interfaces``).
     Les étiquettes dupliquées sont autorisées : les fichiers portant le
@@ -1050,14 +1060,27 @@ async def upload_multi_capture(
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
     )
-    if not files or len(files) < 2:
-        logger.debug("upload_multi_capture: si not files or len(files) < 2 -> levée HTTPException")
-        raise HTTPException(status_code=400, detail="Au moins 2 fichiers sont requis pour l'analyse multi-points")
+    # Issue #474 lot 2 : avec split_interfaces, un seul pcapng multi-interfaces
+    # suffit (un point ETIQUETTE:INTERFACE par interface).
+    minimum = 1 if split_interfaces else 2
+    if not files or len(files) < minimum:
+        logger.debug("upload_multi_capture: si not files or len(files) < minimum -> levée HTTPException")
+        detail = (
+            "Au moins 1 fichier est requis"
+            if split_interfaces
+            else "Au moins 2 fichiers sont requis pour l'analyse multi-points (ou 1 pcapng avec split_interfaces=true)"
+        )
+        raise HTTPException(status_code=400, detail=detail)
     if len(files) > _MAX_FILES:
         logger.debug("upload_multi_capture: si len(files) > _MAX_FILES -> levée HTTPException")
         raise HTTPException(status_code=400, detail=f"Au plus {_MAX_FILES} fichiers par requête")
     label_list = _parse_labels(labels, len(files), allow_duplicates=True)
-    order_list = _parse_points_order(points_order, label_list)
+    if split_interfaces:
+        # Les étiquettes ETIQUETTE:INTERFACE ne sont connues qu'après la
+        # séparation : points_order est validé par _run_job (issue #474 lot 2).
+        order_list = [p.strip() for p in points_order.split(",") if p.strip()] or None
+    else:
+        order_list = _parse_points_order(points_order, label_list)
 
     captures: list[tuple[str, str]] = []
     try:

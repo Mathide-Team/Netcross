@@ -43,7 +43,9 @@ adresse `status_url` à consulter jusqu'à ce que l'état passe à
 
 Un pcapng pris sur plusieurs interfaces peut être envoyé seul, avec
 `split_interfaces=true` : chaque interface devient un point, nommé
-`ETIQUETTE:INTERFACE`, comme avec `--split-interfaces`.
+`ETIQUETTE:INTERFACE`, comme avec `--split-interfaces`. `points_order`, s'il est
+fourni, cite alors ces étiquettes (`SW:eth0,SW:eth1`) ; il est vérifié après
+la séparation.
 
 ```bash
 curl -X POST "http://localhost:8000/captures/multi?wait=true" \
@@ -66,7 +68,7 @@ nom dans la ligne de commande :
 | `idle_timeout_seconds` | Seuil de coupure NAT/pare-feu silencieuse (défaut : 60 s) | `--idle-timeout-seconds` |
 | `detect_duplicates`, `exclude_duplicates`, `duplicate_threshold_ms` | Doublons inter-captures : compter, exclure, seuil en ms | `--detect-duplicates`, `--exclude-duplicates`, `--duplicate-threshold-ms` |
 | `split_interfaces` | Un point par interface d'un pcapng (`/captures/multi` uniquement) | `--split-interfaces` |
-| `rotation` | Étiquette répétée dans `labels` : segments successifs d'un même point (`/captures/multi` uniquement) | `--capture NOM=a,b` |
+| `extra_files` | Segments suivants d'une capture en rotation, pour le même point (`/captures` uniquement ; avec `/captures/multi`, répétez l'étiquette dans `labels`) | `--capture NOM=a,b` |
 
 Une valeur hors bornes (fenêtre nulle ou négative, par exemple) est
 refusée avec un code `422`. Une combinaison incompatible (`redact` avec

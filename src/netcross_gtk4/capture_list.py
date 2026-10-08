@@ -89,6 +89,29 @@ def captures_fichiers(contenus: Sequence[Any]) -> list[tuple[str, str]]:
     return [(nom_de_point(row.label, i), row.path) for i, row in enumerate(contenus)]
 
 
+def ordre_des_points(captures: Sequence[tuple[str, str]]) -> list[str]:
+    """Noms des points dans l'ordre de la liste, chacun une seule fois.
+
+    Issue #671 : deux lignes de meme nom sont les segments successifs d'un
+    meme point (capture en rotation, comme ``--capture NOM=a,b`` de la CLI).
+    Elles sont lues l'une apres l'autre et concatenees ; le point n'apparait
+    qu'une fois dans l'ordre amont -> aval, a la place de sa premiere ligne.
+    """
+    ordre = list(dict.fromkeys(label for label, _path in captures))
+    logger.debug("ordre_des_points: {} ligne(s) -> {} point(s)", len(captures), len(ordre))
+    return ordre
+
+
+def segments_par_point(captures: Sequence[tuple[str, str]]) -> dict[str, int]:
+    """Points formes de plusieurs lignes (rotation) -> nombre de segments."""
+    compte: dict[str, int] = {}
+    for label, _path in captures:
+        compte[label] = compte.get(label, 0) + 1
+    rotation = {label: n for label, n in compte.items() if n > 1}
+    logger.debug("segments_par_point: -> {}", rotation)
+    return rotation
+
+
 def captures_live(contenus: Sequence[Any]) -> list[tuple[str, str, str | None]]:
     """(nom, texte du champ interface, filtre BPF ou ``None``) de chaque
     ligne live, dans l'ordre visuel. Le champ interface peut en porter

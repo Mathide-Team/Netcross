@@ -470,6 +470,12 @@ class CaptureListPanel(Gtk.Box):
             )
         )
         add_btn = Gtk.Button(label="Ajouter une capture")
+        # Issue #671 : rotation, comme --capture NOM=a,b de la CLI.
+        add_btn.set_tooltip_text(
+            "Sélection multiple possible. Deux lignes portant le même nom forment un seul point : "
+            "les segments successifs d'une capture en rotation, lus dans l'ordre de la liste "
+            "(équivalent de --capture NOM=a,b)."
+        )
         add_btn.connect("clicked", self._on_add_clicked)
         header.append(add_btn)
         self.append(header)
@@ -933,6 +939,15 @@ class MainWindow(Gtk.ApplicationWindow):
             "visuel des lignes ci-dessus est utilise comme chemin physique."
         )
         options.attach(self.auto_topology_check, 0, 4, 4, 1)
+
+        # Issue #474 lot 2 : equivalent GUI de --split-interfaces.
+        self.split_interfaces_check = Gtk.CheckButton(label="Séparer les interfaces d'un pcapng (--split-interfaces)")
+        self.split_interfaces_check.set_tooltip_text(
+            "Un fichier pcapng qui contient plusieurs interfaces ou sections devient un "
+            "point par interface, nommé NOM:INTERFACE. Un fichier à une seule capture est "
+            "lu tel quel. Une seule capture suffit alors pour une analyse croisée."
+        )
+        options.attach(self.split_interfaces_check, 0, 8, 4, 1)
 
         # -- options specifiques a l'analyse simple (masquees en mode diff) --
         self.single_options_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -1657,7 +1672,11 @@ class MainWindow(Gtk.ApplicationWindow):
                     exclude_duplicates,
                     duplicate_threshold_ms,
                 ),
-                kwargs={"nat_window_ms": nat_window_ms, "idle_timeout_seconds": idle_timeout_seconds},
+                kwargs={
+                    "nat_window_ms": nat_window_ms,
+                    "idle_timeout_seconds": idle_timeout_seconds,
+                    "split_interfaces": self.split_interfaces_check.get_active(),
+                },
                 daemon=True,
             ).start()
         logger.debug("MainWindow.on_run_analysis: fin")
@@ -1988,6 +2007,7 @@ class MainWindow(Gtk.ApplicationWindow):
         duplicate_threshold_ms,
         nat_window_ms=200.0,
         idle_timeout_seconds=None,
+        split_interfaces=False,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -2017,6 +2037,7 @@ class MainWindow(Gtk.ApplicationWindow):
             duplicate_threshold_ms=duplicate_threshold_ms,
             nat_window_ms=nat_window_ms,
             idle_timeout_seconds=idle_timeout_seconds,
+            split_interfaces=split_interfaces,
         )
 
         def _on_progress(msg):
