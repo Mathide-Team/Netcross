@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-163 modules · 245 classes · 577 fonctions publiques de module.
+164 modules · 248 classes · 578 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -36,8 +36,8 @@ flowchart TD
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"14 imports"| netcross_report
-    netcross_gtk4 -->|"62 imports"| netcross_core
+    netcross_gtk4 -->|"15 imports"| netcross_report
+    netcross_gtk4 -->|"64 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
@@ -3920,6 +3920,7 @@ classDiagram
 | `netcross_gtk4.diff_pipeline` | pipeline de comparaison baseline/courant extrait de MainWindow._run_diff_thread (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.duplicate_view` | Presentation helpers for cross-capture duplicate detection (Job 41). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
+| `netcross_gtk4.live_report_session` | rapport HTML rafraichi en continu pendant une capture en direct de la GUI (issue #676). |
 | `netcross_gtk4.notifications` | notifications sortantes (webhook, Slack, courriel) apres une analyse de la GUI (issue #676). |
 | `netcross_gtk4.panel_state` | decisions de visibilite, de sensibilite et de selection des panneaux de la GUI (issue #285, troisieme lot). |
 | `netcross_gtk4.ring_recorders` | rotation de capture (ring buffer) de la GUI en capture en direct (issue #676). |
@@ -4184,6 +4185,26 @@ classDiagram
         +expand_live_points(rows) list~tuple~str, str, str?~~
         +duplicate_labels(points) list~str~
         +invalid_sources(points) list~str~
+    }
+
+    %% ===== netcross_gtk4.live_report_session =====
+    class LiveReportError {
+        <<Exception>>
+    }
+    class _QuietHandler {
+        <<SimpleHTTPRequestHandler>>
+        +log_message(format, args)
+    }
+    class LiveReportSession {
+        +html_path() Path
+        +url() str?
+        +add(pkt) None
+        +point_stopped(label, error) None
+        +stop() list~str~
+    }
+    class mod_netcross_gtk4_live_report_session["netcross_gtk4.live_report_session"] {
+        <<module>>
+        +start_live_report(labels, out_dir, interval, serve_port, render, mkdtemp, server_factory) tuple~LiveReportSession, list~str~~
     }
 
     %% ===== netcross_gtk4.notifications =====

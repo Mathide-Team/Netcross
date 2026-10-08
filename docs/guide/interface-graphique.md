@@ -69,6 +69,15 @@ En haut de l'onglet, deux cases changent de mode :
   facultatif par point, au lieu de fichiers. Démarrage et arrêt manuels,
   ou durée maximale. Demande les droits de capture (voir
   [Installation](installation.md)).
+  Deux options propres à ce mode : « Rotation de capture » (enregistre
+  aussi la capture brute en fichiers tournants) et « Rapport HTML en
+  continu ». Ce dernier publie pendant la capture une page `index.html`
+  rafraîchie toutes les N secondes (débit, protocoles, hôtes, état de
+  chaque point) dans le répertoire choisi, ou dans un répertoire temporaire
+  indiqué au journal. Avec « Servir la page », elle est aussi servie sur
+  `http://127.0.0.1:PORT/` (port 0 : port libre, indiqué au journal).
+  Équivalent de `--live-report`, `--live-report-interval` et
+  `--live-report-serve`.
 
 Ces deux modes ne se combinent pas entre eux.
 
