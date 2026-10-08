@@ -66,6 +66,9 @@ def run_diff_pipeline(
     current_captures: Sequence[tuple[str, str]],
     options: DiffOptions,
     on_progress: Callable[[str], None] | None = None,
+    *,
+    current_packets: list | None = None,
+    current_points: Sequence[str] | None = None,
 ) -> DiffResult:
     """Pipeline de comparaison baseline/courant, extrait de _run_diff_thread.
 
@@ -76,7 +79,19 @@ def run_diff_pipeline(
     4. Rapport texte
     5. Diagnostics TLS (optionnel)
     6. Diagnostics QUIC (optionnel)
+
+    `current_packets` (issue #676) : paquets du courant deja captures en
+    direct (equivalent de --live-current) ; `current_captures` est alors
+    ignore et `current_points` donne l'ordre des points (celui des lignes
+    du panneau live) quand la topologie n'est pas automatique. TLS/QUIC
+    sont refuses dans ce cas, comme dans la CLI : ils relisent des
+    fichiers que la capture en direct ne produit pas.
     """
+    if current_packets is not None and (options.tls or options.quic):
+        logger.debug("run_diff_pipeline: courant en direct avec TLS/QUIC -> levée ValueError")
+        raise ValueError(
+            "Diagnostic TLS/QUIC indisponible avec un courant capture en direct : ils relisent des fichiers de capture."
+        )
 
     def _log(msg: str) -> None:
         # Avec la GUI, on_progress aboutit a MainWindow._log qui trace deja
@@ -112,9 +127,18 @@ def run_diff_pipeline(
     )
 
     # 2. Courant
-    points_order_current = None if options.auto_topology else capture_list.ordre_des_points(current_captures)
-    _log("=== CHARGEMENT DU RUN COURANT ===")
-    current_packets = load_packets(current_captures, options.parallel, on_progress)
+    if current_packets is None:
+        points_order_current = None if options.auto_topology else capture_list.ordre_des_points(current_captures)
+        _log("=== CHARGEMENT DU RUN COURANT ===")
+        current_packets = load_packets(current_captures, options.parallel, on_progress)
+    else:
+        if options.auto_topology:
+            points_order_current = None
+        elif current_points is not None:
+            points_order_current = list(current_points)
+        else:
+            points_order_current = list(dict.fromkeys(p.point for p in current_packets))
+        _log(f"=== RUN COURANT CAPTURE EN DIRECT : {len(current_packets)} paquet(s) ===")
     if redactor is not None:
         redactor.redact(current_packets)
         _log(f"{len(redactor)} adresse(s) anonymisée(s) (IP/MAC) -- baseline et courant.")

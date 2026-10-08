@@ -71,6 +71,7 @@ actif, non réglable.
 | Chronologie des flux | non | `--flow-timeline`, `--flow-timeline-window` | non |
 | Recherche forensic | oui (case « Index de recherche forensic », panneau « Recherche forensic » de la page Résultats : mêmes critères, export JSON identique ; issue #675) | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | `POST /analyses/{analysis_id}/search` (issue #675), `body` |
 | Extraction des contenus | oui (panneau « Contenus (extraction) » de la page Résultats : audio, vidéo, documents, dossier vide, même manifeste et même rappel d'usage ; après une analyse de fichiers non anonymisée, issue #675) | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
+| Extraction des contenus | non | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
 | Comparaison de postes | non | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
 | NetFlow / sFlow | non | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
 | Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
@@ -129,7 +130,7 @@ est conservée telle quelle pour les clients existants.
 | Fonction | GUI | CLI (`cross_capture_diff_cli.py`) | API |
 |---|---|---|---|
 | Baseline et courant en fichiers | oui (case « Mode comparaison ») | `--baseline`, `--current` | `POST /comparisons` (issue #669) |
-| Courant capturé en direct | non (modes exclusifs) | `--live-current`, `--live-duration` | non |
+| Courant capturé en direct | oui (« Mode comparaison » + « Capture en direct » : le panneau live remplace le courant en fichiers, durée maximale ; sans TLS/QUIC ni lecture parallèle du courant, issue #676) | `--live-current`, `--live-duration` | non |
 | Seuils de régression | oui (pertes, latence) | `--loss-threshold-pp`, `--latency-threshold-ms` | `loss_threshold_pp`, `latency_threshold_ms` (issue #669) |
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
