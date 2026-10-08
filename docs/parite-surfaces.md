@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 21 cases à cocher, 17 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 22 cases à cocher, 17 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 21 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -69,7 +69,7 @@ actif, non réglable.
 | Qualité média (VoIP/vidéo) | non | `--media-quality` | non |
 | Statistiques tshark natives | non | `--tshark-stats` | non |
 | Chronologie des flux | non | `--flow-timeline`, `--flow-timeline-window` | non |
-| Recherche forensic | non | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | `POST /analyses/{analysis_id}/search` (issue #675), `body` |
+| Recherche forensic | oui (case « Index de recherche forensic », panneau « Recherche forensic » de la page Résultats : mêmes critères, export JSON identique ; issue #675) | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | `POST /analyses/{analysis_id}/search` (issue #675), `body` |
 | Extraction des contenus | non | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
 | Comparaison de postes | non | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
 | NetFlow / sFlow | non | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
@@ -211,6 +211,7 @@ son équivalent CLI ou API.
 | Diagnostic TLS | Configuration (2 cases : analyse et comparaison) | `--tls` |
 | Diagnostic QUIC/HTTP3 | Configuration (2 cases : analyse et comparaison) | `--quic` |
 | Rapport de securite | Configuration | `--security-report` |
+| Index de recherche forensic (--forensic-search) | Configuration | `--forensic-search` |
 | Detail complet (--notify-detail complet) | Configuration | `--notify-detail complet` |
 | Anomalies seulement | Résultats (cartographie) | aucun |
 
