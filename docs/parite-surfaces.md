@@ -39,6 +39,7 @@ actif, non réglable.
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Captures en fichiers, un nom par point | oui (liste + « Ajouter une capture ») | `--capture` | `POST /captures` (`file`, `label`), `POST /captures/multi` (`files`, `labels`) |
+| Capture unique (tout sauf la corrélation multi-points) | oui, une ligne suffit (issue #474) | un seul `--capture` | `POST /captures/multi` avec un fichier |
 | Plusieurs fichiers pour un même point (rotation) | deux lignes de même nom (issue #671) | `--capture NOM=a,b` | `extra_files` (issue #671) |
 | Plusieurs captures dans un seul fichier pcapng (une par interface ou section) | case « Séparer les interfaces d'un pcapng » (issue #474) | `--split-interfaces` | `split_interfaces` (issue #671) |
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
@@ -123,6 +124,14 @@ est conservée telle quelle pour les clients existants.
 | Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | non |
 | Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
 | Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
+
+**API : hors périmètre (issue #676).** Aucune route ne lance de capture en
+direct : elle exigerait les droits de capture sur la machine du serveur et
+une session longue (démarrage, arrêt, rapport rafraîchi), alors que l'API
+travaille en requête/réponse sur des fichiers téléversés. Rotation de
+capture, bibliothèque BPF, rapport en continu et courant capturé en direct
+restent donc en GUI et en CLI ; les notifications portent sur le rapport
+de sécurité, déjà produit par `POST /analyses`.
 
 ## Comparaison avant/après
 
