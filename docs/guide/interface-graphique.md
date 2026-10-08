@@ -127,6 +127,14 @@ Sous le rapport, plusieurs sections se déplient :
 - **Dashboard analytique** et **Exploration statistique** : vues
   interactives par segment, flux, hôte et protocole, avec tri et
   regroupement.
+- **Recherche forensic** : si la case « Index de recherche forensic »
+  était cochée, retrouve paquets et flux par texte libre, adresse IP,
+  point, protocole, port ou champ décodé (SNI, URI, statut HTTP, Call-ID
+  SIP, nom DNS, méthode, type de contenu, message), seuls ou combinés. Au
+  moins un critère est demandé ; les 500 premiers résultats sont affichés,
+  « Exporter JSON... » écrit tous les résultats avec la requête, dans le
+  même format que `--forensic-search`. Disponible après une analyse de
+  fichiers ou une capture en direct, pas après une comparaison.
 - **Sécurité** : le rapport de sécurité, si la case correspondante était
   cochée, avec export HTML et JSON.
 
