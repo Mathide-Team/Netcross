@@ -80,6 +80,15 @@ En haut de l'onglet, deux cases changent de mode :
   Équivalent de `--live-report`, `--live-report-interval` et
   `--live-report-serve`.
 
+Les deux cases se combinent : **Mode comparaison** et **Capture en
+direct** cochées ensemble comparent un baseline enregistré (liste
+Baseline) avec un courant capturé en direct (panneau live, qui remplace la
+liste Courant). La comparaison démarre à l'arrêt de la capture (bouton ou
+durée maximale), avec les seuils et le triage du mode comparaison.
+Diagnostic TLS/QUIC, rotation de capture et rapport en continu ne sont
+pas disponibles dans cette combinaison. Équivalent de `--live-current` et
+`--live-duration` de `cross_capture_diff_cli.py`.
+
 Ces deux modes ne se combinent pas entre eux.
 
 ## Travail

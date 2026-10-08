@@ -73,6 +73,11 @@ premier, ainsi que le score de santé, comme `--triage` et
 `--triage-top-n` (défaut : 5). Les options d'analyse (fenêtre NAT,
 coupure silencieuse, doublons...) s'appliquent aux deux côtés.
 
+Pour capturer le courant **en direct**, cochez aussi « Capture en
+direct » : le panneau des points de capture remplace la liste Courant, et
+la comparaison démarre à l'arrêt de la capture (équivalent de
+`--live-current`, voir [Interface graphique](interface-graphique.md)).
+
 ## Options utiles
 
 | Besoin | Option |
