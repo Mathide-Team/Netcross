@@ -82,6 +82,7 @@ from netcross_gtk4.dashboard_context import (  # noqa: E402
     build_dashboard_snapshot,
 )
 from netcross_gtk4.live_capture_points import duplicate_labels, expand_live_points, invalid_sources  # noqa: E402
+from netcross_gtk4.live_report_session import LiveReportError, start_live_report  # noqa: E402
 from netcross_gtk4.panel_state import (  # noqa: E402
     apply_dashboard_selection,
     comm_map_filters,
@@ -810,6 +811,40 @@ class MainWindow(Gtk.ApplicationWindow):
         self.ring_buffer_box.set_visible(False)
         page.append(self.ring_buffer_box)
 
+        # -- rapport HTML rafraichi en continu (issue #676) --
+        # Equivalent de --live-report / --live-report-interval /
+        # --live-report-serve : meme moteur que la CLI. Visible en mode
+        # capture live uniquement, comme ring_buffer_box.
+        self.live_report_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.live_report_check = Gtk.CheckButton(label="Rapport HTML en continu (--live-report)")
+        self.live_report_check.set_tooltip_text(
+            "Publie pendant la capture une page index.html (et live.json, live.jsonl) "
+            "rafraichie a intervalle regulier : debit, protocoles, hotes, etat de chaque point."
+        )
+        self.live_report_check.connect("toggled", self._on_live_report_toggled)
+        self.live_report_box.append(self.live_report_check)
+        self.live_report_dir_entry = Gtk.Entry()
+        self.live_report_dir_entry.set_placeholder_text("Repertoire (temporaire si vide)")
+        self.live_report_dir_entry.set_hexpand(True)
+        self.live_report_box.append(self.live_report_dir_entry)
+        self.live_report_box.append(Gtk.Label(label="Intervalle (s) :", halign=Gtk.Align.START))
+        self.live_report_interval_spin = Gtk.SpinButton.new_with_range(1, 3600, 1)
+        self.live_report_interval_spin.set_value(5)
+        self.live_report_box.append(self.live_report_interval_spin)
+        self.live_report_serve_check = Gtk.CheckButton(label="Servir la page (--live-report-serve)")
+        self.live_report_serve_check.set_tooltip_text(
+            "Sert la page sur http://127.0.0.1:PORT/ pendant la capture (0 = port libre choisi par le systeme)."
+        )
+        self.live_report_serve_check.connect("toggled", self._on_live_report_toggled)
+        self.live_report_box.append(self.live_report_serve_check)
+        self.live_report_port_spin = Gtk.SpinButton.new_with_range(0, 65535, 1)
+        self.live_report_port_spin.set_value(0)
+        self.live_report_box.append(self.live_report_port_spin)
+        self.live_report_box.set_visible(False)
+        page.append(self.live_report_box)
+        self._live_report_session = None
+        self._on_live_report_toggled(None)
+
         # -- panneaux mode comparaison (caches par defaut) --
         self.diff_panels_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         self.baseline_panel = CaptureListPanel("Baseline (avant)", on_change=self._update_run_sensitivity)
@@ -1180,6 +1215,15 @@ class MainWindow(Gtk.ApplicationWindow):
         self.ring_max_duration_spin.set_sensitive(active)
         logger.debug("MainWindow._on_ring_buffer_toggled: fin")
 
+    def _on_live_report_toggled(self, _btn):
+        """Reglages du rapport en continu actifs seulement si la case l'est."""
+        active = self.live_report_check.get_active()
+        self.live_report_dir_entry.set_sensitive(active)
+        self.live_report_interval_spin.set_sensitive(active)
+        self.live_report_serve_check.set_sensitive(active)
+        self.live_report_port_spin.set_sensitive(active and self.live_report_serve_check.get_active())
+        logger.debug("MainWindow._on_live_report_toggled: live_report={}", active)
+
     def _sync_panel_visibility(self):
         """Point unique qui decide, a partir des deux cases a cocher, quels
         panneaux/options sont visibles -- appele apres tout changement de
@@ -1196,7 +1240,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.single_panel.set_visible(vue.single_panel)
         self.live_panel.set_visible(vue.live_panel)
         self.live_extra_box.set_visible(vue.live_extra)
+        # tampon circulaire et rapport en continu : capture en direct simple
+        # seulement (pas d'equivalent avec --live-current)
         self.ring_buffer_box.set_visible(vue.ring_buffer)
+        self.live_report_box.set_visible(vue.ring_buffer)
         self.diff_panels_box.set_visible(vue.diff_panels)
         self.current_panel.set_visible(vue.current_panel)
         self.single_options_box.set_visible(vue.single_options)
@@ -1788,6 +1835,27 @@ class MainWindow(Gtk.ApplicationWindow):
                 self._log(f"Rotation de capture impossible -- capture annulee : {e}")
                 return
 
+        # Issue #676 : rapport HTML en continu, demarre avant les threads de
+        # capture ; un refus (port pris, repertoire) annule toute la capture.
+        self._live_report_session = None
+        if self.live_report_box.get_visible() and self.live_report_check.get_active():
+            try:
+                self._live_report_session, report_messages = start_live_report(
+                    [label for label, _iface, _bpf in rows_data],
+                    self.live_report_dir_entry.get_text().strip() or None,
+                    self.live_report_interval_spin.get_value(),
+                    int(self.live_report_port_spin.get_value()) if self.live_report_serve_check.get_active() else None,
+                )
+            except LiveReportError as e:
+                logger.warning("MainWindow._begin_live_capture: rapport en continu refuse ({})", e)
+                if self._live_ring_recorders:
+                    stop_ring_recorders(self._live_ring_recorders)
+                    self._live_ring_recorders = {}
+                self.stack.set_visible_child_name("log")
+                self._log(f"Rapport en continu impossible -- capture annulee : {e}")
+                return
+            ring_messages = [*ring_messages, *report_messages]
+
         self._live_capturing = True
         self._live_stop_event = threading.Event()
         self._live_packets = []
@@ -1797,6 +1865,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.live_panel.set_sensitive(False)
         self.live_extra_box.set_sensitive(False)
         self.ring_buffer_box.set_sensitive(False)
+        self.live_report_box.set_sensitive(False)
         self.run_btn.set_label("Arreter et analyser")
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
@@ -1844,6 +1913,8 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         count = 0
         last_log = time.time()
+        report_session = self._live_report_session
+        error = None
         try:
             for pkt in parse_live(
                 label,
@@ -1853,6 +1924,8 @@ class MainWindow(Gtk.ApplicationWindow):
             ):
                 with self._live_lock:
                     self._live_packets.append(pkt)
+                if report_session is not None:
+                    report_session.add(pkt)
                 count += 1
                 now = time.time()
                 if now - last_log >= 1.0:
@@ -1863,6 +1936,9 @@ class MainWindow(Gtk.ApplicationWindow):
             # plutot que de tuer le thread silencieusement.
             logger.exception(f"échec dans _live_capture_worker: {e}")
             GLib.idle_add(self._log, f"[{label}] ERREUR : {e}")
+            error = str(e)
+        if report_session is not None:
+            report_session.point_stopped(label, error)
         GLib.idle_add(self._log, f"[{label}] capture arretee -- {count} paquet(s) au total.")
         logger.debug("MainWindow._live_capture_worker: fin")
 
@@ -1892,6 +1968,12 @@ class MainWindow(Gtk.ApplicationWindow):
             for message in stop_ring_recorders(recorders):
                 GLib.idle_add(self._log, message)
             self._live_ring_recorders = {}
+        # Issue #676 : derniere publication du rapport en continu.
+        report_session = getattr(self, "_live_report_session", None)
+        if report_session is not None:
+            for message in report_session.stop():
+                GLib.idle_add(self._log, message)
+            self._live_report_session = None
         with self._live_lock:
             all_packets = list(self._live_packets)
         logger.debug("_join_live_and_analyze: {} paquet(s) capturé(s)", len(all_packets))
@@ -2031,6 +2113,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.live_panel.set_sensitive(True)
         self.live_extra_box.set_sensitive(True)
         self.ring_buffer_box.set_sensitive(True)
+        self.live_report_box.set_sensitive(True)
         self.work_stop_btn.set_visible(False)
         self.work_stop_btn.set_sensitive(True)
         self._update_run_button_label()

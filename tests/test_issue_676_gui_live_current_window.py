@@ -70,6 +70,9 @@ def _configurer(window, baseline=2):
 
 def test_bouton_demarrer_capture_avec_baseline_et_points_live(window):
     _configurer(window)
+    assert window.current_panel.get_visible() is False
+    assert window.ring_buffer_box.get_visible() is False
+    assert window.live_report_box.get_visible() is False
     etat = window._run_button_state()
     assert etat.enabled, etat.raison
     assert etat.label == LABEL_DEMARRER_CAPTURE

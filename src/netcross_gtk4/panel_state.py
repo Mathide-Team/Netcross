@@ -75,8 +75,9 @@ class PanelVisibility:
     #: Panneau « Courant (apres) » des fichiers : masque quand le courant
     #: est capture en direct (issue #676, equivalent de --live-current).
     current_panel: bool
-    #: Tampon circulaire : capture en direct simple seulement (la CLI de
-    #: comparaison n'a pas d'equivalent pour --live-current).
+    #: Tampon circulaire et rapport HTML en continu : capture en direct
+    #: simple seulement (la CLI de comparaison n'a pas d'equivalent avec
+    #: --live-current).
     ring_buffer: bool
     single_options: bool
     diff_options: bool
