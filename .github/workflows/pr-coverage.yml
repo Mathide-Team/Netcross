@@ -51,11 +51,22 @@ jobs:
       - name: Couverture de la base (SHA de dev)
         run: |
           git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }}
-          git worktree add ../base ${{ github.event.pull_request.base.sha }}
-          cd ../base
+          # Runners auto-hébergés : l'espace de travail persiste d'un job à
+          # l'autre, l'arbre de la base d'un run précédent peut subsister.
+          BASE_DIR="$RUNNER_TEMP/netcross-base"
+          rm -rf "$BASE_DIR" ../base  # ../base : emplacement des runs précédents
+          git worktree prune
+          git worktree add --force "$BASE_DIR" ${{ github.event.pull_request.base.sha }}
+          cd "$BASE_DIR"
           uv sync --extra dev
           uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-base.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
           mv coverage-base.json "$OLDPWD/"
+
+      - name: Nettoyage de l'arbre de la base
+        if: always()
+        run: |
+          git worktree remove --force "$RUNNER_TEMP/netcross-base" 2>/dev/null || true
+          git worktree prune
 
       - name: Publication du commentaire de couverture
         env:
