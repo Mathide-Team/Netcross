@@ -54,6 +54,13 @@ logger = get_logger(__name__)
 #: raison du seuil disparait.
 POINTS_MINIMUM = 2
 
+#: Analyse de fichiers : une capture suffit (issue #474). Le rapport donne
+#: alors tout sauf la correlation multi-points (ligne « Capture unique :
+#: sections multi-points omises »), comme la CLI et ``POST /captures/multi`` ;
+#: un pcapng multi-interfaces avec « Separer les interfaces » redonne
+#: plusieurs points a partir d'un seul fichier.
+CAPTURES_MINIMUM_ANALYSE = 1
+
 LABEL_LANCER_ANALYSE = "Lancer l'analyse"
 LABEL_DEMARRER_CAPTURE = "Demarrer la capture"
 
@@ -265,11 +272,11 @@ def run_button_state(
         logger.debug("run_button_state: si live_mode -> retour RunButtonState(…)")
         return RunButtonState(enabled=True, raison=None, label=label)
 
-    if single_rows < POINTS_MINIMUM:
-        logger.debug("run_button_state: si single_rows < POINTS_MINIMUM -> retour RunButtonState(…)")
+    if single_rows < CAPTURES_MINIMUM_ANALYSE:
+        logger.debug("run_button_state: si single_rows < CAPTURES_MINIMUM_ANALYSE -> retour RunButtonState(…)")
         return RunButtonState(
             enabled=False,
-            raison=(f"analyse croisee : {POINTS_MINIMUM} captures minimum ({single_rows} pour l'instant)"),
+            raison="analyse : ajoutez au moins une capture (deux points ou plus pour l'analyse croisee)",
             label=label,
         )
     logger.debug("run_button_state: retour RunButtonState(…)")
