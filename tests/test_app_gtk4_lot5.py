@@ -361,7 +361,9 @@ def test_join_live_and_analyze_transition_vers_les_resultats(window, monkeypatch
     assert len(calls) == 1
     args, kwargs = calls[0]
     assert kwargs == {}
-    mode, _report, flows, findings, text, tls_findings, quic_findings, _expert_events = args
+    mode, _report, flows, findings, text, tls_findings, quic_findings, _expert_events, security, index = args
+    assert security is None
+    assert index is None  # sans « Index de recherche forensic »
     assert mode == "single"
     assert len(flows) == 1  # un seul flux correle entre les points A et B
     assert findings is not None  # triage active : les Finding sont recalcules

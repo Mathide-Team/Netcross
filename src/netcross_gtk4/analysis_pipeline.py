@@ -63,6 +63,9 @@ class AnalysisOptions:
     duplicate_threshold_ms: float = 2.0
     # Issue #474 lot 2 : un point par interface d'un pcapng (--split-interfaces)
     split_interfaces: bool = False
+    # Issue #675 : index de recherche forensic (--forensic-search), construit
+    # ici pendant que les paquets sont encore en memoire
+    forensic_index: bool = False
 
 
 @dataclass
@@ -81,6 +84,8 @@ class AnalysisResult:
     # l'analyse de securite n'a pas ete demandee -- meme objet que celui de
     # --security-report, pour les exports JSON/PDF/HTML de la GUI
     security_report: Any = None
+    # Issue #675 : ForensicSearchIndex, None sans « Index de recherche forensic »
+    search_index: Any = None
 
 
 def load_packets(
@@ -271,6 +276,17 @@ def _run_pipeline(
     wireshark_expert_events = build_wireshark_expert_events(all_packets)
     _log(f"  -> {len(wireshark_expert_events)} signal(aux) d'expertise")
 
+    search_index = None
+    if options.forensic_index:
+        # Meme index que --forensic-search (paquets + flux). Les paquets ne
+        # sont pas conserves par la fenetre ; l'index, lui, l'est jusqu'a
+        # l'analyse suivante -- d'ou l'option explicite.
+        from netcross_core.forensic_search import ForensicSearchIndex
+
+        _log("Index de recherche forensic...")
+        search_index = ForensicSearchIndex(all_packets, flows=flows)
+        _log(f"  -> {len(search_index)} element(s) indexe(s)")
+
     # 7. Métadonnées de capture
     if captures:
         from netcross_core.parsing import read_capture_comments, read_capture_infos
@@ -372,6 +388,7 @@ def _run_pipeline(
         tls_findings=tls_findings,
         quic_findings=quic_findings,
         wireshark_expert_events=wireshark_expert_events,
+        search_index=search_index,
         security_report=security_report,
     )
 

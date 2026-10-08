@@ -81,6 +81,7 @@ from netcross_gtk4.dashboard_context import (  # noqa: E402
     DashboardSelection,
     build_dashboard_snapshot,
 )
+from netcross_gtk4.forensic_panel import ForensicSearchPanel  # noqa: E402
 from netcross_gtk4.live_capture_points import duplicate_labels, expand_live_points, invalid_sources  # noqa: E402
 from netcross_gtk4.live_report_session import LiveReportError, start_live_report  # noqa: E402
 from netcross_gtk4.panel_state import (  # noqa: E402
@@ -1023,6 +1024,14 @@ class MainWindow(Gtk.ApplicationWindow):
         single_checks.append(self.tls_check)
         single_checks.append(self.quic_check)
         single_checks.append(self.security_check)
+        # Issue #675 : index pour le panneau « Recherche forensic » (Resultats)
+        self.forensic_index_check = Gtk.CheckButton(label="Index de recherche forensic (--forensic-search)")
+        self.forensic_index_check.set_tooltip_text(
+            "Indexe paquets et flux pendant l'analyse pour la recherche par texte, adresse, point, "
+            "protocole, port ou champ decode (SNI, URI, DNS...) sur la page Resultats. L'index reste "
+            "en memoire jusqu'a l'analyse suivante."
+        )
+        single_checks.append(self.forensic_index_check)
         single_checks.append(topn_box)
         self.single_options_box.append(single_checks)
         page.append(self.single_options_box)
@@ -1537,6 +1546,12 @@ class MainWindow(Gtk.ApplicationWindow):
         page.append(self.stats_expander)
 
         # Issue #357 : section securite dans la page resultats
+        # Issue #675 : recherche forensic (--forensic-search, --search-*)
+        self.forensic_expander = Gtk.Expander(label="Recherche forensic")
+        self.forensic_panel = ForensicSearchPanel()
+        self.forensic_expander.set_child(self.forensic_panel)
+        page.append(self.forensic_expander)
+
         self.security_expander = Gtk.Expander(label="Securite")
         self.security_expander.set_sensitive(False)
         sec_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -1721,6 +1736,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "nat_window_ms": nat_window_ms,
                     "idle_timeout_seconds": idle_timeout_seconds,
                     "split_interfaces": self.split_interfaces_check.get_active(),
+                    "forensic_index": self.forensic_index_check.get_active(),
                 },
                 daemon=True,
             ).start()
@@ -1780,6 +1796,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._live_exclude_duplicates = self.exclude_duplicates_check.get_active()
         self._live_nat_window_ms, self._live_idle_timeout_seconds = self._fine_settings()
         self._live_duplicate_threshold_ms = self.duplicate_threshold_spin.get_value()
+        self._live_forensic_index = self.forensic_index_check.get_active()  # issue #675
 
         # Issue #676 : rotation de capture -- un enregistreur tshark par point,
         # lance AVANT les threads d'analyse ; refus d'un point -> rien ne demarre.
@@ -2005,6 +2022,15 @@ class MainWindow(Gtk.ApplicationWindow):
                     print(format_health_line(health_score(ranked)))
 
             text = buf.getvalue()
+
+            search_index = None
+            if getattr(self, "_live_forensic_index", False):
+                # Issue #675 : meme index que l'analyse de fichiers
+                from netcross_core.forensic_search import ForensicSearchIndex
+
+                GLib.idle_add(self._log, "Index de recherche forensic...")
+                search_index = ForensicSearchIndex(all_packets, flows=flows)
+                GLib.idle_add(self._log, f"  -> {len(search_index)} element(s) indexe(s)")
         except Exception as e:  # noqa: BLE001 -- thread de fond (analyse live) : toute erreur doit remonter au journal GUI.
             logger.exception(f"échec dans _join_live_and_analyze: {e}")
             GLib.idle_add(self._log, f"ERREUR : {e}")
@@ -2023,6 +2049,8 @@ class MainWindow(Gtk.ApplicationWindow):
             None,
             None,
             build_wireshark_expert_events(all_packets),
+            None,  # pas de rapport de securite en capture en direct
+            search_index,  # positionnel : GLib.idle_add ne transmet pas d'argument nomme
         )
         GLib.idle_add(self._reset_live_ui)
         logger.debug("MainWindow._join_live_and_analyze: fin")
@@ -2089,6 +2117,7 @@ class MainWindow(Gtk.ApplicationWindow):
         nat_window_ms=200.0,
         idle_timeout_seconds=None,
         split_interfaces=False,
+        forensic_index=False,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -2119,6 +2148,7 @@ class MainWindow(Gtk.ApplicationWindow):
             nat_window_ms=nat_window_ms,
             idle_timeout_seconds=idle_timeout_seconds,
             split_interfaces=split_interfaces,
+            forensic_index=forensic_index,
         )
 
         def _on_progress(msg):
@@ -2145,6 +2175,8 @@ class MainWindow(Gtk.ApplicationWindow):
             result.quic_findings,
             result.wireshark_expert_events,
             result.security_report,
+            # positionnel : GLib.idle_add ne transmet pas d'argument nomme
+            result.search_index,
         )
         logger.debug("MainWindow._run_analysis_thread: fin")
 
@@ -2256,7 +2288,10 @@ class MainWindow(Gtk.ApplicationWindow):
         quic_findings=None,
         wireshark_expert_events=None,
         security_report=None,
+        search_index=None,
     ):
+        # Issue #675 : nouvel index (ou None : analyse sans index, capture en direct)
+        self.forensic_panel.set_index(search_index)
         logger.debug(
             "_on_analysis_done: mode={} flux={} findings={} tls={} quic={} tshark={} securite={}",
             mode,
@@ -2328,6 +2363,7 @@ class MainWindow(Gtk.ApplicationWindow):
             len(quic_findings_baseline or []),
             len(quic_findings_current or []),
         )
+        self.forensic_panel.set_index(None)  # issue #675 : pas d'index en comparaison
         self._appliquer_outcome(
             diff_outcome(
                 findings,

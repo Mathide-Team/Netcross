@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-163 modules · 247 classes · 575 fonctions publiques de module.
+165 modules · 249 classes · 580 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"15 imports"| netcross_report
-    netcross_gtk4 -->|"58 imports"| netcross_core
+    netcross_gtk4 -->|"63 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
@@ -3916,6 +3916,8 @@ classDiagram
 | `netcross_gtk4.dashboard_context` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
 | `netcross_gtk4.diff_pipeline` | pipeline de comparaison baseline/courant extrait de MainWindow._run_diff_thread (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.duplicate_view` | Presentation helpers for cross-capture duplicate detection (Job 41). |
+| `netcross_gtk4.forensic_panel` | panneau GTK « Recherche forensic » de la page Resultats (issue #675). |
+| `netcross_gtk4.forensic_view` | recherche forensic de la GUI (issue #675). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
 | `netcross_gtk4.live_report_session` | rapport HTML rafraichi en continu pendant une capture en direct de la GUI (issue #676). |
 | `netcross_gtk4.panel_state` | decisions de visibilite, de sensibilite et de selection des panneaux de la GUI (issue #285, troisieme lot). |
@@ -3952,6 +3954,7 @@ classDiagram
         +bool exclude_duplicates
         +float duplicate_threshold_ms
         +bool split_interfaces
+        +bool forensic_index
     }
     class AnalysisResult {
         <<dataclass>>
@@ -3964,6 +3967,7 @@ classDiagram
         +list? quic_findings
         +list wireshark_expert_events
         +Any security_report
+        +Any search_index
     }
     class mod_netcross_gtk4_analysis_pipeline["netcross_gtk4.analysis_pipeline"] {
         <<module>>
@@ -4171,6 +4175,27 @@ classDiagram
     class mod_netcross_gtk4_duplicate_view["netcross_gtk4.duplicate_view"] {
         <<module>>
         +format_duplicate_indicator(report) str
+    }
+
+    %% ===== netcross_gtk4.forensic_panel =====
+    class ForensicSearchPanel {
+        <<Gtk.Box>>
+        +set_index(index) None
+        +run_search() list
+        +export_to(path) None
+    }
+
+    %% ===== netcross_gtk4.forensic_view =====
+    class SearchInputError {
+        <<ValueError>>
+    }
+    class mod_netcross_gtk4_forensic_view["netcross_gtk4.forensic_view"] {
+        <<module>>
+        +build_query(text, address, point, protocol, port, field_index, value) ForensicSearchQuery
+        +format_result_row(result) str
+        +summary_line(results) str
+        +search_payload(query, results) dict~str, Any~
+        +write_search_json(path, query, results) Path
     }
 
     %% ===== netcross_gtk4.live_capture_points =====
