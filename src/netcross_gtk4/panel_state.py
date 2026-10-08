@@ -72,6 +72,13 @@ class PanelVisibility:
     live_panel: bool
     live_extra: bool
     diff_panels: bool
+    #: Panneau « Courant (apres) » des fichiers : masque quand le courant
+    #: est capture en direct (issue #676, equivalent de --live-current).
+    current_panel: bool
+    #: Tampon circulaire et rapport HTML en continu : capture en direct
+    #: simple seulement (la CLI de comparaison n'a pas d'equivalent avec
+    #: --live-current).
+    ring_buffer: bool
     single_options: bool
     diff_options: bool
 
@@ -103,14 +110,12 @@ def panel_visibility(
     independantes ; les faire converger ici est justement ce qui empeche
     qu'elles divergent.
 
-    Le mode live a **priorite** sur le mode comparaison si les deux etaient
-    actifs. Cet etat est normalement inatteignable -- chaque bascule decoche
-    et grise l'autre case (`_on_diff_toggled` / `_on_live_toggled`) -- mais
-    la fonction doit quand meme repondre quelque chose de coherent. La
-    priorite retenue est celle de `on_run_analysis`, qui teste `live_check`
-    en premier et s'arrete la : ainsi le panneau affiche correspond a ce qui
-    serait reellement execute. L'ancien code, lui, affichait le panneau live
-    ET les panneaux de comparaison, dont l'un aurait ete rempli pour rien.
+    Les deux cases se combinent (issue #676) : comparaison + capture en
+    direct = comparaison d'un baseline enregistre avec un **courant capture
+    en direct**, comme ``netcross-diff --baseline ... --live-current ...``.
+    Le panneau live remplace alors le panneau « Courant (apres) » des
+    fichiers, qui est masque : un panneau visible mais ignore laisserait
+    l'utilisateur remplir ce qui ne sera pas lu.
 
     Deux regles valent d'etre explicitees, car elles ne se devinent pas :
 
@@ -127,22 +132,21 @@ def panel_visibility(
     est active : un seuil reglable alors que rien ne le consomme est une
     invitation a perdre du temps.
     """
-    # Priorite au live, cf. docstring : l'affichage doit designer le mode
-    # qui serait reellement execute.
     logger.debug(
         "panel_visibility: diff={} live={} doublons={}",
         diff_mode,
         live_mode,
         detect_duplicates_active,
     )
-    diff_effectif = diff_mode and not live_mode
     duplicate_controls = not diff_mode
     logger.debug("panel_visibility: retour PanelVisibility(…)")
     return PanelVisibility(
         single_panel=not diff_mode and not live_mode,
         live_panel=live_mode,
         live_extra=live_mode,
-        diff_panels=diff_effectif,
+        diff_panels=diff_mode,
+        current_panel=diff_mode and not live_mode,
+        ring_buffer=live_mode and not diff_mode,
         single_options=not diff_mode,
         diff_options=diff_mode,
         tls_sensitive=not live_mode,
@@ -215,6 +219,21 @@ def run_button_state(
         )
 
     label = LABEL_DEMARRER_CAPTURE if live_mode else LABEL_LANCER_ANALYSE
+
+    if diff_mode and live_mode:
+        # Issue #676 : baseline enregistre, courant capture en direct.
+        if baseline_rows < POINTS_MINIMUM or live_points < POINTS_MINIMUM:
+            logger.debug("run_button_state: diff + live, points insuffisants -> retour RunButtonState(…)")
+            return RunButtonState(
+                enabled=False,
+                raison=(
+                    f"comparaison avec un courant en direct : {POINTS_MINIMUM} points minimum de chaque "
+                    f"cote (reference : {baseline_rows}, points de capture : {live_points})"
+                ),
+                label=label,
+            )
+        logger.debug("run_button_state: si diff_mode and live_mode -> retour RunButtonState(…)")
+        return RunButtonState(enabled=True, raison=None, label=label)
 
     if diff_mode:
         if baseline_rows < POINTS_MINIMUM or current_rows < POINTS_MINIMUM:

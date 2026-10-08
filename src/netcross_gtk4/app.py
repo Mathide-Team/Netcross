@@ -1130,9 +1130,8 @@ class MainWindow(Gtk.ApplicationWindow):
         logger.debug("MainWindow._build_config_page: fin")
 
     def _on_diff_toggled(self, _btn):
-        if self.diff_check.get_active() and self.live_check.get_active():
-            self.live_check.set_active(False)  # declenche _on_live_toggled -> resynchronise tout
-        self.live_check.set_sensitive(not self.diff_check.get_active())
+        # Issue #676 : comparaison et capture en direct se combinent (courant
+        # capture en direct, --live-current) -- plus d'exclusion mutuelle.
         logger.debug("_on_diff_toggled: diff={}", self.diff_check.get_active())
         self._sync_panel_visibility()
         self._update_run_sensitivity()
@@ -1157,9 +1156,6 @@ class MainWindow(Gtk.ApplicationWindow):
         )
 
     def _on_live_toggled(self, _btn):
-        if self.live_check.get_active() and self.diff_check.get_active():
-            self.diff_check.set_active(False)  # declenche _on_diff_toggled -> resynchronise tout
-        self.diff_check.set_sensitive(not self.live_check.get_active())
         logger.debug("_on_live_toggled: live={}", self.live_check.get_active())
         self._sync_panel_visibility()
         self._update_run_sensitivity()
@@ -1309,9 +1305,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.single_panel.set_visible(vue.single_panel)
         self.live_panel.set_visible(vue.live_panel)
         self.live_extra_box.set_visible(vue.live_extra)
-        self.ring_buffer_box.set_visible(vue.live_extra)
-        self.live_report_box.set_visible(vue.live_extra)
+        # tampon circulaire et rapport en continu : capture en direct simple
+        # seulement (pas d'equivalent avec --live-current)
+        self.ring_buffer_box.set_visible(vue.ring_buffer)
+        self.live_report_box.set_visible(vue.ring_buffer)
         self.diff_panels_box.set_visible(vue.diff_panels)
+        self.current_panel.set_visible(vue.current_panel)
         self.single_options_box.set_visible(vue.single_options)
         self.diff_options_box.set_visible(vue.diff_options)
         logger.debug(
@@ -1322,14 +1321,20 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         self.tls_check.set_sensitive(vue.tls_sensitive)
         self.quic_check.set_sensitive(vue.quic_sensitive)
+        # memes regles pour les diagnostics du mode comparaison : un courant
+        # capture en direct ne produit pas de fichier a relire
+        self.diff_tls_check.set_sensitive(vue.tls_sensitive)
+        self.diff_quic_check.set_sensitive(vue.quic_sensitive)
         self.parallel_check.set_sensitive(vue.parallel_sensitive)
         self.detect_duplicates_check.set_sensitive(vue.duplicate_detect_sensitive)
         self.duplicate_threshold_spin.set_sensitive(vue.duplicate_threshold_sensitive)
         self.exclude_duplicates_check.set_sensitive(vue.duplicate_exclude_sensitive)
         if vue.force_tls_off:
             self.tls_check.set_active(False)
+            self.diff_tls_check.set_active(False)
         if vue.force_quic_off:
             self.quic_check.set_active(False)
+            self.diff_quic_check.set_active(False)
         if vue.force_duplicate_detect_off:
             self.detect_duplicates_check.set_active(False)
         if vue.force_duplicate_exclude_off:
@@ -1866,6 +1871,38 @@ class MainWindow(Gtk.ApplicationWindow):
         self._live_duplicate_threshold_ms = self.duplicate_threshold_spin.get_value()
         self._live_forensic_index = self.forensic_index_check.get_active()  # issue #675
 
+        # Issue #676 : comparaison avec un courant capture en direct
+        # (--live-current) -- baseline et reglages releves ici, thread
+        # principal ; None = capture en direct simple.
+        self._live_diff = None
+        if self.diff_check.get_active():
+            baseline_captures = self.baseline_panel.captures()
+            if len(baseline_captures) < 2:
+                self.stack.set_visible_child_name("log")
+                self._log("Comparaison : 2 captures de reference minimum -- capture annulee.")
+                logger.debug("MainWindow._begin_live_capture: baseline insuffisant -> retour")
+                return
+            from netcross_gtk4.diff_pipeline import DiffOptions
+
+            self._live_diff = (
+                baseline_captures,
+                [label for label, _, _ in rows_data],
+                DiffOptions(
+                    bucket_ms=self._live_bucket_ms,
+                    rtp_rate=self._live_rtp_rate,
+                    nat_tolerant=self._live_nat_tolerant,
+                    nat_window_ms=self._live_nat_window_ms,
+                    idle_timeout_seconds=self._live_idle_timeout_seconds,
+                    parallel=self.parallel_check.get_active(),
+                    auto_topology=auto_topology,
+                    loss_min_pp=self.loss_threshold_spin.get_value(),
+                    latency_min_ms=self.latency_threshold_spin.get_value(),
+                    redact=self.redact_check.get_active(),
+                    triage=self.diff_triage_check.get_active(),
+                    triage_topn=int(self.diff_triage_topn_spin.get_value()),
+                ),
+            )
+
         # Issue #676 : rotation de capture -- un enregistreur tshark par point,
         # lance AVANT les threads d'analyse ; refus d'un point -> rien ne demarre.
         self._live_ring_recorders = {}
@@ -2025,6 +2062,11 @@ class MainWindow(Gtk.ApplicationWindow):
         with self._live_lock:
             all_packets = list(self._live_packets)
         logger.debug("_join_live_and_analyze: {} paquet(s) capturé(s)", len(all_packets))
+        if getattr(self, "_live_diff", None) is not None:
+            GLib.idle_add(self._log, f"Capture terminee -- {len(all_packets)} paquet(s). Comparaison...")
+            self._analyze_live_diff(all_packets)
+            logger.debug("MainWindow._join_live_and_analyze: comparaison avec le courant en direct -> retour")
+            return
         GLib.idle_add(
             self._log,
             f"Capture terminee -- {len(all_packets)} paquet(s) au total. Analyse...",
@@ -2122,6 +2164,44 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         GLib.idle_add(self._reset_live_ui)
         logger.debug("MainWindow._join_live_and_analyze: fin")
+
+    def _analyze_live_diff(self, current_packets):
+        """Issue #676 : comparaison du baseline enregistre avec le courant
+        capture en direct (thread d'arriere-plan), meme fin que
+        `_run_diff_thread`."""
+        from netcross_gtk4.diff_pipeline import run_diff_pipeline
+
+        baseline_captures, current_points, options = self._live_diff
+        logger.debug(
+            "_analyze_live_diff: {} capture(s) de reference, {} paquet(s) courant",
+            len(baseline_captures),
+            len(current_packets),
+        )
+        try:
+            result = run_diff_pipeline(
+                baseline_captures,
+                [],
+                options,
+                on_progress=lambda msg: GLib.idle_add(self._log, msg),
+                current_packets=current_packets,
+                current_points=current_points,
+            )
+        except Exception as e:  # noqa: BLE001 -- thread de fond : toute erreur remonte au journal GUI
+            logger.exception(f"échec dans _analyze_live_diff: {e}")
+            GLib.idle_add(self._log, f"ERREUR : {e}")
+            GLib.idle_add(self._on_analysis_error, str(e))
+            GLib.idle_add(self._reset_live_ui)
+            logger.debug("MainWindow._analyze_live_diff: except Exception -> retour")
+            return
+        GLib.idle_add(
+            self._on_diff_done,
+            result.findings,
+            result.baseline_report,
+            result.current_report,
+            result.text,
+        )
+        GLib.idle_add(self._reset_live_ui)
+        logger.debug("MainWindow._analyze_live_diff: fin")
 
     def _reset_live_ui(self):
         logger.debug("_reset_live_ui: réinitialisation de l'interface de capture en direct")

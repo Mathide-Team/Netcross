@@ -129,7 +129,7 @@ est conservée telle quelle pour les clients existants.
 | Fonction | GUI | CLI (`cross_capture_diff_cli.py`) | API |
 |---|---|---|---|
 | Baseline et courant en fichiers | oui (case « Mode comparaison ») | `--baseline`, `--current` | `POST /comparisons` (issue #669) |
-| Courant capturé en direct | non (modes exclusifs) | `--live-current`, `--live-duration` | non |
+| Courant capturé en direct | oui (« Mode comparaison » + « Capture en direct » : le panneau live remplace le courant en fichiers, durée maximale ; sans TLS/QUIC ni lecture parallèle du courant, issue #676) | `--live-current`, `--live-duration` | non |
 | Seuils de régression | oui (pertes, latence) | `--loss-threshold-pp`, `--latency-threshold-ms` | `loss_threshold_pp`, `latency_threshold_ms` (issue #669) |
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
