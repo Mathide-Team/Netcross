@@ -138,6 +138,13 @@ paths:
         Options d''analyse : comme ``POST /captures`` (issue #330, #672).
 
 
+        Issue #474 lot 2 : avec ``split_interfaces=true``, un seul fichier est
+
+        accepté (pcapng multi-interfaces) ; ``points_order`` cite alors les
+
+        étiquettes ``ETIQUETTE:INTERFACE`` et est validé après la séparation.
+
+
         Issue #671 : ``split_interfaces`` sépare les interfaces d''un pcapng
 
         multi-interfaces en points distincts (équiv. ``--split-interfaces``).
