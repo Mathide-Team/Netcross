@@ -44,11 +44,11 @@ actif, non réglable.
 | Ordre des points imposé | oui (ordre de la liste) | `--order` | `points_order` |
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
 | Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : les trois surfaces, « Fenêtre NAT (ms) » dans la GUI) | `nat_tolerant`, `nat_window_ms` |
-| Doublons inter-captures | oui (« Détecter... », « Exclure... », seuil) | `--detect-duplicates`, `--exclude-duplicates`, `--duplicate-threshold-ms` | non |
+| Doublons inter-captures | oui (« Détecter... », « Exclure... », seuil) | `--detect-duplicates`, `--exclude-duplicates`, `--duplicate-threshold-ms` | `detect_duplicates`, `exclude_duplicates`, `duplicate_threshold_ms` (#330, #841) |
 | Lecture parallèle | oui (« Lecture parallele des captures ») | `--parallel`, `--parallel-workers` (nombre : CLI seule) | non |
-| Fenêtre temporelle du débit | oui | `--bucket-ms` | non |
-| Cadence RTP | oui | `--rtp-clock-rate` | non |
-| Seuil de coupure NAT/pare-feu silencieuse | oui (« Coupure silencieuse (s) », 0 = défaut 60 s) | `--idle-timeout-seconds` | non |
+| Fenêtre temporelle du débit | oui | `--bucket-ms` | `bucket_ms` (#330, #841) |
+| Cadence RTP | oui | `--rtp-clock-rate` | `rtp_clock_rate` (#330, #841) |
+| Seuil de coupure NAT/pare-feu silencieuse | oui (« Coupure silencieuse (s) », 0 = défaut 60 s) | `--idle-timeout-seconds` | `idle_timeout_seconds` (#330, #841) |
 | Limiter ou échantillonner les paquets | non | `--max-packets`, `--sample` | `max_packets`, `sample` (issue #672) |
 | Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | `names` (fichier joint, issue #672) |
 | Plages TEST-NET traitées comme externes | non | `--test-net-external` | `test_net_external` (issue #672) |
@@ -223,7 +223,9 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 `quic`, `redact`, `max_packets`, `sample`, `test_net_external`, `names`,
 `known_destinations`, `known_hosts` (issue #672), `rule_engine`,
 `expert_section`, `media_quality`, `tshark_stats`, `flow_timeline`,
-`flow_timeline_window` (issue #673).
+`flow_timeline_window` (issue #673), `bucket_ms`, `rtp_clock_rate`,
+`idle_timeout_seconds`, `detect_duplicates`, `exclude_duplicates`,
+`duplicate_threshold_ms` (issue #330, lot 1 de #841).
 | `GET /analyses` | Liste des analyses |
 | `GET /analyses/{analysis_id}` | Mesures brutes (voir plus haut) |
 | `GET /analyses/{analysis_id}/report` | Rapport structuré, identique à `--json-report` |
