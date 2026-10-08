@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-163 modules · 247 classes · 572 fonctions publiques de module.
+163 modules · 247 classes · 575 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -38,7 +38,7 @@ flowchart TD
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"15 imports"| netcross_report
     netcross_gtk4 -->|"58 imports"| netcross_core
-    netcross_gtk4 -->|"4 imports"| pcap_parser
+    netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
     netcross_api -->|"1 import"| pcap_parser
@@ -3951,6 +3951,7 @@ classDiagram
         +bool detect_duplicates
         +bool exclude_duplicates
         +float duplicate_threshold_ms
+        +bool split_interfaces
     }
     class AnalysisResult {
         <<dataclass>>
@@ -3968,6 +3969,7 @@ classDiagram
         <<module>>
         +load_packets(captures, parallel, on_progress) list
         +run_analysis_pipeline(captures, options, on_progress) AnalysisResult
+        +expand_split_interfaces(captures, workdir, log) list~tuple~str, str~~
         +run_security_analysis(report, all_packets, captures, log)
     }
 
@@ -4090,6 +4092,8 @@ classDiagram
         +nom_par_defaut_fichier(chemin) str
         +nom_par_defaut_live(lignes_existantes) str
         +captures_fichiers(contenus) list~tuple~str, str~~
+        +ordre_des_points(captures) list~str~
+        +segments_par_point(captures) dict~str, int~
         +captures_live(contenus) list~tuple~str, str, str?~~
         +deplacer_ligne(row, vers_le_haut) bool
         +retirer_ligne(row, on_change) bool
