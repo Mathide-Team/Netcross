@@ -205,8 +205,12 @@ def _bouton(**surcharges):
     return run_button_state(**args)
 
 
-def test_l_analyse_simple_exige_deux_captures():
-    assert _bouton(single_rows=1).enabled is False
+def test_l_analyse_simple_accepte_une_capture():
+    """Issue #474 : une capture unique beneficie de tout sauf de l'analyse
+    croisee, comme dans la CLI et l'API."""
+    assert _bouton(single_rows=0).enabled is False
+    assert "au moins une capture" in _bouton(single_rows=0).raison
+    assert _bouton(single_rows=1).enabled is True
     assert _bouton(single_rows=POINTS_MINIMUM).enabled is True
 
 
@@ -251,8 +255,8 @@ def test_le_refus_est_toujours_motive():
     decision, donc la taire serait un choix. Un bouton grise sans
     explication oblige l'utilisateur a deviner combien de captures il
     manque."""
+    assert _bouton(single_rows=0).raison
     for etat in (
-        _bouton(single_rows=1),
         _bouton(diff_mode=True, baseline_rows=1, current_rows=5),
         _bouton(live_mode=True, live_points=0),
     ):
