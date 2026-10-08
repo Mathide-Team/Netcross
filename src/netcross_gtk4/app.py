@@ -81,6 +81,7 @@ from netcross_gtk4.dashboard_context import (  # noqa: E402
     DashboardSelection,
     build_dashboard_snapshot,
 )
+from netcross_gtk4.extraction_panel import ExtractionPanel  # noqa: E402
 from netcross_gtk4.forensic_panel import ForensicSearchPanel  # noqa: E402
 from netcross_gtk4.live_capture_points import duplicate_labels, expand_live_points, invalid_sources  # noqa: E402
 from netcross_gtk4.live_report_session import LiveReportError, start_live_report  # noqa: E402
@@ -1608,6 +1609,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.forensic_expander.set_child(self.forensic_panel)
         page.append(self.forensic_expander)
 
+        # Issue #675 : extraction des contenus (--extract-contents, --extract-kinds)
+        self.extraction_expander = Gtk.Expander(label="Contenus (extraction)")
+        self.extraction_panel = ExtractionPanel()
+        self.extraction_expander.set_child(self.extraction_panel)
+        page.append(self.extraction_expander)
+
         self.security_expander = Gtk.Expander(label="Securite")
         self.security_expander.set_sensitive(False)
         sec_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -1769,6 +1776,7 @@ class MainWindow(Gtk.ApplicationWindow):
         else:
             captures = self.single_panel.captures()
             self._annotation_captures = list(captures)
+            self._extraction_redacted = redact  # issue #675 : extraction refusee si anonymise
             triage = self.triage_check.get_active()
             triage_topn = int(self.triage_topn_spin.get_value())
             tls = self.tls_check.get_active()
@@ -2408,6 +2416,8 @@ class MainWindow(Gtk.ApplicationWindow):
             self.annotations_panel.load(self._annotation_captures)
         else:
             self.annotations_panel.clear()
+        # Issue #675 : extraction des contenus -- fichiers de l'analyse simple
+        self.extraction_panel.set_source(self._annotation_captures, getattr(self, "_extraction_redacted", False))
         # Issue #357 : section Securite -- meme rendu que --security-report
         self._show_security_report()
         self.stack.set_visible_child_name("results")
@@ -2434,6 +2444,7 @@ class MainWindow(Gtk.ApplicationWindow):
             len(quic_findings_current or []),
         )
         self.forensic_panel.set_index(None)  # issue #675 : pas d'index en comparaison
+        self.extraction_panel.set_source(None, False)  # ni d'extraction
         self._appliquer_outcome(
             diff_outcome(
                 findings,
