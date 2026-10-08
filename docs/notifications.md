@@ -11,6 +11,13 @@ netcross-analyze --capture LAN=nuit.pcap --security-report --cve-db cve.db \
     --security-html rapport.html
 ```
 
+Dans l'interface graphique, les mêmes réglages sont sous les options d'analyse :
+menu « Notifier si » (seuil), champs webhook, Slack et courriel, case « Détail
+complet ». Ils exigent la case « Rapport de sécurité ». Mêmes garde-fous, même
+configuration (`.netcross.toml`, variables d'environnement), même fenêtre
+anti-répétition ; le résultat de chaque canal s'affiche au journal et dans la
+section « Notifications » du rapport de sécurité.
+
 ## Garde-fous
 
 Un outil qui notifie trop est un outil qu'on coupe. Trois règles, dans cet ordre :

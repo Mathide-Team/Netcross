@@ -32,6 +32,7 @@ from netcross_core.parsing import parse_capture
 from netcross_core.report_text import print_report
 from netcross_core.wireshark_expert import build_wireshark_expert_events
 from netcross_gtk4 import capture_list
+from netcross_gtk4.notifications import NotifySettings, send_notifications
 from netcross_report.security_report import build_security_report, print_security_report
 
 logger = get_logger(__name__)
@@ -63,6 +64,9 @@ class AnalysisOptions:
     duplicate_threshold_ms: float = 2.0
     # Issue #474 lot 2 : un point par interface d'un pcapng (--split-interfaces)
     split_interfaces: bool = False
+    # Issue #676 : notifications (webhook, Slack, courriel) sur le rapport de
+    # securite, comme --notify-on de la CLI. None ou sans seuil : aucune.
+    notify: NotifySettings | None = None
 
 
 @dataclass
@@ -353,8 +357,17 @@ def _run_pipeline(
                 print_quic_diagnostics(quic_findings)
 
     security_report = None
+    if options.notify is not None and options.notify.active and not options.security:
+        _log("Notifications ignorees : elles portent sur le rapport de securite, non demande.")
     if options.security:
         security_report = run_security_analysis(report, all_packets, captures, _log)
+        if options.notify is not None and options.notify.active:
+            # Avant l'impression : la section « Notifications » du rapport
+            # de securite trace chaque canal, comme dans la CLI.
+            _log("Notifications...")
+            security_report.notifications = send_notifications(report, security_report, options.notify)
+            for entry in security_report.notifications:
+                _log(f"  -> {entry['line']}")
         with contextlib.redirect_stdout(buf):
             print()
             print_security_report(security_report)
