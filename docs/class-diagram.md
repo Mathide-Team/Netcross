@@ -4164,7 +4164,7 @@ classDiagram
     }
     class mod_netcross_gtk4_diff_pipeline["netcross_gtk4.diff_pipeline"] {
         <<module>>
-        +run_diff_pipeline(baseline_captures, current_captures, options, on_progress) DiffResult
+        +run_diff_pipeline(baseline_captures, current_captures, options, on_progress, current_packets, current_points) DiffResult
     }
 
     %% ===== netcross_gtk4.duplicate_view =====
@@ -4209,6 +4209,8 @@ classDiagram
         +bool live_panel
         +bool live_extra
         +bool diff_panels
+        +bool current_panel
+        +bool ring_buffer
         +bool single_options
         +bool diff_options
         +bool tls_sensitive
