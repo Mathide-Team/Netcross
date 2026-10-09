@@ -139,7 +139,11 @@ Sous le rapport, plusieurs sections se déplient :
   SIP, nom DNS, méthode, type de contenu, message), seuls ou combinés. Au
   moins un critère est demandé ; les 500 premiers résultats sont affichés,
   « Exporter JSON... » écrit tous les résultats avec la requête, dans le
-  même format que `--forensic-search`. Disponible après une analyse de
+  même format que `--forensic-search`. Cliquer un résultat affiche sa trame
+  et le filtre Wireshark correspondant (`frame.number == N`) ; « Annoter la
+  trame » pré-remplit le panneau « Annotations / signets », « Ouvrir dans
+  Wireshark » ouvre la capture du point positionnée sur la trame
+  (`wireshark -r FICHIER -g N`, si Wireshark est installé). Disponible après une analyse de
   fichiers ou une capture en direct, pas après une comparaison.
 - **Contenus (extraction)** : relit les fichiers de l'analyse pour en
   extraire la voix et la vidéo transportées en RTP et les documents

@@ -134,3 +134,39 @@ def write_search_json(path: str | Path, query: ForensicSearchQuery, results: Seq
         json.dump(search_payload(query, results), fh, ensure_ascii=False, indent=2)
     logger.debug("write_search_json: {} resultat(s) -> {}", len(results), target)
     return target
+
+
+# -- Resultat -> trame (issue #675 : « resultats cliquables vers le flux ») --
+
+
+def wireshark_filter(result: ForensicSearchResult) -> str | None:
+    """Filtre d'affichage Wireshark qui isole la trame du resultat."""
+    if result.frame_number is None:
+        return None
+    return f"frame.number == {result.frame_number}"
+
+
+def capture_for_point(result: ForensicSearchResult, captures: Sequence[tuple[str, str]] | None) -> str | None:
+    """Fichier de capture du point du resultat. None si le point est inconnu
+    ou porte plusieurs fichiers (rotation) : le numero de trame ne dirait
+    pas dans lequel aller."""
+    if not captures or not result.point:
+        return None
+    paths = [path for label, path in captures if label == result.point]
+    return paths[0] if len(paths) == 1 else None
+
+
+def wireshark_command(path: str, frame_number: int, program: str = "wireshark") -> list[str]:
+    """Ouvre ``path`` dans Wireshark, positionne sur la trame (option -g)."""
+    return [program, "-r", path, "-g", str(frame_number)]
+
+
+def describe_selection(result: ForensicSearchResult, path: str | None) -> str:
+    """Ligne d'etat apres le choix d'un resultat."""
+    if result.frame_number is None:
+        return "Resultat sans numero de trame : pas de lien vers le paquet."
+    where = f"point {result.point}" if result.point else "point inconnu"
+    text = f"Trame {result.frame_number} ({where}) -- filtre Wireshark : {wireshark_filter(result)}"
+    if path:
+        text += f" -- fichier : {path}"
+    return text

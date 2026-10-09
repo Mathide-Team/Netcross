@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-174 modules · 259 classes · 597 fonctions publiques de module.
+174 modules · 259 classes · 601 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -4272,8 +4272,11 @@ classDiagram
     %% ===== netcross_gtk4.forensic_panel =====
     class ForensicSearchPanel {
         <<Gtk.Box>>
-        +set_index(index) None
+        +set_index(index, captures) None
         +run_search() list
+        +select_result(position) None
+        +annotate_selected() bool
+        +open_selected_in_wireshark() bool
         +export_to(path) None
     }
 
@@ -4288,6 +4291,10 @@ classDiagram
         +summary_line(results) str
         +search_payload(query, results) dict~str, Any~
         +write_search_json(path, query, results) Path
+        +wireshark_filter(result) str?
+        +capture_for_point(result, captures) str?
+        +wireshark_command(path, frame_number, program) list~str~
+        +describe_selection(result, path) str
     }
 
     %% ===== netcross_gtk4.live_capture_points =====
