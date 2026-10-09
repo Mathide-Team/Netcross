@@ -1237,6 +1237,127 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /lua-doc/classes:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Classes
+      description: Liste des classes (équivalent de ``netcross-lua-doc --classes --json``).
+      operationId: get_lua_classes_lua_doc_classes_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Lua Classes Lua Doc Classes Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
+      security:
+      - APIKeyHeader: []
+  /lua-doc/classes/{name}:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Class
+      description: 'Fiche complète d''une classe, insensible à la casse (équivalent
+        de
+
+        ``netcross-lua-doc --class NOM --json``).'
+      operationId: get_lua_class_lua_doc_classes__name__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Lua Class Lua Doc Classes  Name  Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /lua-doc/search:
+    get:
+      tags:
+      - lua-doc
+      summary: Search Lua Doc
+      description: 'Recherche plein texte (équivalent de ``netcross-lua-doc --json
+        TERME``).
+
+        Aucun résultat : liste vide (code 200), comme le JSON de la CLI.'
+      operationId: search_lua_doc_lua_doc_search_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          description: Terme de recherche (classes, méthodes, fonctions, attributs)
+          title: Q
+        description: Terme de recherche (classes, méthodes, fonctions, attributs)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          description: Nombre maximal de résultats (équivalent de --limit)
+          default: 20
+          title: Limit
+        description: Nombre maximal de résultats (équivalent de --limit)
+      - name: full
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Détail complet de chaque résultat (équivalent de --full)
+          default: false
+          title: Full
+        description: Détail complet de chaque résultat (équivalent de --full)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Search Lua Doc Lua Doc Search Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AnalysisAccepted:
