@@ -60,6 +60,11 @@ Causes les plus fréquentes :
 - **Des paquets comptés en double** : un port miroir mal configuré peut
   copier deux fois le même trafic. Utilisez `--detect-duplicates`, puis
   `--exclude-duplicates`.
+- **Beaucoup de checksums invalides sur un seul hôte** : si la capture
+  est faite sur la machine qui émet, le pilote remplit la somme de
+  contrôle après la capture (offload). Netcross ignore déjà les valeurs
+  `0x0000` ; pour les autres, capturez avec les offloads désactivés (voir
+  [Préparer les captures](preparer-captures.md)) ou depuis un port miroir.
 
 ## Grosses captures
 
