@@ -200,7 +200,7 @@ def test_thread_d_analyse_passe_l_option_et_l_index(window, monkeypatch):
     )
     _pump()
     assert vus == [True]
-    assert recus[0][-1] is index
+    assert recus[0][9] is index  # apres security_report
 
 
 def test_fin_d_analyse_alimente_le_panneau(window, monkeypatch):

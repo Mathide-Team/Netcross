@@ -77,6 +77,12 @@ from netcross_gtk4.bpf_panel import (  # noqa: E402
     selection_apres_choix,
     valider_sauvegarde,
 )
+from netcross_gtk4.client_compare_panel import ClientComparisonPanel  # noqa: E402
+from netcross_gtk4.client_compare_view import (  # noqa: E402
+    ClientGroupError,
+    parse_client_groups,
+    validate_client_settings,
+)
 from netcross_gtk4.dashboard_context import (  # noqa: E402
     DashboardSelection,
     build_dashboard_snapshot,
@@ -1068,6 +1074,22 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         notify_box.append(self.notify_complete_check)
         self.single_options_box.append(notify_box)
+
+        # Issue #675 : comparaison de postes (--client-group, --client-reference)
+        clients_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        clients_box.append(Gtk.Label(label="Postes a comparer (--client-group) :", halign=Gtk.Align.START))
+        self.client_groups_entry = Gtk.Entry(placeholder_text="PosteA=10.0.0.5; PosteB=10.0.0.12,10.0.0.13")
+        self.client_groups_entry.set_hexpand(True)
+        self.client_groups_entry.set_tooltip_text(
+            "Un groupe par poste, NOM=IP1[,IP2...], separes par « ; » ; au moins deux postes. "
+            "Compare chaque poste a la reference (pertes, latence, retransmissions...) ; resultat "
+            "dans le rapport et export CSV sur la page Resultats."
+        )
+        clients_box.append(self.client_groups_entry)
+        clients_box.append(Gtk.Label(label="Reference (--client-reference) :", halign=Gtk.Align.START))
+        self.client_reference_entry = Gtk.Entry(placeholder_text="(premier poste)")
+        clients_box.append(self.client_reference_entry)
+        self.single_options_box.append(clients_box)
         self._on_notify_threshold_changed(None)
         page.append(self.single_options_box)
 
@@ -1620,6 +1642,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.extraction_expander.set_child(self.extraction_panel)
         page.append(self.extraction_expander)
 
+        # Issue #675 : comparaison de postes (--client-group, --client-diff-csv)
+        self.client_compare_expander = Gtk.Expander(label="Comparaison de postes")
+        self.client_compare_panel = ClientComparisonPanel()
+        self.client_compare_expander.set_child(self.client_compare_panel)
+        page.append(self.client_compare_expander)
+
         self.security_expander = Gtk.Expander(label="Securite")
         self.security_expander.set_sensitive(False)
         sec_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -1723,6 +1751,8 @@ class MainWindow(Gtk.ApplicationWindow):
             return
 
         notify = None
+        client_groups: dict = {}
+        client_reference = None
         if not diff_mode:
             notify = self._notify_settings()
             notify_errors = validate_settings(notify, self.security_check.get_active())
@@ -1731,6 +1761,18 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.stack.set_visible_child_name("log")
                 self._log(f"Notifications : {'; '.join(notify_errors)} -- analyse non lancee.")
                 logger.debug("MainWindow.on_run_analysis: si notify_errors -> retour")
+                return
+            try:
+                client_groups = parse_client_groups(self.client_groups_entry.get_text())
+                client_reference = self.client_reference_entry.get_text().strip() or None
+                client_errors = validate_client_settings(client_groups, client_reference, redact)
+            except ClientGroupError as exc:
+                logger.debug("MainWindow.on_run_analysis: groupes de postes invalides ({})", exc)
+                client_errors = [str(exc)]
+            if client_errors:
+                self.stack.set_visible_child_name("log")
+                self._log(f"Comparaison de postes : {'; '.join(client_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si client_errors -> retour")
                 return
 
         self.run_btn.set_sensitive(False)
@@ -1817,6 +1859,8 @@ class MainWindow(Gtk.ApplicationWindow):
                     "idle_timeout_seconds": idle_timeout_seconds,
                     "split_interfaces": self.split_interfaces_check.get_active(),
                     "forensic_index": self.forensic_index_check.get_active(),
+                    "client_groups": client_groups or None,
+                    "client_reference": client_reference,
                     "notify": notify,
                 },
                 daemon=True,
@@ -2274,6 +2318,8 @@ class MainWindow(Gtk.ApplicationWindow):
         idle_timeout_seconds=None,
         split_interfaces=False,
         forensic_index=False,
+        client_groups=None,
+        client_reference=None,
         notify=None,
     ):
         logger.debug(
@@ -2306,6 +2352,8 @@ class MainWindow(Gtk.ApplicationWindow):
             idle_timeout_seconds=idle_timeout_seconds,
             split_interfaces=split_interfaces,
             forensic_index=forensic_index,
+            client_groups=client_groups,
+            client_reference=client_reference,
             notify=notify,
         )
 
@@ -2335,6 +2383,7 @@ class MainWindow(Gtk.ApplicationWindow):
             result.security_report,
             # positionnel : GLib.idle_add ne transmet pas d'argument nomme
             result.search_index,
+            result.client_comparison,
         )
         logger.debug("MainWindow._run_analysis_thread: fin")
 
@@ -2447,9 +2496,11 @@ class MainWindow(Gtk.ApplicationWindow):
         wireshark_expert_events=None,
         security_report=None,
         search_index=None,
+        client_comparison=None,
     ):
         # Issue #675 : nouvel index (ou None : analyse sans index, capture en direct)
         self.forensic_panel.set_index(search_index)
+        self.client_compare_panel.set_comparison(client_comparison)
         logger.debug(
             "_on_analysis_done: mode={} flux={} findings={} tls={} quic={} tshark={} securite={}",
             mode,
@@ -2525,6 +2576,7 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         self.forensic_panel.set_index(None)  # issue #675 : pas d'index en comparaison
         self.extraction_panel.set_source(None, False)  # ni d'extraction
+        self.client_compare_panel.set_comparison(None)  # ni de comparaison de postes
         self._appliquer_outcome(
             diff_outcome(
                 findings,

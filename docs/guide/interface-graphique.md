@@ -47,6 +47,7 @@ Options principales :
 | Diagnostic TLS, Diagnostic QUIC/HTTP3 | Certificats, négociations, QUIC | `--tls`, `--quic` |
 | Rapport de sécurité | Vulnérabilités et tentatives d'attaque | `--security-report` |
 | Notifier si, webhook, Slack, courriel, Détail complet | Envoie un résumé du rapport de sécurité quand son pire constat atteint le seuil choisi (voir [Notifications](../notifications.md)). Nécessite « Rapport de sécurité » ; une URL invalide bloque le lancement. Le résultat de chaque canal s'affiche au journal | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail` |
+| Postes à comparer, Référence | Compare des postes entre eux dans la même analyse : un groupe par poste, `NOM=IP1[,IP2...]`, séparés par « ; » (au moins deux), comparé au poste de référence (le premier par défaut). Résultat dans le rapport, synthèse et export CSV sur la page Résultats. Indisponible avec l'anonymisation | `--client-group`, `--client-reference`, `--client-diff-csv` |
 | Fenêtre temporelle (ms) | Précision des mesures de débit (réduire pour les micro-rafales) | `--bucket-ms` |
 | Séparer les interfaces d'un pcapng | Un fichier capturé sur plusieurs interfaces devient un point par interface, nommé `NOM:INTERFACE` | `--split-interfaces` |
 
@@ -144,6 +145,9 @@ Sous le rapport, plusieurs sections se déplient :
   correspondances et des données personnelles. Indisponible après une
   analyse anonymisée, une capture en direct ou une comparaison.
   Équivalent de `--extract-contents` et `--extract-kinds`.
+- **Comparaison de postes** : si des postes ont été renseignés, la
+  référence, les postes comparés et le nombre d'écarts, avec « Exporter
+  CSV » (même fichier que `--client-diff-csv`).
 - **Sécurité** : le rapport de sécurité, si la case correspondante était
   cochée, avec export HTML et JSON.
 
