@@ -536,12 +536,13 @@ def _run_expertise(settings, report, findings, flows, all_packets, captures, buf
     les documents JSON a exporter ; les constats calcules pour la section
     expertise sans triage restent locaux (le resultat garde ceux du triage)."""
     validate_settings(settings)
+    rule_engine = None
     if settings.rule_engine:
         log("Moteur de regles...")
         from netcross_report import print_rule_engine
 
         with contextlib.redirect_stdout(buf):
-            print_rule_engine(report)
+            rule_engine = print_rule_engine(report)
     if settings.media_quality:
         log("Qualite media (relecture des captures)...")
         from netcross_core.extract.contents import format_extraction, run_extraction
@@ -580,7 +581,7 @@ def _run_expertise(settings, report, findings, flows, all_packets, captures, buf
         )
         log(f"  -> {tshark_stats_summary(tshark_stats)}")
     logger.debug("_run_expertise: fin")
-    return ExpertiseExports(flow_timelines=flow_timelines, tshark_stats=tshark_stats)
+    return ExpertiseExports(flow_timelines=flow_timelines, tshark_stats=tshark_stats, rule_engine=rule_engine)
 
 
 def run_security_analysis(

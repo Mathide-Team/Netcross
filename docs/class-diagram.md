@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-179 modules · 265 classes · 615 fonctions publiques de module.
+179 modules · 265 classes · 616 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -36,10 +36,10 @@ flowchart TD
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"42 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"25 imports"| netcross_report
+    netcross_gtk4 -->|"26 imports"| netcross_report
     netcross_gtk4 -->|"95 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
-    netcross_api -->|"10 imports"| netcross_report
+    netcross_api -->|"13 imports"| netcross_report
     netcross_api -->|"28 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
@@ -3818,6 +3818,7 @@ classDiagram
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
         +get_analysis_text(analysis_id, _auth) PlainTextResponse
+        +get_analysis_markdown(analysis_id, _auth) PlainTextResponse
         +get_analysis_pdf(analysis_id, topn, _auth) StreamingResponse
         +get_analysis_csv(analysis_id, _auth) PlainTextResponse
         +get_analysis_sequence(analysis_id, max_flows, _auth) JSONResponse
@@ -4124,6 +4125,8 @@ classDiagram
         +on_export_pdf(_btn)
         +export_pdf_to(path)
         +on_export_json(_btn)
+        +on_export_markdown(_btn)
+        +export_markdown_to(path)
         +export_json_to(path)
         +on_export_security(suffix)
         +export_security_to(path)
@@ -4293,6 +4296,7 @@ classDiagram
         <<dataclass, frozen>>
         +dict? flow_timelines
         +dict? tshark_stats
+        +dict? rule_engine
     }
     class ExpertiseSettingsError {
         <<ValueError>>
@@ -4535,6 +4539,7 @@ classDiagram
         +Any quic_findings
         +Any wireshark_expert_events
         +Any security_report
+        +Any rule_engine
         +Any diff_findings
         +Any baseline_report
         +Any current_report
@@ -4551,7 +4556,7 @@ classDiagram
     class mod_netcross_gtk4_run_outcome["netcross_gtk4.run_outcome"] {
         <<module>>
         +build_flow_objects(flows) Any
-        +analysis_outcome(mode, report, flows, findings, text, tls_findings, quic_findings, wireshark_expert_events, security_report) RunOutcome
+        +analysis_outcome(mode, report, flows, findings, text, tls_findings, quic_findings, wireshark_expert_events, security_report, rule_engine) RunOutcome
         +diff_status_text(findings) str
         +diff_outcome(findings, baseline_report, current_report, text, tls_findings_baseline, tls_findings_current, quic_findings_baseline, quic_findings_current) RunOutcome
     }
