@@ -1559,6 +1559,13 @@ components:
           description: 'true : plages TEST-NET traitées comme externes (équivalent
             de --test-net-external)'
           default: false
+        parallel_workers:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Parallel Workers
+          description: Lecture parallèle avec N processus tshark (équivalent de --parallel
+            --parallel-workers N)
         names:
           anyOf:
           - type: string
@@ -1735,6 +1742,13 @@ components:
           description: 'true : plages TEST-NET traitées comme externes (équivalent
             de --test-net-external)'
           default: false
+        parallel_workers:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Parallel Workers
+          description: Lecture parallèle avec N processus tshark (équivalent de --parallel
+            --parallel-workers N)
         names:
           anyOf:
           - type: string
