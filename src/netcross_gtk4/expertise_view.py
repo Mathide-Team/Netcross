@@ -45,6 +45,8 @@ class ExpertiseExports:
 
     flow_timelines: dict | None = None
     tshark_stats: dict | None = None
+    # Issue #864 : {rule_id: [Finding]} de --rule-engine, repris par l'export Markdown
+    rule_engine: dict | None = None
 
 
 class ExpertiseSettingsError(ValueError):
