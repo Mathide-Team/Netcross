@@ -1231,6 +1231,54 @@ async def get_analysis_text(
 
 
 @app.get(
+    "/analyses/{analysis_id}/markdown",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/markdown": {}}}},
+)
+async def get_analysis_markdown(
+    analysis_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Rapport Markdown d'une analyse terminée (équivalent de ``--md-report``,
+    issue #864) : rapport, constats, TLS/QUIC, sécurité, objets de session et,
+    si l'analyse l'avait demandé, moteur de règles.
+
+    409 si l'analyse a été relue depuis SQLite après un redémarrage.
+    """
+    logger.debug("get_analysis_markdown(analysis_id={})", analysis_id)
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    findings = entry.get("findings")
+    from netcross_report.markdown_report import build_markdown_report_document
+    from netcross_report.session_objects import build_session_objects
+
+    options = (entry.get("metadata") or {}).get("options") or {}
+    rule_engine_findings = None
+    if options.get("rule_engine"):
+        from netcross_report.rule_engine import available_rule_ids, evaluate
+
+        rule_engine_findings = {rule_id: evaluate(rule_id, report) for rule_id in available_rule_ids()}
+    meta = {"Source": "API REST"}
+    if options.get("redact"):
+        meta["Anonymisation"] = "adresses IP/MAC anonymisees (redact)"
+    document = build_markdown_report_document(
+        report,
+        meta=meta,
+        findings=findings,
+        tls_findings=entry.get("tls_findings"),
+        quic_findings=entry.get("quic_findings"),
+        session_objects=build_session_objects(report, findings, entry.get("flows"), entry.get("all_packets")),
+        security_report=entry.get("security_report_obj"),
+        rule_engine_findings=rule_engine_findings,
+    )
+    return PlainTextResponse(
+        document,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}.md"'},
+    )
+
+
+@app.get(
     "/analyses/{analysis_id}/pdf",
     tags=["analyses"],
     responses={**_ANALYSIS_RESPONSES, 200: {"content": {"application/pdf": {}}}},
