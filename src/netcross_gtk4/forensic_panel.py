@@ -10,6 +10,11 @@ thread d'analyse quand la case « Index de recherche forensic » est cochee
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+from collections.abc import Callable
+from typing import Any
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -22,8 +27,11 @@ from netcross_gtk4.forensic_view import (  # noqa: E402
     SEARCH_FIELDS,
     SearchInputError,
     build_query,
+    capture_for_point,
+    describe_selection,
     format_result_row,
     summary_line,
+    wireshark_command,
     write_search_json,
 )
 
@@ -33,14 +41,29 @@ NO_INDEX_MESSAGE = "(cochez « Index de recherche forensic » dans la configurat
 
 
 class ForensicSearchPanel(Gtk.Box):
-    def __init__(self):
+    """``on_annotate(point, trame)`` : appele par « Annoter la trame » (la
+    fenetre pre-remplit le panneau d'annotations). ``launcher`` et
+    ``find_program`` sont injectables pour les tests (defaut : Popen, which)."""
+
+    def __init__(
+        self,
+        on_annotate: Callable[[str | None, int | None], None] | None = None,
+        launcher: Callable[[list[str]], object] | None = None,
+        find_program: Callable[[str], str | None] | None = None,
+    ):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         logger.debug("ForensicSearchPanel: construction du panneau")
         for side in ("top", "bottom", "start", "end"):
             getattr(self, f"set_margin_{side}")(6)
-        self.index = None
-        self.last_query = None
+        self.index: Any = None
+        self.last_query: Any = None
         self.last_results: list = []
+        self.captures: list | None = None
+        self.selected: Any = None
+        self._displayed: list = []
+        self._on_annotate = on_annotate
+        self._launcher = launcher or (lambda argv: subprocess.Popen(argv))  # noqa: S603 -- argv sans shell
+        self._find_program = find_program or shutil.which
 
         grid = Gtk.Grid(column_spacing=8, row_spacing=4)
         self.text_entry = Gtk.Entry(placeholder_text="Texte libre (--search-text)", hexpand=True)
@@ -77,6 +100,17 @@ class ForensicSearchPanel(Gtk.Box):
         self.export_btn.connect("clicked", self._on_export_clicked)
         buttons.append(self.search_btn)
         buttons.append(self.export_btn)
+        # Lien vers le paquet : actifs une fois un resultat choisi
+        self.annotate_btn = Gtk.Button(label="Annoter la trame")
+        self.annotate_btn.set_tooltip_text("Pre-remplit le panneau « Annotations / signets » (point, trame)")
+        self.annotate_btn.connect("clicked", lambda _b: self.annotate_selected())
+        self.wireshark_btn = Gtk.Button(label="Ouvrir dans Wireshark")
+        self.wireshark_btn.set_tooltip_text(
+            "wireshark -r FICHIER -g TRAME : la capture du point, positionnee sur la trame"
+        )
+        self.wireshark_btn.connect("clicked", lambda _b: self.open_selected_in_wireshark())
+        buttons.append(self.annotate_btn)
+        buttons.append(self.wireshark_btn)
         self.append(buttons)
 
         self.status_label = Gtk.Label(label=NO_INDEX_MESSAGE, halign=Gtk.Align.START, wrap=True)
@@ -84,7 +118,8 @@ class ForensicSearchPanel(Gtk.Box):
         self.append(self.status_label)
 
         self.list_box = Gtk.ListBox()
-        self.list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.list_box.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.list_box.connect("row-selected", self._on_row_selected)
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scroller.set_min_content_height(80)
@@ -96,9 +131,11 @@ class ForensicSearchPanel(Gtk.Box):
 
     # -- etat --------------------------------------------------------------
 
-    def set_index(self, index) -> None:
-        """Nouvel index (ou None) apres une analyse ; efface les resultats."""
+    def set_index(self, index, captures=None) -> None:
+        """Nouvel index (ou None) apres une analyse ; efface les resultats.
+        ``captures`` : [(point, fichier)] de l'analyse, pour ouvrir une trame."""
         self.index = index
+        self.captures = list(captures) if captures else None
         self.last_query = None
         self.last_results = []
         self._show_rows([])
@@ -112,6 +149,12 @@ class ForensicSearchPanel(Gtk.Box):
     def _sync_sensitivity(self) -> None:
         self.search_btn.set_sensitive(self.index is not None)
         self.export_btn.set_sensitive(self.last_query is not None)
+        has_frame = self.selected is not None and self.selected.frame_number is not None
+        self.annotate_btn.set_sensitive(has_frame and self._on_annotate is not None)
+        self.wireshark_btn.set_sensitive(has_frame and self._selected_path() is not None)
+
+    def _selected_path(self) -> str | None:
+        return capture_for_point(self.selected, self.captures) if self.selected is not None else None
 
     def _show_rows(self, results) -> None:
         child = self.list_box.get_first_child()
@@ -119,7 +162,9 @@ class ForensicSearchPanel(Gtk.Box):
             nxt = child.get_next_sibling()
             self.list_box.remove(child)
             child = nxt
-        for result in results[:MAX_DISPLAYED]:
+        self.selected = None
+        self._displayed = list(results[:MAX_DISPLAYED])
+        for result in self._displayed:
             label = Gtk.Label(label=format_result_row(result), halign=Gtk.Align.START, xalign=0.0)
             label.set_selectable(True)
             label.set_wrap(True)
@@ -159,6 +204,46 @@ class ForensicSearchPanel(Gtk.Box):
 
     def _on_search_clicked(self, *_args):
         self.run_search()
+
+    # -- lien vers le paquet -------------------------------------------------
+
+    def select_result(self, position: int) -> None:
+        """Choisit le resultat affiche a ``position`` (meme effet qu'un clic)."""
+        row = self.list_box.get_row_at_index(position)
+        self.list_box.select_row(row)
+
+    def _on_row_selected(self, _box, row) -> None:
+        self.selected = self._displayed[row.get_index()] if row is not None else None
+        if self.selected is not None:
+            self.status_label.set_text(describe_selection(self.selected, self._selected_path()))
+        self._sync_sensitivity()
+
+    def annotate_selected(self) -> bool:
+        if self.selected is None or self.selected.frame_number is None or self._on_annotate is None:
+            return False
+        self._on_annotate(self.selected.point, self.selected.frame_number)
+        return True
+
+    def open_selected_in_wireshark(self) -> bool:
+        path = self._selected_path()
+        if path is None or self.selected is None or self.selected.frame_number is None:
+            return False
+        program = self._find_program("wireshark")
+        if program is None:
+            logger.debug("ForensicSearchPanel: wireshark introuvable")
+            self.status_label.set_text(
+                "Wireshark introuvable dans le PATH : " + describe_selection(self.selected, path)
+            )
+            return False
+        argv = wireshark_command(path, self.selected.frame_number, program)
+        try:
+            self._launcher(argv)
+        except OSError as exc:
+            logger.warning("ForensicSearchPanel: lancement de Wireshark impossible ({})", exc)
+            self.status_label.set_text(f"Lancement de Wireshark impossible : {exc}")
+            return False
+        self.status_label.set_text("Wireshark ouvert : " + " ".join(argv))
+        return True
 
     def export_to(self, path) -> None:
         written = write_search_json(path, self.last_query, self.last_results)
