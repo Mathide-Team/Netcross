@@ -120,6 +120,8 @@ from netcross_gtk4.panel_state import (  # noqa: E402
     run_button_state,
     selected_protocol,
 )
+from netcross_gtk4.report_exports import SEQUENCE_FLOWS_MAX, HistorySettings, sequence_views  # noqa: E402
+from netcross_gtk4.report_exports_panel import ReportExportsPanel  # noqa: E402
 from netcross_gtk4.ring_recorders import RingRecorderError, start_ring_recorders, stop_ring_recorders  # noqa: E402
 from netcross_gtk4.run_outcome import analysis_outcome, diff_outcome  # noqa: E402
 from netcross_gtk4.security_view import export_security_report, security_view_text  # noqa: E402
@@ -700,6 +702,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.last_wireshark_expert_events = None
         # Issue #357 : SecurityReport du dernier run simple (None sinon)
         self.last_security_report = None
+        self.last_rule_engine = None  # issue #864 : constats --rule-engine
         self.last_diff_findings = None  # mode diff : DiffFinding
         self.last_baseline_report = None
         self.last_current_report = None
@@ -1206,6 +1209,26 @@ class MainWindow(Gtk.ApplicationWindow):
         ):
             security_box.append(widget)
         self.single_options_box.append(security_box)
+
+        # Issue #674 : diagramme de sequence (export PDF) et historique SQLite
+        report_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        report_box.append(Gtk.Label(label="Diagramme de sequence (--sequence-diagram, flux, 0 = aucun) :"))
+        self.sequence_diagram_spin = Gtk.SpinButton.new_with_range(0, SEQUENCE_FLOWS_MAX, 1)
+        self.sequence_diagram_spin.set_tooltip_text(
+            "Ajoute a l'export PDF le diagramme de sequence des N flux les plus volumineux."
+        )
+        report_box.append(self.sequence_diagram_spin)
+        self.history_option = FileOption(
+            "Historique...",
+            "Base SQLite (--history-db, creee si absente) : chaque analyse y ajoute son resume.",
+            ("*.db", "*.sqlite", "*.sqlite3"),
+            "Historique (*.db, *.sqlite)",
+        )
+        report_box.append(self.history_option)
+        report_box.append(Gtk.Label(label="Etiquette (--history-label) :"))
+        self.history_label_entry = Gtk.Entry(placeholder_text="site, scenario...")
+        report_box.append(self.history_label_entry)
+        self.single_options_box.append(report_box)
         self._on_notify_threshold_changed(None)
         page.append(self.single_options_box)
 
@@ -1770,6 +1793,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.expertise_expander.set_child(self.expertise_panel)
         page.append(self.expertise_expander)
 
+        # Issue #674 : export SIEM, ticket de support, historique SQLite
+        self.report_exports_expander = Gtk.Expander(label="SIEM, ticket de support, historique")
+        self.report_exports_panel = ReportExportsPanel()
+        self.report_exports_expander.set_child(self.report_exports_panel)
+        page.append(self.report_exports_expander)
+
         # Issue #675 : resume NetFlow v5 (--netflow, --netflow-top), autonome
         self.netflow_expander = Gtk.Expander(label="NetFlow v5 (resume d'exports)")
         self.netflow_panel = NetflowPanel()
@@ -1833,6 +1862,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.json_btn.set_sensitive(False)
         self.json_btn.connect("clicked", self.on_export_json)
         bottom.append(self.json_btn)
+
+        # Issue #864 : --md-report (analyse simple, comme la CLI)
+        self.md_btn = Gtk.Button(label="Exporter en Markdown")
+        self.md_btn.set_sensitive(False)
+        self.md_btn.connect("clicked", self.on_export_markdown)
+        bottom.append(self.md_btn)
         page.append(bottom)
 
         self.stack.add_titled(page, "results", "Resultats")
@@ -1915,6 +1950,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
         self.json_btn.set_sensitive(False)
+        self.md_btn.set_sensitive(False)
         self.log_view.get_buffer().set_text("")
         self.work_status_label.set_text("Analyse en cours...")
         self.spinner.start()
@@ -2000,6 +2036,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "notify": notify,
                     "expertise": self.expertise_settings(),
                     "advanced": advanced,
+                    "history": self.history_settings(),
                 },
                 daemon=True,
             ).start()
@@ -2146,6 +2183,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.run_btn.set_label("Arreter et analyser")
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
+        self.md_btn.set_sensitive(False)
         self.log_view.get_buffer().set_text("")
         # Apres la remise a zero du journal, sinon ces messages seraient effaces.
         for message in ring_messages:
@@ -2463,6 +2501,7 @@ class MainWindow(Gtk.ApplicationWindow):
         notify=None,
         expertise=None,
         advanced=None,
+        history=None,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -2499,6 +2538,7 @@ class MainWindow(Gtk.ApplicationWindow):
             notify=notify,
             expertise=expertise,
             advanced=advanced,
+            history=history,
         )
 
         def _on_progress(msg):
@@ -2529,6 +2569,7 @@ class MainWindow(Gtk.ApplicationWindow):
             result.search_index,
             result.client_comparison,
             result.expertise,
+            result.report_context,
         )
         logger.debug("MainWindow._run_analysis_thread: fin")
 
@@ -2643,8 +2684,11 @@ class MainWindow(Gtk.ApplicationWindow):
         search_index=None,
         client_comparison=None,
         expertise=None,
+        report_context=None,
     ):
         self.expertise_panel.set_exports(expertise)  # issue #673
+        # Issue #674 : None en capture en direct (ni fichiers ni historique)
+        self.report_exports_panel.set_context(report, security_report, report_context)
         # Issue #675 : nouvel index (ou None : analyse sans index, capture en direct)
         self.forensic_panel.set_index(search_index, self._annotation_captures)
         self.client_compare_panel.set_comparison(client_comparison)
@@ -2674,12 +2718,14 @@ class MainWindow(Gtk.ApplicationWindow):
                 quic_findings=quic_findings,
                 wireshark_expert_events=wireshark_expert_events,
                 security_report=security_report,
+                rule_engine=getattr(expertise, "rule_engine", None),  # issue #864
             )
         )
         self.run_btn.set_sensitive(True)
         self.pdf_btn.set_sensitive(True)
         self.csv_btn.set_sensitive(True)
         self.json_btn.set_sensitive(True)
+        self.md_btn.set_sensitive(mode == "single")
         self._reset_comm_map_filters()
         # dashboard analytique (issue #18) : reinitialise le contexte de
         # selection partage et peuple les six vues depuis le meme run
@@ -2701,6 +2747,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child_name("results")
         logger.debug("MainWindow._on_analysis_done: retour False")
         return False
+
+    def history_settings(self) -> HistorySettings:
+        """Historique SQLite de la configuration (issue #674)."""
+        label = self.history_label_entry.get_text().strip()
+        return HistorySettings(db_path=self.history_option.path, label=label or None)
 
     def advanced_settings(self) -> AdvancedSettings:
         """Options avancees de la configuration (issue #672)."""
@@ -2755,6 +2806,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.extraction_panel.set_source(None, False)  # ni d'extraction
         self.client_compare_panel.set_comparison(None)  # ni de comparaison de postes
         self.expertise_panel.set_exports(None)  # ni d'exports d'expertise (issue #673)
+        self.report_exports_panel.set_context(None, None, None)  # ni SIEM/ticket/historique (issue #674)
         self._appliquer_outcome(
             diff_outcome(
                 findings,
@@ -2771,6 +2823,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.pdf_btn.set_sensitive(True)
         self.csv_btn.set_sensitive(True)
         self.json_btn.set_sensitive(True)
+        self.md_btn.set_sensitive(False)  # pas de Markdown en comparaison (CLI : idem)
         self._reset_comm_map_filters()
         # dashboard analytique (issue #18) : reinitialise le contexte de
         # selection partage et peuple les six vues depuis le meme run
@@ -3308,14 +3361,21 @@ class MainWindow(Gtk.ApplicationWindow):
                 if generate_pdf is None:
                     logger.debug("MainWindow._generate_pdf_thread: si generate_pdf is None -> levée ImportError")
                     raise ImportError("reportlab/matplotlib/networkx requis pour l'export PDF")
+                session_objects = self._session_objects()
                 generate_pdf(
                     self.last_report,
                     path,
                     findings=self.last_findings,
                     tls_findings=self.last_tls_findings,
                     quic_findings=self.last_quic_findings,
-                    session_objects=self._session_objects(),
+                    session_objects=session_objects,
                     security_report=self.last_security_report,
+                    # Issue #674 : --sequence-diagram N
+                    sequence_views=sequence_views(
+                        self.last_flows,
+                        int(self.sequence_diagram_spin.get_value()),
+                        flow_objects=getattr(session_objects, "flows", None),
+                    ),
                 )
             else:
                 from netcross_report import generate_diff_pdf
@@ -3380,6 +3440,47 @@ class MainWindow(Gtk.ApplicationWindow):
         logger.debug("_on_json_path_chosen: chemin choisi {}", path)
         self.export_json_to(path)
         logger.debug("MainWindow._on_json_path_chosen: fin")
+
+    def on_export_markdown(self, _btn):
+        if self.last_mode != "single":
+            logger.debug("MainWindow.on_export_markdown: pas d'analyse simple -> retour")
+            return
+        dialog = Gtk.FileDialog()
+        dialog.set_initial_name("rapport_analyse.md")
+        dialog.save(self, None, self._on_markdown_path_chosen)
+
+    def _on_markdown_path_chosen(self, dialog, result):
+        try:
+            gfile = dialog.save_finish(result)
+        except GLib.Error:
+            logger.exception("échec dans _on_markdown_path_chosen")
+            return
+        self.export_markdown_to(gfile.get_path())
+
+    def export_markdown_to(self, path):
+        """Issue #864 : meme document que --md-report (rapport, constats,
+        TLS/QUIC, securite, objets de session, moteur de regles, noms)."""
+        from netcross_report import generate_markdown_report
+
+        logger.debug("export_markdown_to: {}", path)
+        try:
+            generate_markdown_report(
+                self.last_report,
+                path,
+                findings=self.last_findings,
+                tls_findings=self.last_tls_findings,
+                quic_findings=self.last_quic_findings,
+                session_objects=self._session_objects(),
+                security_report=self.last_security_report,
+                rule_engine_findings=self.last_rule_engine,
+                names=self.names_table,
+            )
+        except OSError as e:
+            logger.exception(f"échec dans export_markdown_to: {e}")
+            self.status_label.set_text(f"Erreur Markdown : {e}")
+            return None
+        self.status_label.set_text(f"Rapport Markdown ecrit dans {path}")
+        return path
 
     def export_json_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""
