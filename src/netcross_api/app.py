@@ -1230,6 +1230,26 @@ async def get_analysis_text(
     return PlainTextResponse(buf.getvalue())
 
 
+def _report_with_topn(report, entry: dict, topn: int):
+    """Issue #865 : ``topn`` de la route PDF, équivalent de ``--topn-charts``.
+    La CLI passe N à ``analyse()`` ; l'API recalcule les séries Top-N sur les
+    paquets gardés en mémoire, de la même façon, dans une copie du rapport
+    (l'analyse stockée n'est pas modifiée)."""
+    import copy
+
+    from netcross_core.correlate import TOPN_DIMENSIONS, compute_topn_series
+
+    packets = entry.get("all_packets")
+    if packets is None:
+        logger.debug("_report_with_topn: pas de paquets en memoire -> series d'origine")
+        return report
+    options = (entry.get("metadata") or {}).get("options") or {}
+    bucket_seconds = float(options.get("bucket_ms", 1000.0)) / 1000.0
+    copie = copy.copy(report)
+    copie.topn_timeseries = {dim: compute_topn_series(packets, bucket_seconds, dim, topn) for dim in TOPN_DIMENSIONS}
+    return copie
+
+
 @app.get(
     "/analyses/{analysis_id}/pdf",
     tags=["analyses"],
@@ -1258,11 +1278,10 @@ async def get_analysis_pdf(
 
     from netcross_report.pdf import generate_pdf
 
+    report = _report_with_topn(report, entry, topn)
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)  # noqa: SIM115
     try:
         with tmp:
-            # Le paramètre topn est accepté pour la parité avec --topn-charts
-            # mais le PDF utilise le topn fixé au moment de analyse() (défaut 5).
             generate_pdf(
                 report,
                 tmp.name,
