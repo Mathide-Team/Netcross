@@ -207,13 +207,19 @@ modes utilitaires de la CLI :
 | Conversion (pcap, pcapng, erf, csv, json) | `--convert`, `--convert-format` |
 | Export filtre (filtre Wireshark, début, fin, adresses) | `--export-pcap`, `--export-bpf`, `--export-time-*`, `--export-endpoints` |
 | Recalage temporel (décalage, t=0, alignement sur une référence) | `--adjust-time-output`, `--time-offset`, `--normalize-time`, `--align-to` |
+| Rejeu (interface, vitesse, passes ; bouton « Arreter ») | `--replay`, `--replay-speed`, `--replay-loop` |
 
 Les mêmes saisies sont refusées avec les mêmes messages que la CLI ; le
 résultat ou l'erreur s'affiche en bas de la fenêtre. Les outils Wireshark
 (`tshark`, `editcap`, `mergecap`, `reordercap`) doivent être installés.
 
+L'onglet **Rejeu** émet du trafic réel : il reste inactif tant que la case
+« J'ai l'autorisation d'emettre sur cette interface » n'est pas cochée.
+Réservez-le à un banc de test isolé ; tcpreplay et les droits d'émission
+(root ou `CAP_NET_RAW`) sont nécessaires.
+
 ## Ce que l'interface ne fait pas
 
-Certaines fonctions restent réservées à la ligne de commande : rejeu de
-captures, plugins, module IA, historique des comparaisons. Voir `--help`
+Certaines fonctions restent réservées à la ligne de commande : plugins,
+module IA, historique des comparaisons. Voir `--help`
 et les pages de la section Analyses.

@@ -23,7 +23,10 @@ from pcap_parser.capture import (
     export_filtered,
     export_json,
     merge_captures,
+    replay_capture,
     split_capture,
+    start_replay,  # noqa: F401 -- reexporte pour la GUI (rejeu interruptible, issue #871)
+    wait_replay,  # noqa: F401
 )
 
 logger = get_logger(__name__)
@@ -156,3 +159,29 @@ def adjust_time(
         align_to=align_to or None,
     )
     return f"{path_out} cree."
+
+
+# -- rejeu (issue #871) --------------------------------------------------------
+
+REPLAY_INTERFACES_ENV = "NETCROSS_REPLAY_INTERFACES"
+
+
+def allowed_replay_interfaces(environ: dict[str, str] | None = None) -> frozenset[str]:
+    """Interfaces ou l'API peut rejouer (``NETCROSS_REPLAY_INTERFACES``,
+    liste separee par des virgules) ; vide = rejeu desactive dans l'API."""
+    raw = (os.environ if environ is None else environ).get(REPLAY_INTERFACES_ENV, "")
+    allowed = frozenset(i.strip() for i in raw.split(",") if i.strip())
+    logger.debug("allowed_replay_interfaces: {}", sorted(allowed))
+    return allowed
+
+
+def replay_message(path: str, interface: str, speed: float | str, loop: int) -> str:
+    """Message de fin de la CLI (``--replay``)."""
+    return f"{path} rejoue sur {interface} (speed={speed}, loop={loop})."
+
+
+def replay(path: str, interface: str, speed: float | str = "1.0", loop: int = 1) -> str:
+    """``--replay`` : rejoue ``path`` sur ``interface`` (bloquant) ; memes
+    exceptions que ``pcap_parser.capture.replay_capture``."""
+    replay_capture(path, interface, speed=speed, loop=loop)
+    return replay_message(path, interface, speed, loop)

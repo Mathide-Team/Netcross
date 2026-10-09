@@ -15,8 +15,8 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 33 cases à cocher, 24 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 27 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| GUI | `netcross_gtk4` : 3 pages, 34 cases à cocher, 25 réglages numériques | Analyse interactive et exploration visuelle |
+| API | 28 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -172,7 +172,7 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 | Conversion de format | onglet « Conversion » | `--convert`, `--convert-format` | `POST /tools/convert` : `file`, `format` |
 | Export d'un sous-ensemble filtré | onglet « Export filtre » | `--export-pcap`, `--export-bpf`, `--export-time-start`, `--export-time-end`, `--export-endpoints` | `POST /tools/export` : `file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format` |
 | Recalage temporel | onglet « Recalage temporel » | `--adjust-time-output`, `--time-offset`, `--normalize-time`, `--align-to` | `POST /tools/adjust-time` : `file`, `time_offset`, `normalize`, `align_to`, `format` |
-| Rejeu sur une interface | non (issue #871) | `--replay`, `--replay-speed`, `--replay-loop` | non (issue #871) |
+| Rejeu sur une interface | onglet « Rejeu » (confirmation « J'ai l'autorisation d'emettre sur cette interface », bouton « Arreter ») | `--replay`, `--replay-speed`, `--replay-loop` | `POST /tools/replay` : `file`, `interface`, `speed`, `loop` ; uniquement sur les interfaces de `NETCROSS_REPLAY_INTERFACES` (vide par défaut : 403) |
 
 ## Autres points d'entrée
 
@@ -235,6 +235,7 @@ son équivalent CLI ou API.
 | J'autorise la remontee d'un ticket anonymise (--support-consent) | Résultats (SIEM, ticket, historique) | `--support-consent` |
 | Anomalies seulement | Résultats (cartographie) | aucun |
 | Dedupliquer les paquets identiques (--merge-dedup) | Fenêtre « Outils de capture » (Fusion) | `--merge-dedup` |
+| J'ai l'autorisation d'emettre sur cette interface | Fenêtre « Outils de capture » (Rejeu) | aucun (confirmation de la GUI) |
 
 ## API : routes et réglages
 
@@ -270,6 +271,7 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `POST /tools/convert` | Conversion de format (issue #870) |
 | `POST /tools/export` | Export d'un sous-ensemble filtré (issue #886) |
 | `POST /tools/adjust-time` | Recalage temporel (issue #887) |
+| `POST /tools/replay` | Rejeu sur une interface autorisée (issue #871) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,

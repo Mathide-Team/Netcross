@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-182 modules · 267 classes · 623 fonctions publiques de module.
+182 modules · 267 classes · 629 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -246,6 +246,9 @@ classDiagram
         +stop_ring_recorder(proc, timeout) str
         +merge_captures(paths, output_path, dedup) None
         +replay_capture(path, interface, speed, loop) None
+        +replay_command(path, interface, speed, loop) list~str~
+        +start_replay(path, interface, speed, loop) subprocess.Popen
+        +wait_replay(proc, stopped) None
         +split_capture(path, output_dir, by, value) list~str~
         +list_interfaces(path) list~InterfaceSlice~
         +split_by_interface(path, output_dir) list~InterfaceSlice~
@@ -660,6 +663,9 @@ classDiagram
         +convert(path_in, path_out, fmt) str
         +export_subset(path_in, path_out, bpf_filter, time_start, time_end, endpoints) str
         +adjust_time(path_in, path_out, offset, normalize, align_to) str
+        +allowed_replay_interfaces(environ) frozenset~str~
+        +replay_message(path, interface, speed, loop) str
+        +replay(path, interface, speed, loop) str
     }
 
     %% ===== netcross_core.causality =====
@@ -1739,25 +1745,6 @@ classDiagram
         +print_tls_diagnostics(findings) None
     }
 
-    %% ===== netcross_core.voip =====
-    class Call {
-        <<dataclass>>
-        +str call_id
-        +tuple~str, ...~ participants
-        +list~dict~ signaling
-        +float? setup_duration_ms
-        +float? duration_ms
-        +list~dict~ rtp_streams
-        +list~dict~ events
-        +str quality
-        +str correlation_method
-        +to_dict() dict
-    }
-    class mod_netcross_core_voip["netcross_core.voip"] {
-        <<module>>
-        +build_calls(all_packets, rtp_streams) tuple~list~Call~, dict~str, int~~
-    }
-
     %% ===== relations =====
     DiffFinding --> EvidenceLink : evidence
     CaptureGroup --> CaptureInventory : members
@@ -1801,6 +1788,25 @@ classDiagram
 ```mermaid
 classDiagram
     direction LR
+
+    %% ===== netcross_core.voip =====
+    class Call {
+        <<dataclass>>
+        +str call_id
+        +tuple~str, ...~ participants
+        +list~dict~ signaling
+        +float? setup_duration_ms
+        +float? duration_ms
+        +list~dict~ rtp_streams
+        +list~dict~ events
+        +str quality
+        +str correlation_method
+        +to_dict() dict
+    }
+    class mod_netcross_core_voip["netcross_core.voip"] {
+        <<module>>
+        +build_calls(all_packets, rtp_streams) tuple~list~Call~, dict~str, int~~
+    }
 
     %% ===== netcross_core.wireshark_expert =====
     class mod_netcross_core_wireshark_expert["netcross_core.wireshark_expert"] {
@@ -4223,6 +4229,8 @@ classDiagram
         +run_convert() str
         +run_export() str
         +run_adjust() str
+        +run_replay() str
+        +stop_replay() None
     }
 
     %% ===== netcross_gtk4.client_compare_panel =====
