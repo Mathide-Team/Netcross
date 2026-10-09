@@ -60,6 +60,8 @@ Options principales :
 | Plages TEST-NET externes | 192.0.2.0/24, 198.51.100.0/24 et 203.0.113.0/24 traitées comme des adresses externes (laboratoires, démonstrations). Nécessite « Rapport de sécurité » | `--test-net-external` |
 | Destinations connues..., Hôtes connus... | Listes JSON d'IP (liste plate ou clé `hosts`) : destinations habituelles et hôtes déjà vus, les autres sont signalés. Nécessitent « Rapport de sécurité » ; un fichier sans IP bloque le lancement | `--known-destinations`, `--known-hosts` |
 | Base CVE... | Base CVE complète à la place de la base minimale embarquée. Nécessite « Rapport de sécurité » ; un fichier absent bloque le lancement | `--cve-db` |
+| Diagramme de séquence (flux) | Ajoute à l'export PDF le diagramme de séquence des N flux les plus volumineux (0 = aucun) | `--sequence-diagram N` |
+| Historique..., Étiquette | Base SQLite (créée si absente) : chaque analyse de fichiers y ajoute son résumé (score, constats), avec l'étiquette choisie. Un fichier qui n'est pas une base netcross est signalé au journal, l'analyse reste affichée | `--history-db`, `--history-label` |
 
 Réglages fins, à ne modifier qu'en connaissance de cause :
 
@@ -175,6 +177,11 @@ Sous le rapport, plusieurs sections se déplient :
   Les trois autres sections d'expertise sont dans le rapport texte.
 - **Sécurité** : le rapport de sécurité, si la case correspondante était
   cochée, avec export HTML et JSON.
+- **SIEM, ticket de support, historique** : export SIEM CEF, LEEF ou
+  STIX 2.1 du rapport de sécurité (même fichier que `--siem-export`) ;
+  ticket de support anonymisé « diagnostic », seulement après avoir coché
+  le consentement (`--support-ticket --support-consent`, rien n'est
+  envoyé) ; derniers runs de l'historique choisi (`--history-show N`).
 
 Après une comparaison ou une capture en direct, certaines sections sont
 grisées : elles ont besoin des fichiers de capture d'une analyse simple.
@@ -190,4 +197,4 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
 
 Certaines fonctions restent réservées à la ligne de commande : fusion,
 découpage, conversion et rejeu de captures, plugins,
-module IA, historique des analyses, export SIEM. Voir `--help` et les pages de la section Analyses.
+module IA, historique des comparaisons. Voir `--help` et les pages de la section Analyses.
