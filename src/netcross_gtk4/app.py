@@ -2420,6 +2420,11 @@ class MainWindow(Gtk.ApplicationWindow):
             result.baseline_report,
             result.current_report,
             result.text,
+            None,
+            None,
+            None,
+            None,
+            result.redaction_map,
         )
         GLib.idle_add(self._reset_live_ui)
         logger.debug("MainWindow._analyze_live_diff: fin")
@@ -2630,6 +2635,7 @@ class MainWindow(Gtk.ApplicationWindow):
             result.tls_findings_current,
             result.quic_findings_baseline,
             result.quic_findings_current,
+            result.redaction_map,
         )
         logger.debug("MainWindow._run_diff_thread: fin")
 
@@ -2782,6 +2788,7 @@ class MainWindow(Gtk.ApplicationWindow):
         tls_findings_current=None,
         quic_findings_baseline=None,
         quic_findings_current=None,
+        redaction_map=(),
     ):
         logger.debug(
             "_on_diff_done: findings={} tls_base={} tls_courant={} quic_base={} quic_courant={}",
@@ -2796,6 +2803,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.client_compare_panel.set_comparison(None)  # ni de comparaison de postes
         self.expertise_panel.set_exports(None)  # ni d'exports d'expertise (issue #673)
         self.report_exports_panel.set_context(None, None, None)  # ni SIEM/ticket/historique (issue #674)
+        self.report_exports_panel.set_redaction_map(redaction_map)  # sauf la table d'anonymisation (#876)
         self._appliquer_outcome(
             diff_outcome(
                 findings,

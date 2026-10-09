@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"42 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"25 imports"| netcross_report
-    netcross_gtk4 -->|"94 imports"| netcross_core
+    netcross_gtk4 -->|"95 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"28 imports"| netcross_core
@@ -4258,6 +4258,7 @@ classDiagram
         +list? tls_findings_current
         +list? quic_findings_baseline
         +list? quic_findings_current
+        +tuple redaction_map
     }
     class mod_netcross_gtk4_diff_pipeline["netcross_gtk4.diff_pipeline"] {
         <<module>>
@@ -4472,6 +4473,7 @@ classDiagram
         +bool redact
         +HistorySettings history
         +str history_message
+        +tuple~tuple~str, str, str~, ...~ redaction_map
     }
     class mod_netcross_gtk4_report_exports["netcross_gtk4.report_exports"] {
         <<module>>
@@ -4486,9 +4488,11 @@ classDiagram
     class ReportExportsPanel {
         <<Gtk.Box>>
         +set_context(report, security_report, context) None
+        +set_redaction_map(entries) None
         +selected_siem_format() str
         +export_siem_to(path) str
         +write_ticket_to(path) str
+        +write_redaction_map_to(path) str
         +show_history() str
     }
 
