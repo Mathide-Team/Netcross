@@ -46,7 +46,7 @@ actif, non réglable.
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
 | Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : les trois surfaces, « Fenêtre NAT (ms) » dans la GUI) | `nat_tolerant`, `nat_window_ms` |
 | Doublons inter-captures | oui (« Détecter... », « Exclure... », seuil) | `--detect-duplicates`, `--exclude-duplicates`, `--duplicate-threshold-ms` | `detect_duplicates`, `exclude_duplicates`, `duplicate_threshold_ms` (#330, #841) |
-| Lecture parallèle | oui (« Lecture parallele des captures », nombre « Lecteurs paralleles » en analyse simple, issue #672) | `--parallel`, `--parallel-workers` | non |
+| Lecture parallèle | oui (« Lecture parallele des captures », nombre « Lecteurs paralleles » en analyse simple, issue #672) | `--parallel`, `--parallel-workers` | `parallel_workers` (issue #672) |
 | Fenêtre temporelle du débit | oui | `--bucket-ms` | `bucket_ms` (#330, #841) |
 | Cadence RTP | oui | `--rtp-clock-rate` | `rtp_clock_rate` (#330, #841) |
 | Seuil de coupure NAT/pare-feu silencieuse | oui (« Coupure silencieuse (s) », 0 = défaut 60 s) | `--idle-timeout-seconds` | `idle_timeout_seconds` (#330, #841) |
@@ -63,7 +63,7 @@ actif, non réglable.
 | Diagnostic TLS | oui (« Diagnostic TLS ») | `--tls` | `tls` (clé `tls_findings` de `/report`) |
 | Diagnostic QUIC/HTTP3 | oui (« Diagnostic QUIC/HTTP3 ») | `--quic` | `quic` (clé `quic_findings` de `/report`) |
 | Rapport de sécurité (détecteurs, signatures d'exploit, CVE) | oui (« Rapport de securite ») | `--security-report` | auto (toujours exécuté, sauf avec `redact`), `GET /analyses/{analysis_id}/security` |
-| Base CVE complète (NVD) | oui (« Base CVE... », avec « Rapport de securite » ; issue #672) | `--cve-db` | non (base embarquée seule) |
+| Base CVE complète (NVD) | oui (« Base CVE... », avec « Rapport de securite » ; issue #672) | `--cve-db` | variable de serveur `NETCROSS_CVE_DB`, sinon base embarquée (issue #672) |
 | Destinations et hôtes connus (sécurité) | oui (« Destinations connues... », « Hotes connus... », avec « Rapport de securite » ; issue #672) | `--known-destinations`, `--known-hosts` | `known_destinations`, `known_hosts` (fichiers joints, issue #672) |
 | Moteur de règles | oui (case « Moteur de regles », section du rapport ; issue #673) | `--rule-engine` | `rule_engine` (clé `rule_engine` de `/report`, issue #673) |
 | Section expertise détaillée | oui (case « Section expertise », section du rapport ; issue #673) | `--expert-section` | `expert_section` (issue #673) |
@@ -243,7 +243,8 @@ son équivalent CLI ou API.
 
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
-`quic`, `redact`, `max_packets`, `sample`, `test_net_external`, `names`,
+`quic`, `redact`, `max_packets`, `sample`, `test_net_external`,
+`parallel_workers`, `names`,
 `known_destinations`, `known_hosts` (issue #672), `rule_engine`,
 `expert_section`, `media_quality`, `tshark_stats`, `flow_timeline`,
 `flow_timeline_window` (issue #673), `bucket_ms`, `rtp_clock_rate`,
@@ -263,7 +264,7 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,
-`NETCROSS_API_WORKERS`, `NETCROSS_DB_PATH`) : voir
+`NETCROSS_API_WORKERS`, `NETCROSS_DB_PATH`, `NETCROSS_CVE_DB`) : voir
 [API REST](api-rest.md).
 
 ## Écarts à traiter

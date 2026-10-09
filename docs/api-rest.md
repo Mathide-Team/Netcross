@@ -23,6 +23,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_MAX_FILES` | `16` | Fichiers par requête `/captures/multi` (400 au-delà). |
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
+| `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
 
 ```bash
 NETCROSS_API_TOKEN=$(openssl rand -hex 32) NETCROSS_DB_PATH=/var/lib/netcross/api.db \
