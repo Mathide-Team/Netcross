@@ -148,6 +148,13 @@ Sous le rapport, plusieurs sections se déplient :
 - **Comparaison de postes** : si des postes ont été renseignés, la
   référence, les postes comparés et le nombre d'écarts, avec « Exporter
   CSV » (même fichier que `--client-diff-csv`).
+- **NetFlow v5 (résumé d'exports)** : indépendant de l'analyse en cours.
+  « Ajouter des exports... » (datagrammes NetFlow v5 concaténés, un fichier
+  par exportateur, étiqueté par le nom du fichier), « Top », puis
+  « Résumer » : volumes, protocoles, principaux émetteurs, conversations et
+  ports, comme `--netflow` ; « Exporter JSON... » écrit le même fichier que
+  `--netflow ... --json-report`. Les flux agrégés ne se corrèlent pas entre
+  points de capture : ils ne sont pas mêlés à l'analyse.
 - **Sécurité** : le rapport de sécurité, si la case correspondante était
   cochée, avec export HTML et JSON.
 

@@ -91,6 +91,7 @@ from netcross_gtk4.extraction_panel import ExtractionPanel  # noqa: E402
 from netcross_gtk4.forensic_panel import ForensicSearchPanel  # noqa: E402
 from netcross_gtk4.live_capture_points import duplicate_labels, expand_live_points, invalid_sources  # noqa: E402
 from netcross_gtk4.live_report_session import LiveReportError, start_live_report  # noqa: E402
+from netcross_gtk4.netflow_panel import NetflowPanel  # noqa: E402
 from netcross_gtk4.notifications import (  # noqa: E402
     THRESHOLD_CHOICES,
     NotifySettings,
@@ -1647,6 +1648,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.client_compare_panel = ClientComparisonPanel()
         self.client_compare_expander.set_child(self.client_compare_panel)
         page.append(self.client_compare_expander)
+
+        # Issue #675 : resume NetFlow v5 (--netflow, --netflow-top), autonome
+        self.netflow_expander = Gtk.Expander(label="NetFlow v5 (resume d'exports)")
+        self.netflow_panel = NetflowPanel()
+        self.netflow_expander.set_child(self.netflow_panel)
+        page.append(self.netflow_expander)
 
         self.security_expander = Gtk.Expander(label="Securite")
         self.security_expander.set_sensitive(False)

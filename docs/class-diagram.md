@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-170 modules · 253 classes · 589 fonctions publiques de module.
+172 modules · 255 classes · 591 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"15 imports"| netcross_report
-    netcross_gtk4 -->|"78 imports"| netcross_core
+    netcross_gtk4 -->|"81 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
@@ -3927,6 +3927,8 @@ classDiagram
 | `netcross_gtk4.forensic_view` | recherche forensic de la GUI (issue #675). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
 | `netcross_gtk4.live_report_session` | rapport HTML rafraichi en continu pendant une capture en direct de la GUI (issue #676). |
+| `netcross_gtk4.netflow_panel` | panneau GTK « NetFlow v5 » de la page Resultats (issue #675). |
+| `netcross_gtk4.netflow_view` | resume NetFlow v5 dans la GUI (issue #675). |
 | `netcross_gtk4.notifications` | notifications sortantes (webhook, Slack, courriel) apres une analyse de la GUI (issue #676). |
 | `netcross_gtk4.panel_state` | decisions de visibilite, de sensibilite et de selection des panneaux de la GUI (issue #285, troisieme lot). |
 | `netcross_gtk4.ring_recorders` | rotation de capture (ring buffer) de la GUI en capture en direct (issue #676). |
@@ -4270,6 +4272,25 @@ classDiagram
     class mod_netcross_gtk4_live_report_session["netcross_gtk4.live_report_session"] {
         <<module>>
         +start_live_report(labels, out_dir, interval, serve_port, render, mkdtemp, server_factory) tuple~LiveReportSession, list~str~~
+    }
+
+    %% ===== netcross_gtk4.netflow_panel =====
+    class NetflowPanel {
+        <<Gtk.Box>>
+        +add_files(paths) None
+        +clear_files() None
+        +start_summary() bool
+        +export_to(path) None
+    }
+
+    %% ===== netcross_gtk4.netflow_view =====
+    class NetflowFileError {
+        <<ValueError>>
+    }
+    class mod_netcross_gtk4_netflow_view["netcross_gtk4.netflow_view"] {
+        <<module>>
+        +summarize_files(files, top) tuple~dict, list~str~~
+        +write_netflow_json(path, summary) Path
     }
 
     %% ===== netcross_gtk4.notifications =====
