@@ -135,6 +135,15 @@ Sous le rapport, plusieurs sections se déplient :
   « Exporter JSON... » écrit tous les résultats avec la requête, dans le
   même format que `--forensic-search`. Disponible après une analyse de
   fichiers ou une capture en direct, pas après une comparaison.
+- **Contenus (extraction)** : relit les fichiers de l'analyse pour en
+  extraire la voix et la vidéo transportées en RTP et les documents
+  (HTTP, SMB, courriel, TFTP, FTP), vers un dossier **vide** choisi par
+  « Extraire vers un dossier... ». Fichiers lisibles par vous seul, avec un
+  `manifest.json` (empreintes SHA-256, origine, note de dégradation) et un
+  `LISEZ-MOI.txt`. Lisez le rappel d'usage affiché : ce sont des
+  correspondances et des données personnelles. Indisponible après une
+  analyse anonymisée, une capture en direct ou une comparaison.
+  Équivalent de `--extract-contents` et `--extract-kinds`.
 - **Sécurité** : le rapport de sécurité, si la case correspondante était
   cochée, avec export HTML et JSON.
 

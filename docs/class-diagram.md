@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-166 modules · 250 classes · 583 fonctions publiques de module.
+168 modules · 251 classes · 586 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"15 imports"| netcross_report
-    netcross_gtk4 -->|"69 imports"| netcross_core
+    netcross_gtk4 -->|"74 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
@@ -3919,6 +3919,8 @@ classDiagram
 | `netcross_gtk4.dashboard_context` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
 | `netcross_gtk4.diff_pipeline` | pipeline de comparaison baseline/courant extrait de MainWindow._run_diff_thread (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.duplicate_view` | Presentation helpers for cross-capture duplicate detection (Job 41). |
+| `netcross_gtk4.extraction_panel` | panneau GTK « Contenus (extraction) » de la page Resultats (issue #675). |
+| `netcross_gtk4.extraction_view` | extraction des contenus depuis la GUI (issue #675). |
 | `netcross_gtk4.forensic_panel` | panneau GTK « Recherche forensic » de la page Resultats (issue #675). |
 | `netcross_gtk4.forensic_view` | recherche forensic de la GUI (issue #675). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
@@ -4180,6 +4182,21 @@ classDiagram
     class mod_netcross_gtk4_duplicate_view["netcross_gtk4.duplicate_view"] {
         <<module>>
         +format_duplicate_indicator(report) str
+    }
+
+    %% ===== netcross_gtk4.extraction_panel =====
+    class ExtractionPanel {
+        <<Gtk.Box>>
+        +set_source(captures, redacted) None
+        +start_extraction(out_dir) bool
+    }
+
+    %% ===== netcross_gtk4.extraction_view =====
+    class mod_netcross_gtk4_extraction_view["netcross_gtk4.extraction_view"] {
+        <<module>>
+        +selected_kinds(flags) tuple~str, ...~
+        +unavailable_reason(captures, redacted) str?
+        +check_out_dir(path) str
     }
 
     %% ===== netcross_gtk4.forensic_panel =====
