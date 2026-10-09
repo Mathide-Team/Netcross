@@ -68,6 +68,14 @@ from netcross_core.bpf_filters import PREDEFINED_BPF_FILTERS, available_bpf_filt
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates  # noqa: E402
 from netcross_core.logging_config import DEBUG_FLAG, enable_debug, get_logger, is_debug_enabled, summarize  # noqa: E402
 from netcross_gtk4 import capture_list, row_labels  # noqa: E402
+from netcross_gtk4.advanced_options import (  # noqa: E402
+    MAX_PACKETS_MAX,
+    SAMPLE_MAX,
+    WORKERS_MAX,
+    AdvancedSettings,
+    settings_from_values,
+)
+from netcross_gtk4.advanced_options import validate as validate_advanced  # noqa: E402
 from netcross_gtk4.annotations_panel import AnnotationsPanel  # noqa: E402
 from netcross_gtk4.bpf_panel import (  # noqa: E402
     doit_desolidariser_le_menu,
@@ -94,6 +102,7 @@ from netcross_gtk4.expertise_view import (  # noqa: E402
     ExpertiseSettings,
 )
 from netcross_gtk4.extraction_panel import ExtractionPanel  # noqa: E402
+from netcross_gtk4.file_option import FileOption  # noqa: E402
 from netcross_gtk4.forensic_panel import ForensicSearchPanel  # noqa: E402
 from netcross_gtk4.live_capture_points import duplicate_labels, expand_live_points, invalid_sources  # noqa: E402
 from netcross_gtk4.live_report_session import LiveReportError, start_live_report  # noqa: E402
@@ -1140,6 +1149,63 @@ class MainWindow(Gtk.ApplicationWindow):
         ):
             expertise_box.append(widget)
         self.single_options_box.append(expertise_box)
+
+        # Issue #672 : limites de lecture (--max-packets, --sample,
+        # --parallel-workers) ; 0 (ou 1/1) = pas de limite, automatique
+        limits_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        limits_box.append(Gtk.Label(label="Paquets max. (--max-packets, 0 = tous) :"))
+        self.max_packets_spin = Gtk.SpinButton.new_with_range(0, MAX_PACKETS_MAX, 1000)
+        self.max_packets_spin.set_tooltip_text(
+            "Analyse les N premiers paquets (apres echantillonnage) ; le rapport l'annonce toujours."
+        )
+        limits_box.append(self.max_packets_spin)
+        limits_box.append(Gtk.Label(label="Echantillonnage 1/N (--sample) :"))
+        self.sample_spin = Gtk.SpinButton.new_with_range(1, SAMPLE_MAX, 1)
+        self.sample_spin.set_tooltip_text("Garde 1 paquet sur N (1 = tous) ; le rapport l'annonce toujours.")
+        limits_box.append(self.sample_spin)
+        limits_box.append(Gtk.Label(label="Lecteurs paralleles (--parallel-workers, 0 = auto) :"))
+        self.parallel_workers_spin = Gtk.SpinButton.new_with_range(0, WORKERS_MAX, 1)
+        self.parallel_workers_spin.set_tooltip_text(
+            "Nombre de processus tshark avec « Lecture parallele des captures » (0 = un par coeur)."
+        )
+        limits_box.append(self.parallel_workers_spin)
+        self.single_options_box.append(limits_box)
+
+        # Issue #672 : contexte du rapport de securite (--test-net-external,
+        # --known-destinations, --known-hosts, --cve-db)
+        security_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
+        self.test_net_external_check = Gtk.CheckButton(label="Plages TEST-NET externes (--test-net-external)")
+        self.test_net_external_check.set_tooltip_text(
+            "Traite 192.0.2.0/24, 198.51.100.0/24 et 203.0.113.0/24 comme des adresses externes "
+            "(laboratoires, captures de demonstration). Necessite « Rapport de securite »."
+        )
+        json_patterns = ("*.json",)
+        self.known_destinations_option = FileOption(
+            "Destinations connues...",
+            "Liste JSON d'IP de destinations habituelles (--known-destinations) : les autres sont signalees.",
+            json_patterns,
+            "Liste d'IP (*.json)",
+        )
+        self.known_hosts_option = FileOption(
+            "Hotes connus...",
+            "Liste JSON d'hotes deja vus (--known-hosts) : un hote absent est signale comme nouveau.",
+            json_patterns,
+            "Liste d'IP (*.json)",
+        )
+        self.cve_db_option = FileOption(
+            "Base CVE...",
+            "Base CVE complete (--cve-db, SQLite construite par netcross) a la place de la base minimale embarquee.",
+            ("*.db", "*.sqlite", "*.sqlite3"),
+            "Base CVE (*.db, *.sqlite)",
+        )
+        for widget in (
+            self.test_net_external_check,
+            self.known_destinations_option,
+            self.known_hosts_option,
+            self.cve_db_option,
+        ):
+            security_box.append(widget)
+        self.single_options_box.append(security_box)
         self._on_notify_threshold_changed(None)
         page.append(self.single_options_box)
 
@@ -1815,6 +1881,7 @@ class MainWindow(Gtk.ApplicationWindow):
         notify = None
         client_groups: dict = {}
         client_reference = None
+        advanced = None
         if not diff_mode:
             notify = self._notify_settings()
             notify_errors = validate_settings(notify, self.security_check.get_active())
@@ -1835,6 +1902,13 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.stack.set_visible_child_name("log")
                 self._log(f"Comparaison de postes : {'; '.join(client_errors)} -- analyse non lancee.")
                 logger.debug("MainWindow.on_run_analysis: si client_errors -> retour")
+                return
+            advanced = self.advanced_settings()  # issue #672
+            advanced_errors = validate_advanced(advanced, security=self.security_check.get_active())
+            if advanced_errors:
+                self.stack.set_visible_child_name("log")
+                self._log(f"Options avancees : {'; '.join(advanced_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si advanced_errors -> retour")
                 return
 
         self.run_btn.set_sensitive(False)
@@ -1925,6 +1999,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "client_reference": client_reference,
                     "notify": notify,
                     "expertise": self.expertise_settings(),
+                    "advanced": advanced,
                 },
                 daemon=True,
             ).start()
@@ -2387,6 +2462,7 @@ class MainWindow(Gtk.ApplicationWindow):
         client_reference=None,
         notify=None,
         expertise=None,
+        advanced=None,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -2422,6 +2498,7 @@ class MainWindow(Gtk.ApplicationWindow):
             client_reference=client_reference,
             notify=notify,
             expertise=expertise,
+            advanced=advanced,
         )
 
         def _on_progress(msg):
@@ -2624,6 +2701,18 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child_name("results")
         logger.debug("MainWindow._on_analysis_done: retour False")
         return False
+
+    def advanced_settings(self) -> AdvancedSettings:
+        """Options avancees de la configuration (issue #672)."""
+        return settings_from_values(
+            self.max_packets_spin.get_value(),
+            self.sample_spin.get_value(),
+            self.parallel_workers_spin.get_value(),
+            test_net_external=self.test_net_external_check.get_active(),
+            known_destinations=self.known_destinations_option.path,
+            known_hosts=self.known_hosts_option.path,
+            cve_db=self.cve_db_option.path,
+        )
 
     def expertise_settings(self) -> ExpertiseSettings:
         """Cases « Expertise » de la configuration (issue #673)."""

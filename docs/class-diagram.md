@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-174 modules · 259 classes · 601 fonctions publiques de module.
+177 modules · 262 classes · 606 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -34,10 +34,10 @@ flowchart TD
     pcap_parser["pcap_parser"]
     CLI -->|"18 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
-    CLI -->|"41 imports"| netcross_core
+    CLI -->|"42 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"18 imports"| netcross_report
-    netcross_gtk4 -->|"86 imports"| netcross_core
+    netcross_gtk4 -->|"91 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
@@ -56,6 +56,7 @@ du graphe de dépendances ci-dessus (qui ne compte que des `import`).
 
 ```mermaid
 flowchart LR
+    AdvancedSettings["netcross_gtk4.advanced_options.AdvancedSettings"]
     AnalysisOptions["netcross_gtk4.analysis_pipeline.AnalysisOptions"]
     AnalysisResult["netcross_gtk4.analysis_pipeline.AnalysisResult"]
     AnnotationStore["netcross_gtk4.annotations_view.AnnotationStore"]
@@ -91,6 +92,7 @@ flowchart LR
     StreamQuality["netcross_core.extract.media.StreamQuality"]
     _Detector["netcross_core.exploit_signatures._Detector"]
     netcross_core_security_expert_correlation__FlowState["netcross_core.security.expert_correlation._FlowState"]
+    AnalysisOptions -->|advanced| AdvancedSettings
     AnalysisOptions -->|expertise| ExpertiseSettings
     AnalysisOptions -->|notify| NotifySettings
     AnalysisResult -->|expertise| ExpertiseExports
@@ -469,6 +471,7 @@ classDiagram
 | `netcross_core.lua_doc` | banque SQLite locale de l'API Lua Wireshark (issue #387, rattachee a #331). |
 | `netcross_core.models` | structures de donnees partagees : un paquet normalise (Pkt) et le resultat d'analyse consolide (Report). |
 | `netcross_core.naming` | table locale de correspondance adresse/MAC -> nom logique, type, contexte (Job 18 / issue #16-bis, section 6.15 de FEATURES.md). |
+| `netcross_core.packet_limits` | ``--max-packets`` et ``--sample`` (issue #283), partages par la CLI et la GUI (issue #672). |
 | `netcross_core.parsing` | adaptateur entre pcap_parser (decodage via tshark -T ek) et le modele Pkt de netcross_core. |
 | `netcross_core.quic_diagnostics` | extraction du SNI des paquets QUIC Initial (RFC 9000/9001), pour voir le trafic HTTP/3 moderne (Chrome, Teams, Meet, WhatsApp...) que le reste de l'outil ne voit aujourd'hui qu'en UDP brut. |
 | `netcross_core.redact` | anonymisation des adresses (IP/MAC) d'une liste de paquets deja chargee, en vue d'un partage externe (ticket support vendeur, rapport transmis a un tiers) sans exposer l'adressage reel du reseau du… |
@@ -1567,6 +1570,12 @@ classDiagram
         +from_list(items)$ NameTable
         +load(path)$ NameTable
         +save(path) None
+    }
+
+    %% ===== netcross_core.packet_limits =====
+    class mod_netcross_core_packet_limits["netcross_core.packet_limits"] {
+        <<module>>
+        +apply_packet_limits(all_packets, max_packets, sample_n)
     }
 
     %% ===== netcross_core.parsing =====
@@ -3916,6 +3925,7 @@ classDiagram
 | Module | Rôle |
 |---|---|
 | `netcross_gtk4` | — |
+| `netcross_gtk4.advanced_options` | options d'analyse avancees de la GUI (issue #672), sans GTK. |
 | `netcross_gtk4.analysis_pipeline` | pipeline d'analyse extrait de MainWindow (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.annotations_panel` | panneau GTK des annotations (issue #363). |
 | `netcross_gtk4.annotations_view` | logique de presentation pour l'etiquetage/signets sur paquets (Job 40 / issue #160, section "Metadonnees et annotation"). |
@@ -3931,6 +3941,7 @@ classDiagram
 | `netcross_gtk4.expertise_view` | sections d'expertise de l'analyse simple (issue #673), sans GTK. |
 | `netcross_gtk4.extraction_panel` | panneau GTK « Contenus (extraction) » de la page Resultats (issue #675). |
 | `netcross_gtk4.extraction_view` | extraction des contenus depuis la GUI (issue #675). |
+| `netcross_gtk4.file_option` | champ « fichier facultatif » de la configuration : bouton de choix, « Retirer », nom du fichier retenu. |
 | `netcross_gtk4.forensic_panel` | panneau GTK « Recherche forensic » de la page Resultats (issue #675). |
 | `netcross_gtk4.forensic_view` | recherche forensic de la GUI (issue #675). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
@@ -3950,6 +3961,29 @@ classDiagram
 ```mermaid
 classDiagram
     direction LR
+
+    %% ===== netcross_gtk4.advanced_options =====
+    class AdvancedOptionError {
+        <<ValueError>>
+    }
+    class AdvancedSettings {
+        <<dataclass, frozen>>
+        +int? max_packets
+        +int? sample_n
+        +int? parallel_workers
+        +bool test_net_external
+        +str? known_destinations
+        +str? known_hosts
+        +str? cve_db
+        +security_files() bool
+    }
+    class mod_netcross_gtk4_advanced_options["netcross_gtk4.advanced_options"] {
+        <<module>>
+        +settings_from_values(max_packets, sample, workers, test_net_external, known_destinations, known_hosts, cve_db) AdvancedSettings
+        +validate(settings, security) list~str~
+        +load_host_set(path, option) frozenset~str~?
+        +workers_note(workers, cpu_count) str?
+    }
 
     %% ===== netcross_gtk4.analysis_pipeline =====
     class AnalysisOptions {
@@ -3977,6 +4011,7 @@ classDiagram
         +str? client_reference
         +NotifySettings? notify
         +ExpertiseSettings? expertise
+        +AdvancedSettings? advanced
     }
     class AnalysisResult {
         <<dataclass>>
@@ -3995,10 +4030,10 @@ classDiagram
     }
     class mod_netcross_gtk4_analysis_pipeline["netcross_gtk4.analysis_pipeline"] {
         <<module>>
-        +load_packets(captures, parallel, on_progress) list
+        +load_packets(captures, parallel, on_progress, max_workers) list
         +run_analysis_pipeline(captures, options, on_progress) AnalysisResult
         +expand_split_interfaces(captures, workdir, log) list~tuple~str, str~~
-        +run_security_analysis(report, all_packets, captures, log)
+        +run_security_analysis(report, all_packets, captures, log, known_destinations, known_hosts, test_net_external, cve_db)
     }
 
     %% ===== netcross_gtk4.annotations_panel =====
@@ -4069,6 +4104,7 @@ classDiagram
         +load_names_table(path)
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
+        +advanced_settings() AdvancedSettings
         +expertise_settings() ExpertiseSettings
         +on_export_csv(_btn)
         +on_export_pdf(_btn)
@@ -4267,6 +4303,12 @@ classDiagram
         +selected_kinds(flags) tuple~str, ...~
         +unavailable_reason(captures, redacted) str?
         +check_out_dir(path) str
+    }
+
+    %% ===== netcross_gtk4.file_option =====
+    class FileOption {
+        <<Gtk.Box>>
+        +set_path(path) None
     }
 
     %% ===== netcross_gtk4.forensic_panel =====
@@ -4486,6 +4528,7 @@ classDiagram
     }
 
     %% ===== relations =====
+    AnalysisOptions --> AdvancedSettings : advanced
     AnalysisOptions --> ExpertiseSettings : expertise
     AnalysisOptions --> NotifySettings : notify
     AnalysisResult --> ExpertiseExports : expertise

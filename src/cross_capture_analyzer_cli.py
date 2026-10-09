@@ -1166,38 +1166,11 @@ def _parse_sample_spec(spec: str) -> int:
 
 
 def _apply_packet_limits(all_packets, max_packets, sample_n):
-    """Applique --max-packets/--sample (issue #283, Etape 3) a la liste de
-    paquets DEJA CHARGEE (tous les fichiers de --capture sont toujours lus
-    integralement par parse_capture -- limiter la LECTURE elle-meme est le
-    travail de l'Etape 4/traitement en flux, hors perimetre de cette PR) et
-    renvoie ``(paquets_retenus, note_ou_None)``. --sample est applique
-    AVANT --max-packets quand les deux sont fournis ensemble (echantillonner
-    puis plafonner le resultat) : l'ordre inverse laisserait --sample sans
-    effet visible si --max-packets est plus restrictif. ``note`` vaut None
-    si aucune limite n'a reellement tronque quoi que ce soit (fichier plus
-    petit que la limite demandee) -- Report.truncated ne doit jamais
-    devenir True sans raison, meme discipline que duplicates_excluded."""
-    logger.debug(
-        "_apply_packet_limits: all_packets={} max_packets={} sample_n={}",
-        summarize(all_packets, "all_packets"),
-        summarize(max_packets, "max_packets"),
-        summarize(sample_n, "sample_n"),
-    )
-    total = len(all_packets)
-    kept = all_packets
-    notes = []
-    if sample_n and sample_n > 1:
-        kept = kept[::sample_n]
-        notes.append(f"echantillonnage 1 paquet sur {sample_n} ({len(kept)} retenus sur {total})")
-    if max_packets is not None and len(kept) > max_packets:
-        before = len(kept)
-        kept = kept[:max_packets]
-        notes.append(f"analyse limitee aux {max_packets:,} premiers paquets sur {before:,}".replace(",", " "))
-    if not notes:
-        logger.debug("_apply_packet_limits: si not notes -> retour tuple de 2")
-        return kept, None
-    logger.debug("_apply_packet_limits: retour tuple de 2")
-    return kept, "analyse tronquee -- " + " ; ".join(notes) + " -- les constats ne couvrent pas la capture entiere."
+    """--max-packets/--sample (issue #283) : ``netcross_core.packet_limits``,
+    partage avec la GUI (issue #672). Renvoie ``(paquets_retenus, note)``."""
+    from netcross_core.packet_limits import apply_packet_limits
+
+    return apply_packet_limits(all_packets, max_packets, sample_n)
 
 
 def _send_notifications(args, report, security_report_obj) -> list[dict]:

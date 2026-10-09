@@ -134,7 +134,7 @@ def _pipeline_securite(monkeypatch):
     pkts = [make_pkt(point="A", sport=1), make_pkt(point="B", sport=1, ts=1000.001)]
     monkeypatch.setattr(pipeline_mod, "parse_capture", lambda label, path: [p for p in pkts if p.point == label])
     sr = SimpleNamespace(dashboard=SimpleNamespace(score=90, level="critique"), notifications=[])
-    monkeypatch.setattr(pipeline_mod, "run_security_analysis", lambda *a: sr)
+    monkeypatch.setattr(pipeline_mod, "run_security_analysis", lambda *a, **k: sr)
     monkeypatch.setattr(pipeline_mod, "print_security_report", lambda r: print("RAPPORT SECURITE"))
     return sr
 
