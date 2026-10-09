@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-177 modules · 262 classes · 606 fonctions publiques de module.
+179 modules · 265 classes · 612 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -36,8 +36,8 @@ flowchart TD
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"42 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"18 imports"| netcross_report
-    netcross_gtk4 -->|"91 imports"| netcross_core
+    netcross_gtk4 -->|"25 imports"| netcross_report
+    netcross_gtk4 -->|"94 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"26 imports"| netcross_core
@@ -78,6 +78,7 @@ flowchart LR
     Finding["netcross_report.synthesis.Finding"]
     FlowView["netcross_core.flow_view.FlowView"]
     Flow["netcross_core.expert_model.Flow"]
+    HistorySettings["netcross_gtk4.report_exports.HistorySettings"]
     HostAsset["netcross_core.discovery.assets.HostAsset"]
     InterfaceRecord["pcap_parser.capfile.InterfaceRecord"]
     LiveDiffState["netcross_core.live_diff.LiveDiffState"]
@@ -87,6 +88,7 @@ flowchart LR
     OsGuess["netcross_core.discovery.os_detect.OsGuess"]
     PacketAnnotation["netcross_core.models.PacketAnnotation"]
     Pkt["netcross_core.models.Pkt"]
+    ReportContext["netcross_gtk4.report_exports.ReportContext"]
     Report["netcross_core.models.Report"]
     SegmentScore["netcross_report.triage.SegmentScore"]
     StreamQuality["netcross_core.extract.media.StreamQuality"]
@@ -94,8 +96,10 @@ flowchart LR
     netcross_core_security_expert_correlation__FlowState["netcross_core.security.expert_correlation._FlowState"]
     AnalysisOptions -->|advanced| AdvancedSettings
     AnalysisOptions -->|expertise| ExpertiseSettings
+    AnalysisOptions -->|history| HistorySettings
     AnalysisOptions -->|notify| NotifySettings
     AnalysisResult -->|expertise| ExpertiseExports
+    AnalysisResult -->|report_context| ReportContext
     AnalysisResult -->|report| Report
     AnnotationStore -->|by_label| PacketAnnotation
     CaptureInfo -->|interfaces| InterfaceRecord
@@ -3686,6 +3690,7 @@ classDiagram
         +export_leef(report) list~str~
         +write_cef(report, output_path) str
         +write_leef(report, output_path) str
+        +observed_bounds(packets) tuple~_dt.datetime?, _dt.datetime?~
         +write_siem(report, output_path, fmt, observed_from, observed_until) str
     }
 
@@ -3951,6 +3956,8 @@ classDiagram
 | `netcross_gtk4.netflow_view` | resume NetFlow v5 dans la GUI (issue #675). |
 | `netcross_gtk4.notifications` | notifications sortantes (webhook, Slack, courriel) apres une analyse de la GUI (issue #676). |
 | `netcross_gtk4.panel_state` | decisions de visibilite, de sensibilite et de selection des panneaux de la GUI (issue #285, troisieme lot). |
+| `netcross_gtk4.report_exports` | diagramme de sequence, export SIEM, historique SQLite et ticket de support dans la GUI (issue #674), sans GTK. |
+| `netcross_gtk4.report_exports_panel` | panneau « SIEM, ticket de support, historique » de la page Resultats (issue #674). |
 | `netcross_gtk4.ring_recorders` | rotation de capture (ring buffer) de la GUI en capture en direct (issue #676). |
 | `netcross_gtk4.row_labels` | libelles et cles de tri des lignes affichees par la GUI (issue #285, premier lot d'extraction de `app.py`). |
 | `netcross_gtk4.run_outcome` | etat de resultat et decisions d'affichage a la fin d'une analyse ou d'une comparaison (issue #285, deuxieme lot). |
@@ -4013,6 +4020,7 @@ classDiagram
         +NotifySettings? notify
         +ExpertiseSettings? expertise
         +AdvancedSettings? advanced
+        +HistorySettings? history
     }
     class AnalysisResult {
         <<dataclass>>
@@ -4028,6 +4036,7 @@ classDiagram
         +Any search_index
         +Any client_comparison
         +ExpertiseExports? expertise
+        +ReportContext? report_context
     }
     class mod_netcross_gtk4_analysis_pipeline["netcross_gtk4.analysis_pipeline"] {
         <<module>>
@@ -4105,6 +4114,7 @@ classDiagram
         +load_names_table(path)
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
+        +history_settings() HistorySettings
         +advanced_settings() AdvancedSettings
         +expertise_settings() ExpertiseSettings
         +on_export_csv(_btn)
@@ -4445,6 +4455,40 @@ classDiagram
         +apply_dashboard_selection(kind, selection, key, flow_par_cle, evenements) Any
     }
 
+    %% ===== netcross_gtk4.report_exports =====
+    class HistorySettings {
+        <<dataclass, frozen>>
+        +str? db_path
+        +str? label
+    }
+    class ReportContext {
+        <<dataclass, frozen>>
+        +datetime? observed_from
+        +datetime? observed_until
+        +int captures
+        +bool redact
+        +HistorySettings history
+        +str history_message
+    }
+    class mod_netcross_gtk4_report_exports["netcross_gtk4.report_exports"] {
+        <<module>>
+        +record_history(report, settings, findings, tls, quic, redact) str
+        +history_text(db_path, limit, label) str
+        +sequence_views(flows, max_flows, flow_objects) list?
+        +export_siem(report, path, fmt, context) str
+        +write_support_ticket(path, context, consent) tuple~str, int~
+    }
+
+    %% ===== netcross_gtk4.report_exports_panel =====
+    class ReportExportsPanel {
+        <<Gtk.Box>>
+        +set_context(report, security_report, context) None
+        +selected_siem_format() str
+        +export_siem_to(path) str
+        +write_ticket_to(path) str
+        +show_history() str
+    }
+
     %% ===== netcross_gtk4.ring_recorders =====
     class RingRecorderError {
         <<Exception>>
@@ -4531,8 +4575,11 @@ classDiagram
     %% ===== relations =====
     AnalysisOptions --> AdvancedSettings : advanced
     AnalysisOptions --> ExpertiseSettings : expertise
+    AnalysisOptions --> HistorySettings : history
     AnalysisOptions --> NotifySettings : notify
     AnalysisResult --> ExpertiseExports : expertise
+    AnalysisResult --> ReportContext : report_context
+    ReportContext --> HistorySettings : history
 ```
 
 ## CLI (`src/*.py`)
