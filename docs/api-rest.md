@@ -23,6 +23,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_MAX_FILES` | `16` | Fichiers par requête `/captures/multi` (400 au-delà). |
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
+| `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
 
 ```bash
@@ -68,6 +69,7 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
 | `GET` | `/analyses/{id}/markdown` | Rapport Markdown, identique à `--md-report` (issue #864) ; liste complète des routes : [parité des surfaces](parite-surfaces.md) |
 | `GET` | `/analyses` | Liste des analyses |
+| `GET` | `/history` | Historique des runs (`run_type` analyse/diff, `label`, `limit`) : `netcross-history`. Base fixée par l'administrateur (`NETCROSS_HISTORY_DB`) ; 503 si non configurée (issue #874) |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl

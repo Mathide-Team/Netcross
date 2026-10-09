@@ -62,11 +62,29 @@ def record_history(report, settings: HistorySettings, *, findings=None, tls=None
     return f"Resume de ce run enregistre dans l'historique {settings.db_path}{label_txt}."
 
 
-def history_text(db_path: str, limit: int | None, label: str | None) -> str:
-    """Texte de ``--history-show N`` (``print_history``)."""
+def record_diff_history(findings, baseline, current, settings: HistorySettings, *, redact=False) -> str:
+    """Enregistre la comparaison comme ``--history-db`` de
+    ``cross_capture_diff_cli.py`` (issue #874) ; meme message."""
+    from netcross_report import record_diff_run
+
+    record_diff_run(
+        findings,
+        baseline,
+        current,
+        settings.db_path,
+        meta={"Anonymisation": "adresses IP/MAC anonymisees (--redact)"} if redact else None,
+        label=settings.label,
+    )
+    label_txt = f" (etiquette: {settings.label})" if settings.label else ""
+    return f"Resume de ce diff enregistre dans l'historique {settings.db_path}{label_txt}."
+
+
+def history_text(db_path: str, limit: int | None, label: str | None, run_type: str | None = None) -> str:
+    """Texte de ``--history-show N`` / ``netcross-history`` (``print_history``) ;
+    ``run_type`` : ``analyse``, ``diff`` ou None (issue #874)."""
     from netcross_report import list_history, print_history
 
-    entries = list_history(db_path, limit=limit or None, label=label)
+    entries = list_history(db_path, limit=limit or None, label=label, run_type=run_type)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         print_history(entries)

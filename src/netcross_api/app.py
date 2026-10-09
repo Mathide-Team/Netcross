@@ -18,6 +18,7 @@ Déploiement (#356), par variables d'environnement lues au démarrage :
     NETCROSS_API_MAX_FILES  nombre maximal de fichiers par requête (défaut 16)
     NETCROSS_API_WORKERS    analyses simultanées en tâche de fond (défaut 2)
     NETCROSS_DB_PATH        base SQLite : analyses conservées au redémarrage
+    NETCROSS_HISTORY_DB     historique des runs (--history-db) : GET /history, history=true
     NETCROSS_CVE_DB         base CVE complète (équiv. --cve-db) ; sans elle,
                             base minimale embarquée, comme la CLI
 
@@ -1810,6 +1811,14 @@ _comparisons: dict[str, dict] = {}
 _LOSS_THRESHOLD_FORM = Form(default=2.0, gt=0, description="Seuil d'écart de pertes en points de % (défaut: 2.0)")
 _LATENCY_THRESHOLD_FORM = Form(default=5.0, gt=0, description="Seuil d'écart de latence en ms (défaut: 5.0)")
 _TRIAGE_TOP_N_FORM = Form(default=5, ge=1, le=50, description="Nombre de segments au triage (défaut: 5)")
+_HISTORY_FORM = Form(
+    default=False,
+    description="true : enregistre la comparaison dans l'historique du serveur (NETCROSS_HISTORY_DB), "
+    "équivalent de --history-db (issue #874)",
+)
+_HISTORY_LABEL_FORM = Form(
+    default=None, description="Étiquette du run dans l'historique (équivalent de --history-label)"
+)
 
 
 _BASELINE_FILES = File(default=..., description="Fichiers pcap baseline")
@@ -1839,6 +1848,8 @@ async def create_comparison(
     loss_threshold_pp: float = _LOSS_THRESHOLD_FORM,
     latency_threshold_ms: float = _LATENCY_THRESHOLD_FORM,
     triage_top_n: int = _TRIAGE_TOP_N_FORM,
+    history: bool = _HISTORY_FORM,
+    history_label: str | None = _HISTORY_LABEL_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -1852,6 +1863,10 @@ async def create_comparison(
     import uuid
 
     options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    if history:
+        _history_routes.require_history_db()
+    elif history_label:
+        raise HTTPException(status_code=400, detail="history_label necessite history=true (comme --history-db)")
     if not baseline_files or not current_files:
         raise HTTPException(status_code=400, detail="baseline_files et current_files sont requis")
     baseline_label_list = _parse_labels(baseline_labels, len(baseline_files))
@@ -1912,6 +1927,12 @@ async def create_comparison(
                 "baseline_summary": baseline_summary,
                 "current_summary": current_summary,
             }
+            if history:
+                result.update(
+                    _history_routes.record_comparison(
+                        findings, baseline_report, current_report, history_label or None, redact
+                    )
+                )
             _comparisons[comparison_id] = {"status": COMPLETED, "result": result, "error": None}
         except Exception as exc:
             logger.exception("comparaison {} : erreur", comparison_id)
@@ -2014,3 +2035,9 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# Issue #874 : historique des runs (base fixée par NETCROSS_HISTORY_DB)
+from netcross_api import history_routes as _history_routes  # noqa: E402
+
+_history_routes.register(app, _verify_api_key)
