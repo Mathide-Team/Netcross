@@ -2014,3 +2014,9 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# Issues #868, #869, #870, #886, #887 : manipulation de captures
+from netcross_api import tools_routes as _tools_routes  # noqa: E402
+
+_tools_routes.register(app, _verify_api_key, _save_upload, lambda: _MAX_FILES)
