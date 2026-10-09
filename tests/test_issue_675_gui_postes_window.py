@@ -164,4 +164,4 @@ def test_thread_d_analyse_transmet_la_comparaison(window, monkeypatch):
     while ctx.iteration(False):
         pass
     assert vus == [({"OK": {"1.1.1.1"}, "KO": {"2.2.2.2"}}, "OK")]
-    assert recus[0][-1] is comp
+    assert recus[0][10] is comp  # apres search_index, avant expertise (#673)

@@ -397,37 +397,11 @@ class AnalysisError(Exception):
 
 
 def _collect_tshark_stats_api(captures: list[tuple[str, str]]) -> dict:
-    """Issue #673 : équiv. ``--tshark-stats`` — collecte les statistiques
-    tshark natives par fichier (conversations, endpoints, hiérarchie
-    de protocoles, IO stat). Tshark absent est une erreur par capture."""
-    import subprocess
-    from dataclasses import asdict
+    """Issue #673 : équiv. ``--tshark-stats`` — même document que la CLI et
+    la GUI (``collect_capture_stats``) ; tshark absent : erreur par capture."""
+    from netcross_core.tshark_stats import collect_capture_stats
 
-    from netcross_core.tshark_stats import (
-        TsharkUnavailableError,
-        collect_conversations,
-        collect_endpoints,
-        collect_io_stat,
-        collect_protocol_hierarchy,
-    )
-
-    result: dict = {"version": 1, "captures": []}
-    for label, path in captures:
-        entry: dict = {"label": label, "path": path}
-        try:
-            entry["conversations"] = {
-                proto: [asdict(c) for c in collect_conversations(path, proto)] for proto in ("tcp", "udp")
-            }
-            entry["endpoints"] = {
-                proto: [asdict(e) for e in collect_endpoints(path, proto)] for proto in ("tcp", "udp")
-            }
-            entry["protocol_hierarchy"] = [asdict(p) for p in collect_protocol_hierarchy(path)]
-            entry["io_stat"] = asdict(collect_io_stat(path))
-        except (TsharkUnavailableError, subprocess.SubprocessError, OSError) as exc:
-            entry = {"label": label, "path": path, "error": str(exc)}
-            logger.warning("tshark-stats {} ({}) : {}", label, path, exc)
-        result["captures"].append(entry)
-    return result
+    return collect_capture_stats(captures)
 
 
 def _tls_quic_findings(

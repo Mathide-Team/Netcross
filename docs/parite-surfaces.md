@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 25 cases à cocher, 18 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 30 cases à cocher, 19 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 21 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -65,11 +65,11 @@ actif, non réglable.
 | Rapport de sécurité (détecteurs, signatures d'exploit, CVE) | oui (« Rapport de securite ») | `--security-report` | auto (toujours exécuté, sauf avec `redact`), `GET /analyses/{analysis_id}/security` |
 | Base CVE complète (NVD) | non (base embarquée seule) | `--cve-db` | non (base embarquée seule) |
 | Destinations et hôtes connus (sécurité) | non | `--known-destinations`, `--known-hosts` | `known_destinations`, `known_hosts` (fichiers joints, issue #672) |
-| Moteur de règles | non | `--rule-engine` | non |
-| Section expertise détaillée | non | `--expert-section` | non |
-| Qualité média (VoIP/vidéo) | non | `--media-quality` | non |
-| Statistiques tshark natives | non | `--tshark-stats` | non |
-| Chronologie des flux | non | `--flow-timeline`, `--flow-timeline-window` | non |
+| Moteur de règles | oui (case « Moteur de regles », section du rapport ; issue #673) | `--rule-engine` | `rule_engine` (clé `rule_engine` de `/report`, issue #673) |
+| Section expertise détaillée | oui (case « Section expertise », section du rapport ; issue #673) | `--expert-section` | `expert_section` (issue #673) |
+| Qualité média (VoIP/vidéo) | oui (case « Qualite media », section du rapport, analyse de fichiers ; issue #673) | `--media-quality` | `media_quality` : renvoie seulement vers `POST /analyses/{analysis_id}/extract` (issue #673) |
+| Statistiques tshark natives | oui (case « Statistiques tshark », export JSON du panneau « Expertise (exports JSON) », même document ; issue #673) | `--tshark-stats` | `tshark_stats` (clé `tshark_stats` de `/report`, issue #673) |
+| Chronologie des flux | oui (case « Chronologie des flux » et « Fenetre (s) », export JSON du panneau « Expertise (exports JSON) », même document ; issue #673) | `--flow-timeline`, `--flow-timeline-window` | `flow_timeline`, `flow_timeline_window` (clé `flow_timelines` de `/report`, issue #673) |
 | Recherche forensic | oui (case « Index de recherche forensic », panneau « Recherche forensic » de la page Résultats : mêmes critères, export JSON identique ; issue #675) | `--forensic-search`, `--search-text`, `--search-address`, `--search-point`, `--search-protocol`, `--search-port`, `--search-field`, `--search-value` | `POST /analyses/{analysis_id}/search` (issue #675), `body` |
 | Extraction des contenus | oui (panneau « Contenus (extraction) » de la page Résultats : audio, vidéo, documents, dossier vide, même manifeste et même rappel d'usage ; après une analyse de fichiers non anonymisée, issue #675) | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
 | Comparaison de postes | oui (champs « Postes a comparer » et « Reference » de la configuration, section du rapport, panneau « Comparaison de postes » de la page Résultats avec export CSV ; issue #675) | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
@@ -221,6 +221,11 @@ son équivalent CLI ou API.
 | Diagnostic QUIC/HTTP3 | Configuration (2 cases : analyse et comparaison) | `--quic` |
 | Rapport de securite | Configuration | `--security-report` |
 | Index de recherche forensic (--forensic-search) | Configuration | `--forensic-search` |
+| Moteur de regles (--rule-engine) | Configuration (analyse simple) | `--rule-engine` |
+| Section expertise (--expert-section) | Configuration (analyse simple) | `--expert-section` |
+| Qualite media (--media-quality) | Configuration (analyse de fichiers) | `--media-quality` |
+| Statistiques tshark (--tshark-stats) | Configuration (analyse de fichiers) | `--tshark-stats` |
+| Chronologie des flux (--flow-timeline) | Configuration (analyse simple) | `--flow-timeline` |
 | Audio (voix RTP) | Résultats (contenus) | `--extract-kinds audio` |
 | Video (RTP) | Résultats (contenus) | `--extract-kinds video` |
 | Documents (HTTP, SMB, courriel, TFTP, FTP) | Résultats (contenus) | `--extract-kinds documents` |
