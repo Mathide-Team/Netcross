@@ -183,7 +183,8 @@ def test_le_thread_json_passe_les_objets_enrichis():
 
 def test_le_thread_pdf_passe_les_objets_enrichis():
     source = APP_SOURCE.read_text()
-    assert "session_objects=self._session_objects()" in source
+    assert "session_objects = self._session_objects()" in source
+    assert "session_objects=session_objects," in source
 
 
 def test_lanalyse_calcule_les_signaux_tshark_avant_de_liberer_les_paquets():
