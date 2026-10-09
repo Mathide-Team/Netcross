@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-174 modules · 259 classes · 601 fonctions publiques de module.
+175 modules · 259 classes · 602 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -40,8 +40,8 @@ flowchart TD
     netcross_gtk4 -->|"86 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
-    netcross_api -->|"22 imports"| netcross_core
-    netcross_api -->|"1 import"| pcap_parser
+    netcross_api -->|"26 imports"| netcross_core
+    netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
@@ -469,6 +469,7 @@ classDiagram
 | `netcross_core.lua_doc` | banque SQLite locale de l'API Lua Wireshark (issue #387, rattachee a #331). |
 | `netcross_core.models` | structures de donnees partagees : un paquet normalise (Pkt) et le resultat d'analyse consolide (Report). |
 | `netcross_core.naming` | table locale de correspondance adresse/MAC -> nom logique, type, contexte (Job 18 / issue #16-bis, section 6.15 de FEATURES.md). |
+| `netcross_core.packet_limits` | ``--max-packets`` et ``--sample`` (issue #283), partages par la CLI et la GUI (issue #672). |
 | `netcross_core.parsing` | adaptateur entre pcap_parser (decodage via tshark -T ek) et le modele Pkt de netcross_core. |
 | `netcross_core.quic_diagnostics` | extraction du SNI des paquets QUIC Initial (RFC 9000/9001), pour voir le trafic HTTP/3 moderne (Chrome, Teams, Meet, WhatsApp...) que le reste de l'outil ne voit aujourd'hui qu'en UDP brut. |
 | `netcross_core.redact` | anonymisation des adresses (IP/MAC) d'une liste de paquets deja chargee, en vue d'un partage externe (ticket support vendeur, rapport transmis a un tiers) sans exposer l'adressage reel du reseau du… |
@@ -1567,6 +1568,12 @@ classDiagram
         +from_list(items)$ NameTable
         +load(path)$ NameTable
         +save(path) None
+    }
+
+    %% ===== netcross_core.packet_limits =====
+    class mod_netcross_core_packet_limits["netcross_core.packet_limits"] {
+        <<module>>
+        +apply_packet_limits(all_packets, max_packets, sample_n)
     }
 
     %% ===== netcross_core.parsing =====
@@ -3774,6 +3781,7 @@ classDiagram
         +bool test_net_external
         +frozenset~str~? known_destinations
         +frozenset~str~? known_hosts
+        +int? parallel_workers
         +str? names_path
         +bool split_interfaces
         +bool rule_engine
@@ -3795,9 +3803,9 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport

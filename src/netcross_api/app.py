@@ -18,6 +18,8 @@ Déploiement (#356), par variables d'environnement lues au démarrage :
     NETCROSS_API_MAX_FILES  nombre maximal de fichiers par requête (défaut 16)
     NETCROSS_API_WORKERS    analyses simultanées en tâche de fond (défaut 2)
     NETCROSS_DB_PATH        base SQLite : analyses conservées au redémarrage
+    NETCROSS_CVE_DB         base CVE complète (équiv. --cve-db) ; sans elle,
+                            base minimale embarquée, comme la CLI
 
 Le service dépend de netcross_core (analyse). FastAPI/uvicorn sont en
 dépendance optionnelle (extra ``api``).
@@ -91,6 +93,10 @@ _MAX_PACKETS_FORM = Form(
 _SAMPLE_FORM = Form(
     default=None,
     description="Échantillonnage 1/N (ex: 1/50) — équivalent de --sample",
+)
+_PARALLEL_WORKERS_FORM = Form(
+    default=None,
+    description="Lecture parallèle avec N processus tshark (équivalent de --parallel --parallel-workers N)",
 )
 _TEST_NET_EXTERNAL_FORM = Form(
     default=False,
@@ -175,6 +181,7 @@ _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 _MAX_UPLOAD_BYTES = int(os.environ.get("NETCROSS_MAX_UPLOAD_MB", "100")) * 1024 * 1024
 _MAX_FILES = int(os.environ.get("NETCROSS_API_MAX_FILES", "16"))
 _WORKERS = int(os.environ.get("NETCROSS_API_WORKERS", "2"))
+_MAX_PARALLEL_WORKERS = 64
 _CHUNK_BYTES = 1024 * 1024
 # Marge multipart (en-têtes de parties, champs labels/points_order) tolérée
 # au-delà de la somme des fichiers dans le contrôle Content-Length.
@@ -288,6 +295,7 @@ class ApiAnalysisOptions:
     test_net_external: bool = False
     known_destinations: frozenset[str] | None = None
     known_hosts: frozenset[str] | None = None
+    parallel_workers: int | None = None
     names_path: str | None = None
     # Issue #671 : split_interfaces (--split-interfaces)
     split_interfaces: bool = False
@@ -319,6 +327,7 @@ def _options(
     known_destinations: frozenset[str] | None = None,
     known_hosts: frozenset[str] | None = None,
     names_path: str | None = None,
+    parallel_workers: int | None = None,
     split_interfaces: bool = False,
     rule_engine: bool = False,
     expert_section: bool = False,
@@ -361,6 +370,8 @@ def _options(
             raise HTTPException(status_code=400, detail="sample : N doit etre > 0")
     if max_packets is not None and max_packets < 1:
         raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
+    if parallel_workers is not None and not 1 <= parallel_workers <= _MAX_PARALLEL_WORKERS:
+        raise HTTPException(status_code=400, detail=f"parallel_workers doit etre entre 1 et {_MAX_PARALLEL_WORKERS}")
     options = ApiAnalysisOptions(
         nat_tolerant,
         nat_window_ms,
@@ -373,6 +384,7 @@ def _options(
         known_destinations=known_destinations,
         known_hosts=known_hosts,
         names_path=names_path,
+        parallel_workers=parallel_workers,
         split_interfaces=split_interfaces,
         rule_engine=rule_engine,
         expert_section=expert_section,
@@ -435,6 +447,55 @@ def _tls_quic_findings(
     return tls_findings, quic_findings
 
 
+def _read_captures(captures: list[tuple[str, str]], parallel_workers: int | None) -> list:
+    """Lit les captures, une par une ou en parallèle (``parallel_workers``,
+    issue #672) ; mêmes erreurs dans les deux cas."""
+    if parallel_workers:
+        from pcap_parser.capture import parse_captures_parallel
+
+        all_packets, stats = parse_captures_parallel(captures, max_workers=parallel_workers)
+        for entry in stats:
+            if entry["error"]:
+                logger.warning("parsing de la capture {} impossible : {}", entry["label"], entry["error"])
+                raise AnalysisError(f"Erreur de parsing pour {entry['label']}: {entry['error']}")
+            if not entry["count"]:
+                raise AnalysisError(f"Aucun paquet trouvé dans la capture {entry['label']}")
+        return list(all_packets)
+    packets: list = []
+    for label, path in captures:
+        try:
+            pkts = parse_capture(label, path)
+        except Exception as exc:
+            logger.warning("parsing de la capture {} impossible : {}", label, exc)
+            raise AnalysisError(f"Erreur de parsing pour {label}: {exc}") from exc
+        if not pkts:
+            logger.debug("_read_captures: si not pkts -> levée AnalysisError")
+            raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
+        packets.extend(pkts)
+    return packets
+
+
+def _open_cve_db():
+    """Base CVE du rapport de sécurité, comme ``--security-report`` : base
+    complète ``NETCROSS_CVE_DB`` (équiv. ``--cve-db``, jamais créée vide),
+    sinon base minimale embarquée ; None si celle-ci est illisible."""
+    path = os.environ.get("NETCROSS_CVE_DB")
+    if path:
+        if not os.path.isfile(path):
+            raise AnalysisError(f"base CVE introuvable : {path} (NETCROSS_CVE_DB)")
+        from netcross_core.security import connect_cve_db
+
+        return connect_cve_db(path)
+    from netcross_core.security.cve_seed import open_seed_db
+
+    try:
+        conn, _seed = open_seed_db()
+    except (OSError, ValueError) as exc:
+        logger.warning("base CVE embarquée illisible, corrélation CVE désactivée : {}", exc)
+        return None
+    return conn
+
+
 def _analyse_captures(
     captures: list[tuple[str, str]],
     order_list: list[str] | None,
@@ -448,24 +509,13 @@ def _analyse_captures(
     mémoire pour les exports texte/PDF/CSV de l'issue #670.
     Exécuté hors de la boucle asyncio."""
     options = options or ApiAnalysisOptions()
-    all_packets = []
-    for label, path in captures:
-        try:
-            pkts = parse_capture(label, path)
-        except Exception as exc:
-            logger.warning("parsing de la capture {} impossible : {}", label, exc)
-            raise AnalysisError(f"Erreur de parsing pour {label}: {exc}") from exc
-        if not pkts:
-            logger.debug("_analyse_captures: si not pkts -> levée AnalysisError")
-            raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
-        all_packets.extend(pkts)
+    all_packets = _read_captures(captures, options.parallel_workers)
     try:
-        # Issue #672 : --max-packets/--sample, appliqués AVANT la corrélation
-        # (même ordre que la CLI, voir _apply_packet_limits).
-        if options.sample_n and options.sample_n > 1:
-            all_packets = all_packets[:: options.sample_n]
-        if options.max_packets is not None and len(all_packets) > options.max_packets:
-            all_packets = all_packets[: options.max_packets]
+        # Issue #672 : --max-packets/--sample, appliqués AVANT la corrélation,
+        # avec la note de troncature de la CLI (jamais silencieuse, #283).
+        from netcross_core.packet_limits import apply_packet_limits
+
+        all_packets, truncation_note = apply_packet_limits(all_packets, options.max_packets, options.sample_n)
         if options.redact:
             from netcross_core.redact import redact_packets
 
@@ -491,6 +541,9 @@ def _analyse_captures(
             exclude_duplicates=options.exclude_duplicates,
             duplicate_counts=duplicate_counts,
         )
+        if truncation_note:
+            report.truncated = True
+            report.truncation_note = truncation_note
         security_report = None
         if not options.redact:
             # CVE-2 : scanner les exploits sur chaque fichier. Pas avec redact :
@@ -499,14 +552,22 @@ def _analyse_captures(
             detections = []
             for label, path in captures:
                 detections.extend(scan_capture_exploits(label, path))
-            apply_security_findings(
-                report,
-                all_packets,
-                detections=detections,
-                known_destinations=options.known_destinations,
-                known_hosts=options.known_hosts,
-                treat_test_net_as_external=options.test_net_external,
-            )
+            cve_conn = _open_cve_db()
+            try:
+                apply_security_findings(
+                    report,
+                    all_packets,
+                    detections=detections,
+                    cve_conn=cve_conn,
+                    known_destinations=options.known_destinations,
+                    known_hosts=options.known_hosts,
+                    treat_test_net_as_external=options.test_net_external,
+                )
+            finally:
+                if cve_conn is not None:
+                    from netcross_core.security.cve_db import close_db
+
+                    close_db(cve_conn)
             security_report = build_security_report(report)
         tls_findings, quic_findings = _tls_quic_findings(captures, list(report.points), options)
         # Issue #330 : même document que `netcross --json-report
@@ -759,6 +820,7 @@ async def upload_capture(
     max_packets: int | None = _MAX_PACKETS_FORM,
     sample: str | None = _SAMPLE_FORM,
     test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
+    parallel_workers: int | None = _PARALLEL_WORKERS_FORM,
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
@@ -812,6 +874,7 @@ async def upload_capture(
         max_packets=max_packets,
         sample=sample,
         test_net_external=test_net_external,
+        parallel_workers=parallel_workers,
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
@@ -967,6 +1030,7 @@ async def upload_multi_capture(
     max_packets: int | None = _MAX_PACKETS_FORM,
     sample: str | None = _SAMPLE_FORM,
     test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
+    parallel_workers: int | None = _PARALLEL_WORKERS_FORM,
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
@@ -1017,6 +1081,7 @@ async def upload_multi_capture(
         max_packets=max_packets,
         sample=sample,
         test_net_external=test_net_external,
+        parallel_workers=parallel_workers,
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
