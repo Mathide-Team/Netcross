@@ -50,6 +50,11 @@ Options principales :
 | Postes à comparer, Référence | Compare des postes entre eux dans la même analyse : un groupe par poste, `NOM=IP1[,IP2...]`, séparés par « ; » (au moins deux), comparé au poste de référence (le premier par défaut). Résultat dans le rapport, synthèse et export CSV sur la page Résultats. Indisponible avec l'anonymisation | `--client-group`, `--client-reference`, `--client-diff-csv` |
 | Fenêtre temporelle (ms) | Précision des mesures de débit (réduire pour les micro-rafales) | `--bucket-ms` |
 | Séparer les interfaces d'un pcapng | Un fichier capturé sur plusieurs interfaces devient un point par interface, nommé `NOM:INTERFACE` | `--split-interfaces` |
+| Moteur de règles | Évalue chaque règle du catalogue déclaratif ; section « MOTEUR DE REGLES DECLARATIF » du rapport | `--rule-engine` |
+| Section expertise | Objets de session détaillés (flux, segments, diagnostics, preuves) à la fin du rapport | `--expert-section` |
+| Qualité média | Relit les fichiers : voix et vidéo RTP, documents transportés, sans rien écrire (l'extraction vers un dossier est sur la page Résultats) | `--media-quality` |
+| Statistiques tshark | `tshark -z` sur chaque fichier (conversations, endpoints, hiérarchie de protocoles, IO), export JSON sur la page Résultats | `--tshark-stats` |
+| Chronologie des flux, Fenêtre (s) | Chronologie de chaque conversation, point par point, par fenêtres de N secondes ; export JSON sur la page Résultats | `--flow-timeline`, `--flow-timeline-window` |
 
 Réglages fins, à ne modifier qu'en connaissance de cause :
 
@@ -134,7 +139,11 @@ Sous le rapport, plusieurs sections se déplient :
   SIP, nom DNS, méthode, type de contenu, message), seuls ou combinés. Au
   moins un critère est demandé ; les 500 premiers résultats sont affichés,
   « Exporter JSON... » écrit tous les résultats avec la requête, dans le
-  même format que `--forensic-search`. Disponible après une analyse de
+  même format que `--forensic-search`. Cliquer un résultat affiche sa trame
+  et le filtre Wireshark correspondant (`frame.number == N`) ; « Annoter la
+  trame » pré-remplit le panneau « Annotations / signets », « Ouvrir dans
+  Wireshark » ouvre la capture du point positionnée sur la trame
+  (`wireshark -r FICHIER -g N`, si Wireshark est installé). Disponible après une analyse de
   fichiers ou une capture en direct, pas après une comparaison.
 - **Contenus (extraction)** : relit les fichiers de l'analyse pour en
   extraire la voix et la vidéo transportées en RTP et les documents
@@ -148,6 +157,17 @@ Sous le rapport, plusieurs sections se déplient :
 - **Comparaison de postes** : si des postes ont été renseignés, la
   référence, les postes comparés et le nombre d'écarts, avec « Exporter
   CSV » (même fichier que `--client-diff-csv`).
+- **NetFlow v5 (résumé d'exports)** : indépendant de l'analyse en cours.
+  « Ajouter des exports... » (datagrammes NetFlow v5 concaténés, un fichier
+  par exportateur, étiqueté par le nom du fichier), « Top », puis
+  « Résumer » : volumes, protocoles, principaux émetteurs, conversations et
+  ports, comme `--netflow` ; « Exporter JSON... » écrit le même fichier que
+  `--netflow ... --json-report`. Les flux agrégés ne se corrèlent pas entre
+  points de capture : ils ne sont pas mêlés à l'analyse.
+- **Expertise (exports JSON)** : si « Chronologie des flux » ou
+  « Statistiques tshark » étaient cochées, leur résumé et un bouton
+  d'export chacun, même fichier que `--flow-timeline` et `--tshark-stats`.
+  Les trois autres sections d'expertise sont dans le rapport texte.
 - **Sécurité** : le rapport de sécurité, si la case correspondante était
   cochée, avec export HTML et JSON.
 
@@ -164,6 +184,6 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
 ## Ce que l'interface ne fait pas
 
 Certaines fonctions restent réservées à la ligne de commande : fusion,
-découpage, conversion et rejeu de captures, notifications, plugins,
+découpage, conversion et rejeu de captures, plugins,
 module IA, historique des analyses, base CVE complète (`--cve-db`),
 export SIEM. Voir `--help` et les pages de la section Analyses.

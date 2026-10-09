@@ -32,6 +32,13 @@ from netcross_core.parsing import parse_capture
 from netcross_core.report_text import print_report
 from netcross_core.wireshark_expert import build_wireshark_expert_events
 from netcross_gtk4 import capture_list
+from netcross_gtk4.expertise_view import (
+    ExpertiseExports,
+    ExpertiseSettings,
+    timeline_summary,
+    tshark_stats_summary,
+    validate_settings,
+)
 from netcross_gtk4.notifications import NotifySettings, send_notifications
 from netcross_report.security_report import build_security_report, print_security_report
 
@@ -73,6 +80,9 @@ class AnalysisOptions:
     # Issue #676 : notifications (webhook, Slack, courriel) sur le rapport de
     # securite, comme --notify-on de la CLI. None ou sans seuil : aucune.
     notify: NotifySettings | None = None
+    # Issue #673 : sections d'expertise (--rule-engine, --expert-section,
+    # --media-quality, --tshark-stats, --flow-timeline)
+    expertise: ExpertiseSettings | None = None
 
 
 @dataclass
@@ -95,6 +105,8 @@ class AnalysisResult:
     search_index: Any = None
     # Issue #675 : ClientComparisonResult, None sans groupes de postes
     client_comparison: Any = None
+    # Issue #673 : chronologie des flux et statistiques tshark (JSON)
+    expertise: ExpertiseExports | None = None
 
 
 def load_packets(
@@ -355,6 +367,11 @@ def _run_pipeline(
         with contextlib.redirect_stdout(buf):
             print_client_comparison(client_comparison)
 
+    # 9 ter. Sections d'expertise (issue #673) -- memes fonctions que la CLI
+    expertise_exports = None
+    if options.expertise is not None and options.expertise.active:
+        expertise_exports = _run_expertise(options.expertise, report, findings, flows, all_packets, captures, buf, _log)
+
     # 10. TLS
     tls_findings = None
     if options.tls:
@@ -434,7 +451,60 @@ def _run_pipeline(
         search_index=search_index,
         client_comparison=client_comparison,
         security_report=security_report,
+        expertise=expertise_exports,
     )
+
+
+def _run_expertise(settings, report, findings, flows, all_packets, captures, buf, log):
+    """Sections d'expertise de l'issue #673, dans l'ordre de la CLI. Renvoie
+    les documents JSON a exporter ; les constats calcules pour la section
+    expertise sans triage restent locaux (le resultat garde ceux du triage)."""
+    validate_settings(settings)
+    if settings.rule_engine:
+        log("Moteur de regles...")
+        from netcross_report import print_rule_engine
+
+        with contextlib.redirect_stdout(buf):
+            print_rule_engine(report)
+    if settings.media_quality:
+        log("Qualite media (relecture des captures)...")
+        from netcross_core.extract.contents import format_extraction, run_extraction
+
+        with contextlib.redirect_stdout(buf):
+            print("\n" + "=" * 70)
+            print("CONTENUS AUDIO/VIDEO/DOCUMENTS (relit les memes fichiers)")
+            print("=" * 70)
+            for line in format_extraction(run_extraction(captures, out_dir=None, kinds=())):
+                print(line)
+    if settings.expert_section:
+        log("Section expertise...")
+        from netcross_report import build_findings
+        from netcross_report.session_objects import build_session_objects, print_session_objects
+
+        if findings is None:
+            findings = build_findings(report)
+        session_objects = build_session_objects(report, findings, flows, all_packets)
+        with contextlib.redirect_stdout(buf):
+            print()
+            print_session_objects(session_objects)
+    flow_timelines = None
+    if settings.flow_timeline:
+        log("Chronologie des flux...")
+        from netcross_core.flow_timeline import build_flow_timelines
+
+        flow_timelines = build_flow_timelines(all_packets, window_s=settings.flow_timeline_window)
+        log(f"  -> {timeline_summary(flow_timelines)}")
+    tshark_stats = None
+    if settings.tshark_stats:
+        log("Statistiques tshark (relecture des captures)...")
+        from netcross_core.tshark_stats import collect_capture_stats
+
+        tshark_stats = collect_capture_stats(
+            captures, on_error=lambda label, path, exc: log(f"  -> {label} ({path}) : {exc}")
+        )
+        log(f"  -> {tshark_stats_summary(tshark_stats)}")
+    logger.debug("_run_expertise: fin")
+    return ExpertiseExports(flow_timelines=flow_timelines, tshark_stats=tshark_stats)
 
 
 def run_security_analysis(report, all_packets, captures, log: Callable[[str], None]):

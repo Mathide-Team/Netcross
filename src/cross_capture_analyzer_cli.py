@@ -334,37 +334,15 @@ def _write_json_output(path, payload, label) -> None:
 
 
 def _collect_tshark_stats(captures) -> dict:
-    """Statistiques tshark -z par fichier (issue #361). Une capture en echec
-    porte une cle `error` explicite (et un message stderr) au lieu de faire
-    perdre les autres ; tshark absent est une erreur par capture elle aussi."""
-    import subprocess
-    from dataclasses import asdict
+    """Statistiques tshark -z par fichier (issue #361) : document commun a
+    l'API et a la GUI (``collect_capture_stats``, issue #673) ; une capture
+    en echec porte une cle `error` et un message stderr."""
+    from netcross_core.tshark_stats import collect_capture_stats
 
-    from netcross_core.tshark_stats import (
-        TsharkUnavailableError,
-        collect_conversations,
-        collect_endpoints,
-        collect_io_stat,
-        collect_protocol_hierarchy,
-    )
+    def _report(label, path, exc):
+        print(f"--tshark-stats {label} ({path}) : {exc}", file=sys.stderr)
 
-    result: dict = {"version": 1, "captures": []}
-    for label, path in captures:
-        entry: dict = {"label": label, "path": path}
-        try:
-            entry["conversations"] = {
-                proto: [asdict(c) for c in collect_conversations(path, proto)] for proto in ("tcp", "udp")
-            }
-            entry["endpoints"] = {
-                proto: [asdict(e) for e in collect_endpoints(path, proto)] for proto in ("tcp", "udp")
-            }
-            entry["protocol_hierarchy"] = [asdict(p) for p in collect_protocol_hierarchy(path)]
-            entry["io_stat"] = asdict(collect_io_stat(path))
-        except (TsharkUnavailableError, subprocess.SubprocessError, OSError) as exc:
-            entry = {"label": label, "path": path, "error": str(exc)}
-            logger.warning("--tshark-stats {} ({}) : {}", label, path, exc)
-            print(f"--tshark-stats {label} ({path}) : {exc}", file=sys.stderr)
-        result["captures"].append(entry)
+    result = collect_capture_stats(captures, on_error=_report)
     logger.debug("_collect_tshark_stats: retour result={}", summarize(result, "result"))
     return result
 
@@ -3195,21 +3173,9 @@ def main():
 
     rule_engine_findings = None
     if args.rule_engine:
-        from netcross_report import available_rule_ids, evaluate
+        from netcross_report import print_rule_engine
 
-        rule_engine_findings = {}
-        total = 0
-        print("\n" + "=" * 70)
-        print("MOTEUR DE REGLES DECLARATIF (rule_engine)")
-        print("=" * 70)
-        for rule_id in available_rule_ids():
-            rule_findings = evaluate(rule_id, r)
-            rule_engine_findings[rule_id] = rule_findings
-            if rule_findings:
-                total += len(rule_findings)
-                for f in rule_findings:
-                    print(f"  [{f.severity}] {f.category} / {f.segment} -- {f.message}")
-        print(f"\n{len(available_rule_ids())} regles evaluees, {total} Finding produits.")
+        rule_engine_findings = print_rule_engine(r)
         if not args.json_report:
             print("(utilisez --json-report pour obtenir la sortie JSON structuree)")
 

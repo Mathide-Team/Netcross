@@ -87,10 +87,17 @@ from netcross_gtk4.dashboard_context import (  # noqa: E402
     DashboardSelection,
     build_dashboard_snapshot,
 )
+from netcross_gtk4.expertise_panel import ExpertisePanel  # noqa: E402
+from netcross_gtk4.expertise_view import (  # noqa: E402
+    FLOW_TIMELINE_WINDOW_MAX,
+    FLOW_TIMELINE_WINDOW_MIN,
+    ExpertiseSettings,
+)
 from netcross_gtk4.extraction_panel import ExtractionPanel  # noqa: E402
 from netcross_gtk4.forensic_panel import ForensicSearchPanel  # noqa: E402
 from netcross_gtk4.live_capture_points import duplicate_labels, expand_live_points, invalid_sources  # noqa: E402
 from netcross_gtk4.live_report_session import LiveReportError, start_live_report  # noqa: E402
+from netcross_gtk4.netflow_panel import NetflowPanel  # noqa: E402
 from netcross_gtk4.notifications import (  # noqa: E402
     THRESHOLD_CHOICES,
     NotifySettings,
@@ -1090,6 +1097,49 @@ class MainWindow(Gtk.ApplicationWindow):
         self.client_reference_entry = Gtk.Entry(placeholder_text="(premier poste)")
         clients_box.append(self.client_reference_entry)
         self.single_options_box.append(clients_box)
+
+        # Issue #673 : sections d'expertise, equivalents des options CLI
+        expertise_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=8)
+        self.rule_engine_check = Gtk.CheckButton(label="Moteur de regles (--rule-engine)")
+        self.rule_engine_check.set_tooltip_text("Evalue chaque regle du catalogue declaratif ; section du rapport.")
+        self.expert_section_check = Gtk.CheckButton(label="Section expertise (--expert-section)")
+        self.expert_section_check.set_tooltip_text(
+            "Objets de session detailles (flux, segments, diagnostics, preuves) ; section du rapport."
+        )
+        self.media_quality_check = Gtk.CheckButton(label="Qualite media (--media-quality)")
+        self.media_quality_check.set_tooltip_text(
+            "Relit les fichiers : voix et video RTP, documents ; analyse sans rien ecrire (l'extraction "
+            "vers un dossier est sur la page Resultats)."
+        )
+        self.tshark_stats_check = Gtk.CheckButton(label="Statistiques tshark (--tshark-stats)")
+        self.tshark_stats_check.set_tooltip_text(
+            "tshark -z sur chaque fichier : conversations, endpoints, hierarchie de protocoles, IO ; "
+            "export JSON sur la page Resultats."
+        )
+        self.flow_timeline_check = Gtk.CheckButton(label="Chronologie des flux (--flow-timeline)")
+        self.flow_timeline_check.set_tooltip_text(
+            "Chronologie de chaque conversation, point par point ; export JSON sur la page Resultats."
+        )
+        window_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        window_box.append(Gtk.Label(label="Fenetre (s)"))
+        self.flow_timeline_window_spin = Gtk.SpinButton.new_with_range(
+            FLOW_TIMELINE_WINDOW_MIN, FLOW_TIMELINE_WINDOW_MAX, 0.1
+        )
+        self.flow_timeline_window_spin.set_value(1.0)
+        self.flow_timeline_window_spin.set_tooltip_text(
+            "Largeur des fenetres de la chronologie (--flow-timeline-window)."
+        )
+        window_box.append(self.flow_timeline_window_spin)
+        for widget in (
+            self.rule_engine_check,
+            self.expert_section_check,
+            self.media_quality_check,
+            self.tshark_stats_check,
+            self.flow_timeline_check,
+            window_box,
+        ):
+            expertise_box.append(widget)
+        self.single_options_box.append(expertise_box)
         self._on_notify_threshold_changed(None)
         page.append(self.single_options_box)
 
@@ -1632,7 +1682,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # Issue #357 : section securite dans la page resultats
         # Issue #675 : recherche forensic (--forensic-search, --search-*)
         self.forensic_expander = Gtk.Expander(label="Recherche forensic")
-        self.forensic_panel = ForensicSearchPanel()
+        self.forensic_panel = ForensicSearchPanel(on_annotate=self._annotate_from_search)
         self.forensic_expander.set_child(self.forensic_panel)
         page.append(self.forensic_expander)
 
@@ -1647,6 +1697,18 @@ class MainWindow(Gtk.ApplicationWindow):
         self.client_compare_panel = ClientComparisonPanel()
         self.client_compare_expander.set_child(self.client_compare_panel)
         page.append(self.client_compare_expander)
+
+        # Issue #673 : chronologie des flux et statistiques tshark (JSON)
+        self.expertise_expander = Gtk.Expander(label="Expertise (exports JSON)")
+        self.expertise_panel = ExpertisePanel()
+        self.expertise_expander.set_child(self.expertise_panel)
+        page.append(self.expertise_expander)
+
+        # Issue #675 : resume NetFlow v5 (--netflow, --netflow-top), autonome
+        self.netflow_expander = Gtk.Expander(label="NetFlow v5 (resume d'exports)")
+        self.netflow_panel = NetflowPanel()
+        self.netflow_expander.set_child(self.netflow_panel)
+        page.append(self.netflow_expander)
 
         self.security_expander = Gtk.Expander(label="Securite")
         self.security_expander.set_sensitive(False)
@@ -1862,6 +1924,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "client_groups": client_groups or None,
                     "client_reference": client_reference,
                     "notify": notify,
+                    "expertise": self.expertise_settings(),
                 },
                 daemon=True,
             ).start()
@@ -1922,6 +1985,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self._live_nat_window_ms, self._live_idle_timeout_seconds = self._fine_settings()
         self._live_duplicate_threshold_ms = self.duplicate_threshold_spin.get_value()
         self._live_forensic_index = self.forensic_index_check.get_active()  # issue #675
+        if self.expertise_settings().active:  # issue #673 : sections relues sur les fichiers
+            self._log("Sections d'expertise : analyse de fichiers uniquement, ignorees en capture en direct.")
 
         # Issue #676 : comparaison avec un courant capture en direct
         # (--live-current) -- baseline et reglages releves ici, thread
@@ -2321,6 +2386,7 @@ class MainWindow(Gtk.ApplicationWindow):
         client_groups=None,
         client_reference=None,
         notify=None,
+        expertise=None,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -2355,6 +2421,7 @@ class MainWindow(Gtk.ApplicationWindow):
             client_groups=client_groups,
             client_reference=client_reference,
             notify=notify,
+            expertise=expertise,
         )
 
         def _on_progress(msg):
@@ -2384,6 +2451,7 @@ class MainWindow(Gtk.ApplicationWindow):
             # positionnel : GLib.idle_add ne transmet pas d'argument nomme
             result.search_index,
             result.client_comparison,
+            result.expertise,
         )
         logger.debug("MainWindow._run_analysis_thread: fin")
 
@@ -2497,9 +2565,11 @@ class MainWindow(Gtk.ApplicationWindow):
         security_report=None,
         search_index=None,
         client_comparison=None,
+        expertise=None,
     ):
+        self.expertise_panel.set_exports(expertise)  # issue #673
         # Issue #675 : nouvel index (ou None : analyse sans index, capture en direct)
-        self.forensic_panel.set_index(search_index)
+        self.forensic_panel.set_index(search_index, self._annotation_captures)
         self.client_compare_panel.set_comparison(client_comparison)
         logger.debug(
             "_on_analysis_done: mode={} flux={} findings={} tls={} quic={} tshark={} securite={}",
@@ -2555,6 +2625,24 @@ class MainWindow(Gtk.ApplicationWindow):
         logger.debug("MainWindow._on_analysis_done: retour False")
         return False
 
+    def expertise_settings(self) -> ExpertiseSettings:
+        """Cases « Expertise » de la configuration (issue #673)."""
+        return ExpertiseSettings(
+            rule_engine=self.rule_engine_check.get_active(),
+            expert_section=self.expert_section_check.get_active(),
+            media_quality=self.media_quality_check.get_active(),
+            tshark_stats=self.tshark_stats_check.get_active(),
+            flow_timeline=self.flow_timeline_check.get_active(),
+            flow_timeline_window=self.flow_timeline_window_spin.get_value(),
+        )
+
+    def _annotate_from_search(self, point, frame_number) -> None:
+        """Issue #675 : « Annoter la trame » d'un resultat de recherche --
+        pre-remplit et deplie le panneau d'annotations."""
+        logger.debug("MainWindow._annotate_from_search: point={} trame={}", point, frame_number)
+        self.annotations_expander.set_expanded(True)
+        self.annotations_panel.prefill(point, frame_number)
+
     def _on_diff_done(
         self,
         findings,
@@ -2577,6 +2665,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.forensic_panel.set_index(None)  # issue #675 : pas d'index en comparaison
         self.extraction_panel.set_source(None, False)  # ni d'extraction
         self.client_compare_panel.set_comparison(None)  # ni de comparaison de postes
+        self.expertise_panel.set_exports(None)  # ni d'exports d'expertise (issue #673)
         self._appliquer_outcome(
             diff_outcome(
                 findings,
