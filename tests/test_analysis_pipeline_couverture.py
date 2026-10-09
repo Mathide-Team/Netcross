@@ -27,7 +27,9 @@ def _stat(label, path, count=0, seconds=0.0, error=None):
 
 class TestLoadPacketsParallele:
     def _patch(self, monkeypatch, stats, packets=None):
-        monkeypatch.setattr("pcap_parser.capture.parse_captures_parallel", lambda captures: (packets or [], stats))
+        monkeypatch.setattr(
+            "pcap_parser.capture.parse_captures_parallel", lambda captures, max_workers=None: (packets or [], stats)
+        )
 
     def test_progression_succes_et_echec(self, monkeypatch):
         stats = [_stat("A", "/tmp/a.pcap", count=12, seconds=0.5), _stat("B", "/tmp/b.pcap", error="illisible")]
@@ -74,7 +76,7 @@ class TestRunSecurityAnalysisBaseCveIllisible:
         monkeypatch.setattr("netcross_core.security.findings.scan_capture_exploits", lambda label, path: [])
         monkeypatch.setattr(
             "netcross_core.security.findings.apply_security_findings",
-            lambda report, pkts, detections, cve_conn: applied.update(cve_conn=cve_conn),
+            lambda report, pkts, detections, cve_conn, **_k: applied.update(cve_conn=cve_conn),
         )
         monkeypatch.setattr("netcross_core.security.cve_db.close_db", closed.append)
         monkeypatch.setattr(ap, "build_security_report", lambda report: "SECURITY_REPORT")

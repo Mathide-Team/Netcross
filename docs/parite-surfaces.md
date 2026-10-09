@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 30 cases à cocher, 19 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 31 cases à cocher, 22 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 21 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -46,13 +46,13 @@ actif, non réglable.
 | Topologie déduite automatiquement | oui (case « Deduire la topologie automatiquement ») | oui (sans `--order`) | oui (sans `points_order`) |
 | Tolérance NAT | oui (« Correlation tolérante au NAT ») | `--nat-tolerant`, `--nat-window-ms` (fenêtre : les trois surfaces, « Fenêtre NAT (ms) » dans la GUI) | `nat_tolerant`, `nat_window_ms` |
 | Doublons inter-captures | oui (« Détecter... », « Exclure... », seuil) | `--detect-duplicates`, `--exclude-duplicates`, `--duplicate-threshold-ms` | `detect_duplicates`, `exclude_duplicates`, `duplicate_threshold_ms` (#330, #841) |
-| Lecture parallèle | oui (« Lecture parallele des captures ») | `--parallel`, `--parallel-workers` (nombre : CLI seule) | `parallel_workers` (issue #672) |
+| Lecture parallèle | oui (« Lecture parallele des captures », nombre « Lecteurs paralleles » en analyse simple, issue #672) | `--parallel`, `--parallel-workers` | `parallel_workers` (issue #672) |
 | Fenêtre temporelle du débit | oui | `--bucket-ms` | `bucket_ms` (#330, #841) |
 | Cadence RTP | oui | `--rtp-clock-rate` | `rtp_clock_rate` (#330, #841) |
 | Seuil de coupure NAT/pare-feu silencieuse | oui (« Coupure silencieuse (s) », 0 = défaut 60 s) | `--idle-timeout-seconds` | `idle_timeout_seconds` (#330, #841) |
-| Limiter ou échantillonner les paquets | non | `--max-packets`, `--sample` | `max_packets`, `sample` (issue #672) |
+| Limiter ou échantillonner les paquets | oui (« Paquets max. », « Echantillonnage 1/N » en analyse simple, troncature annoncée dans le rapport ; issue #672) | `--max-packets`, `--sample` | `max_packets`, `sample` (issue #672) |
 | Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | `names` (fichier joint, issue #672) |
-| Plages TEST-NET traitées comme externes | non | `--test-net-external` | `test_net_external` (issue #672) |
+| Plages TEST-NET traitées comme externes | oui (case « Plages TEST-NET externes », avec « Rapport de securite » ; issue #672) | `--test-net-external` | `test_net_external` (issue #672) |
 | Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` (table de correspondance : CLI seule) | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) |
 
 ## Diagnostics et triage
@@ -63,8 +63,8 @@ actif, non réglable.
 | Diagnostic TLS | oui (« Diagnostic TLS ») | `--tls` | `tls` (clé `tls_findings` de `/report`) |
 | Diagnostic QUIC/HTTP3 | oui (« Diagnostic QUIC/HTTP3 ») | `--quic` | `quic` (clé `quic_findings` de `/report`) |
 | Rapport de sécurité (détecteurs, signatures d'exploit, CVE) | oui (« Rapport de securite ») | `--security-report` | auto (toujours exécuté, sauf avec `redact`), `GET /analyses/{analysis_id}/security` |
-| Base CVE complète (NVD) | non (base embarquée seule) | `--cve-db` | variable de serveur `NETCROSS_CVE_DB`, sinon base embarquée (issue #672) |
-| Destinations et hôtes connus (sécurité) | non | `--known-destinations`, `--known-hosts` | `known_destinations`, `known_hosts` (fichiers joints, issue #672) |
+| Base CVE complète (NVD) | oui (« Base CVE... », avec « Rapport de securite » ; issue #672) | `--cve-db` | variable de serveur `NETCROSS_CVE_DB`, sinon base embarquée (issue #672) |
+| Destinations et hôtes connus (sécurité) | oui (« Destinations connues... », « Hotes connus... », avec « Rapport de securite » ; issue #672) | `--known-destinations`, `--known-hosts` | `known_destinations`, `known_hosts` (fichiers joints, issue #672) |
 | Moteur de règles | oui (case « Moteur de regles », section du rapport ; issue #673) | `--rule-engine` | `rule_engine` (clé `rule_engine` de `/report`, issue #673) |
 | Section expertise détaillée | oui (case « Section expertise », section du rapport ; issue #673) | `--expert-section` | `expert_section` (issue #673) |
 | Qualité média (VoIP/vidéo) | oui (case « Qualite media », section du rapport, analyse de fichiers ; issue #673) | `--media-quality` | `media_quality` : renvoie seulement vers `POST /analyses/{analysis_id}/extract` (issue #673) |
@@ -226,6 +226,7 @@ son équivalent CLI ou API.
 | Qualite media (--media-quality) | Configuration (analyse de fichiers) | `--media-quality` |
 | Statistiques tshark (--tshark-stats) | Configuration (analyse de fichiers) | `--tshark-stats` |
 | Chronologie des flux (--flow-timeline) | Configuration (analyse simple) | `--flow-timeline` |
+| Plages TEST-NET externes (--test-net-external) | Configuration (analyse simple) | `--test-net-external` |
 | Audio (voix RTP) | Résultats (contenus) | `--extract-kinds audio` |
 | Video (RTP) | Résultats (contenus) | `--extract-kinds video` |
 | Documents (HTTP, SMB, courriel, TFTP, FTP) | Résultats (contenus) | `--extract-kinds documents` |
