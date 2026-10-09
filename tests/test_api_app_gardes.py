@@ -67,6 +67,7 @@ def _options_formulaire():
         "max_packets": None,
         "sample": None,
         "test_net_external": False,
+        "parallel_workers": None,
         "names": None,
         "known_destinations": None,
         "known_hosts": None,
