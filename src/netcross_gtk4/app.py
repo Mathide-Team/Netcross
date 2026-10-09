@@ -731,6 +731,12 @@ class MainWindow(Gtk.ApplicationWindow):
 
         header = Gtk.HeaderBar()
         self.set_titlebar(header)
+        # Issue #873 : documentation Lua hors ligne (netcross-lua-doc)
+        self.lua_doc_btn = Gtk.Button(label="Documentation Lua")
+        self.lua_doc_btn.set_tooltip_text("API Lua de Wireshark, hors ligne (equivalent de netcross-lua-doc)")
+        self.lua_doc_btn.connect("clicked", lambda _b: self.open_lua_doc())
+        header.pack_end(self.lua_doc_btn)
+        self.lua_doc_window = None
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.NONE)
@@ -746,6 +752,18 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.stack.set_visible_child_name("config")
         logger.debug("MainWindow: fenêtre prête (3 pages construites)")
+
+    def open_lua_doc(self):
+        """Fenetre « Documentation Lua » (issue #873), une seule a la fois."""
+        from netcross_gtk4.lua_doc_window import LuaDocWindow
+
+        if self.lua_doc_window is not None and self.lua_doc_window.browser is not None:
+            self.lua_doc_window.present()
+            return self.lua_doc_window
+        self.lua_doc_window = LuaDocWindow(parent=self)
+        self.lua_doc_window.present()
+        logger.debug("open_lua_doc: fenetre ouverte")
+        return self.lua_doc_window
 
     # ================= PAGE 1 : CONFIGURATION =================
 
