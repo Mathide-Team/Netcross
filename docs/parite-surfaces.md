@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 33 cases à cocher, 25 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 24 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 25 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -84,7 +84,7 @@ actif, non réglable.
 | Rapport texte | oui (page Résultats) | sortie standard | `GET /analyses/{id}/text` (issue #670) |
 | PDF | oui (« Exporter en PDF ») | `--pdf-report` | `GET /analyses/{id}/pdf?topn=N` (issue #670) |
 | JSON structuré | oui (« Exporter en JSON », mêmes clés que la CLI) | `--json-report` | `GET /analyses/{analysis_id}/report` (mêmes clés) ; `GET /analyses/{analysis_id}` sert le format brut, voir ci-dessous |
-| Markdown | non | `--md-report` | non |
+| Markdown | oui (« Exporter en Markdown », analyse simple, même document ; issue #864) | `--md-report` | `GET /analyses/{analysis_id}/markdown` (issue #864) |
 | CSV du détail par flux | oui (« Exporter en CSV ») | `--detail-csv` | `GET /analyses/{id}/detail.csv` (issue #670) |
 | Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | non |
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
@@ -258,6 +258,7 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /analyses/{analysis_id}/status` | État d'une analyse en tâche de fond |
 | `GET /analyses/{analysis_id}/security` | Constats de sécurité |
 | `GET /analyses/{analysis_id}/text` | Rapport texte (issue #670) |
+| `GET /analyses/{analysis_id}/markdown` | Rapport Markdown (issue #864) |
 | `GET /analyses/{analysis_id}/pdf` | Rapport PDF, `topn` (issue #670) |
 | `GET /analyses/{analysis_id}/detail.csv` | CSV du détail par flux (issue #670) |
 | `POST /comparisons` | Comparaison baseline/courant (issue #669) |

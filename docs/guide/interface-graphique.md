@@ -117,8 +117,9 @@ que chaque point a bien chargé des paquets.
 
 La zone principale affiche le même rapport que la ligne de commande
 (voir [Lire le rapport](lire-le-rapport.md)). En bas, **Exporter en PDF**,
-**Exporter en CSV** et **Exporter en JSON** produisent les mêmes fichiers
-que `--pdf-report`, `--detail-csv` et `--json-report`, et
+**Exporter en CSV**, **Exporter en JSON** et **Exporter en Markdown**
+(analyse simple) produisent les mêmes fichiers que `--pdf-report`,
+`--detail-csv`, `--json-report` et `--md-report`, et
 **Nouvelle analyse** revient à la configuration.
 
 Sous le rapport, plusieurs sections se déplient :

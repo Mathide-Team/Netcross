@@ -420,6 +420,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/markdown:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Markdown
+      description: 'Rapport Markdown d''une analyse terminée (équivalent de ``--md-report``,
+
+        issue #864) : rapport, constats, TLS/QUIC, sécurité, objets de session et,
+
+        si l''analyse l''avait demandé, moteur de règles.
+
+
+        409 si l''analyse a été relue depuis SQLite après un redémarrage.'
+      operationId: get_analysis_markdown_analyses__analysis_id__markdown_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/markdown: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/pdf:
     get:
       tags:

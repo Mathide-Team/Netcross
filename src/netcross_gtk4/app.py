@@ -702,6 +702,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.last_wireshark_expert_events = None
         # Issue #357 : SecurityReport du dernier run simple (None sinon)
         self.last_security_report = None
+        self.last_rule_engine = None  # issue #864 : constats --rule-engine
         self.last_diff_findings = None  # mode diff : DiffFinding
         self.last_baseline_report = None
         self.last_current_report = None
@@ -1879,6 +1880,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.json_btn.set_sensitive(False)
         self.json_btn.connect("clicked", self.on_export_json)
         bottom.append(self.json_btn)
+
+        # Issue #864 : --md-report (analyse simple, comme la CLI)
+        self.md_btn = Gtk.Button(label="Exporter en Markdown")
+        self.md_btn.set_sensitive(False)
+        self.md_btn.connect("clicked", self.on_export_markdown)
+        bottom.append(self.md_btn)
         page.append(bottom)
 
         self.stack.add_titled(page, "results", "Resultats")
@@ -1961,6 +1968,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
         self.json_btn.set_sensitive(False)
+        self.md_btn.set_sensitive(False)
         self.log_view.get_buffer().set_text("")
         self.work_status_label.set_text("Analyse en cours...")
         self.spinner.start()
@@ -2193,6 +2201,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.run_btn.set_label("Arreter et analyser")
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
+        self.md_btn.set_sensitive(False)
         self.log_view.get_buffer().set_text("")
         # Apres la remise a zero du journal, sinon ces messages seraient effaces.
         for message in ring_messages:
@@ -2727,12 +2736,14 @@ class MainWindow(Gtk.ApplicationWindow):
                 quic_findings=quic_findings,
                 wireshark_expert_events=wireshark_expert_events,
                 security_report=security_report,
+                rule_engine=getattr(expertise, "rule_engine", None),  # issue #864
             )
         )
         self.run_btn.set_sensitive(True)
         self.pdf_btn.set_sensitive(True)
         self.csv_btn.set_sensitive(True)
         self.json_btn.set_sensitive(True)
+        self.md_btn.set_sensitive(mode == "single")
         self._reset_comm_map_filters()
         # dashboard analytique (issue #18) : reinitialise le contexte de
         # selection partage et peuple les six vues depuis le meme run
@@ -2830,6 +2841,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.pdf_btn.set_sensitive(True)
         self.csv_btn.set_sensitive(True)
         self.json_btn.set_sensitive(True)
+        self.md_btn.set_sensitive(False)  # pas de Markdown en comparaison (CLI : idem)
         self._reset_comm_map_filters()
         # dashboard analytique (issue #18) : reinitialise le contexte de
         # selection partage et peuple les six vues depuis le meme run
@@ -3446,6 +3458,47 @@ class MainWindow(Gtk.ApplicationWindow):
         logger.debug("_on_json_path_chosen: chemin choisi {}", path)
         self.export_json_to(path)
         logger.debug("MainWindow._on_json_path_chosen: fin")
+
+    def on_export_markdown(self, _btn):
+        if self.last_mode != "single":
+            logger.debug("MainWindow.on_export_markdown: pas d'analyse simple -> retour")
+            return
+        dialog = Gtk.FileDialog()
+        dialog.set_initial_name("rapport_analyse.md")
+        dialog.save(self, None, self._on_markdown_path_chosen)
+
+    def _on_markdown_path_chosen(self, dialog, result):
+        try:
+            gfile = dialog.save_finish(result)
+        except GLib.Error:
+            logger.exception("échec dans _on_markdown_path_chosen")
+            return
+        self.export_markdown_to(gfile.get_path())
+
+    def export_markdown_to(self, path):
+        """Issue #864 : meme document que --md-report (rapport, constats,
+        TLS/QUIC, securite, objets de session, moteur de regles, noms)."""
+        from netcross_report import generate_markdown_report
+
+        logger.debug("export_markdown_to: {}", path)
+        try:
+            generate_markdown_report(
+                self.last_report,
+                path,
+                findings=self.last_findings,
+                tls_findings=self.last_tls_findings,
+                quic_findings=self.last_quic_findings,
+                session_objects=self._session_objects(),
+                security_report=self.last_security_report,
+                rule_engine_findings=self.last_rule_engine,
+                names=self.names_table,
+            )
+        except OSError as e:
+            logger.exception(f"échec dans export_markdown_to: {e}")
+            self.status_label.set_text(f"Erreur Markdown : {e}")
+            return None
+        self.status_label.set_text(f"Rapport Markdown ecrit dans {path}")
+        return path
 
     def export_json_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""

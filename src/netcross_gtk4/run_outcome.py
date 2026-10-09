@@ -85,6 +85,8 @@ class RunOutcome:
     wireshark_expert_events: Any
     # issue #357 : SecurityReport du run simple (None : non demande ou diff)
     security_report: Any
+    # issue #864 : {rule_id: [Finding]} de --rule-engine (export Markdown)
+    rule_engine: Any
     diff_findings: Any
     baseline_report: Any
     current_report: Any
@@ -113,6 +115,7 @@ class RunOutcome:
         "quic_findings",
         "wireshark_expert_events",
         "security_report",
+        "rule_engine",
         "diff_findings",
         "baseline_report",
         "current_report",
@@ -203,6 +206,7 @@ def analysis_outcome(
     quic_findings: Any = None,
     wireshark_expert_events: Any = None,
     security_report: Any = None,
+    rule_engine: Any = None,
 ) -> RunOutcome:
     """Etat retenu apres une analyse simple.
 
@@ -221,6 +225,7 @@ def analysis_outcome(
         quic_findings=quic_findings,
         wireshark_expert_events=wireshark_expert_events,
         security_report=security_report,
+        rule_engine=rule_engine,
         diff_findings=None,
         baseline_report=None,
         current_report=None,
@@ -283,6 +288,7 @@ def diff_outcome(
         quic_findings=None,
         wireshark_expert_events=None,
         security_report=None,
+        rule_engine=None,
         diff_findings=findings,
         baseline_report=baseline_report,
         current_report=current_report,
