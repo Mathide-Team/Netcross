@@ -66,6 +66,7 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}` | Mesures brutes (copie de chaque champ du `Report`) |
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
+| `GET` | `/analyses/{id}/markdown` | Rapport Markdown, identique à `--md-report` (issue #864) ; liste complète des routes : [parité des surfaces](parite-surfaces.md) |
 | `GET` | `/analyses` | Liste des analyses |
 | `GET` | `/lua-doc/classes` | Classes de l'API Lua Wireshark (`netcross-lua-doc --classes --json`, issue #873) |
 | `GET` | `/lua-doc/classes/{name}` | Fiche d'une classe, insensible à la casse ; 404 avec suggestions (`--class NOM --json`) |

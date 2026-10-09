@@ -92,7 +92,8 @@ def test_pipeline_sections_du_rapport(_paquets, monkeypatch):
     assert "CONTENUS AUDIO/VIDEO/DOCUMENTS" in result.text and "QUALITE=ok" in result.text
     assert vus == [(CAPTURES, None, ())]  # analyse sans ecriture, comme --media-quality
     assert result.findings is None  # les constats de la section expertise restent locaux
-    assert result.expertise == ExpertiseExports()
+    assert result.expertise.flow_timelines is None and result.expertise.tshark_stats is None
+    assert result.expertise.rule_engine  # constats du moteur de regles, pour le Markdown (#864)
     assert "Section expertise..." in journal
 
 
