@@ -1633,7 +1633,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # Issue #357 : section securite dans la page resultats
         # Issue #675 : recherche forensic (--forensic-search, --search-*)
         self.forensic_expander = Gtk.Expander(label="Recherche forensic")
-        self.forensic_panel = ForensicSearchPanel()
+        self.forensic_panel = ForensicSearchPanel(on_annotate=self._annotate_from_search)
         self.forensic_expander.set_child(self.forensic_panel)
         page.append(self.forensic_expander)
 
@@ -2506,7 +2506,7 @@ class MainWindow(Gtk.ApplicationWindow):
         client_comparison=None,
     ):
         # Issue #675 : nouvel index (ou None : analyse sans index, capture en direct)
-        self.forensic_panel.set_index(search_index)
+        self.forensic_panel.set_index(search_index, self._annotation_captures)
         self.client_compare_panel.set_comparison(client_comparison)
         logger.debug(
             "_on_analysis_done: mode={} flux={} findings={} tls={} quic={} tshark={} securite={}",
@@ -2561,6 +2561,13 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child_name("results")
         logger.debug("MainWindow._on_analysis_done: retour False")
         return False
+
+    def _annotate_from_search(self, point, frame_number) -> None:
+        """Issue #675 : « Annoter la trame » d'un resultat de recherche --
+        pre-remplit et deplie le panneau d'annotations."""
+        logger.debug("MainWindow._annotate_from_search: point={} trame={}", point, frame_number)
+        self.annotations_expander.set_expanded(True)
+        self.annotations_panel.prefill(point, frame_number)
 
     def _on_diff_done(
         self,
