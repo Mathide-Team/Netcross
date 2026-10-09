@@ -3083,19 +3083,11 @@ def main():
                 )
                 print(f"Rapport de securite HTML ecrit dans {args.security_html}")
             if args.siem_export:
-                from netcross_report.siem_export import write_siem
+                from netcross_report.siem_export import observed_bounds, write_siem
 
                 # bornes de la capture : datent les objets STIX (jamais
                 # l'heure de l'export -- determinisme, issue #279)
-                timestamps = [p.ts for p in all_packets if p.ts]
-                bounds = (
-                    (
-                        datetime.fromtimestamp(min(timestamps), tz=timezone.utc),
-                        datetime.fromtimestamp(max(timestamps), tz=timezone.utc),
-                    )
-                    if timestamps
-                    else (None, None)
-                )
+                bounds = observed_bounds(all_packets)
                 written = write_siem(
                     r, args.siem_output, args.siem_export, observed_from=bounds[0], observed_until=bounds[1]
                 )
