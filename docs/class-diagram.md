@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-172 modules · 255 classes · 595 fonctions publiques de module.
+174 modules · 259 classes · 601 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -36,8 +36,8 @@ flowchart TD
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"15 imports"| netcross_report
-    netcross_gtk4 -->|"81 imports"| netcross_core
+    netcross_gtk4 -->|"18 imports"| netcross_report
+    netcross_gtk4 -->|"86 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
     netcross_api -->|"22 imports"| netcross_core
@@ -71,6 +71,8 @@ flowchart LR
     DiffFinding["netcross_core.baseline_diff.DiffFinding"]
     EvidenceLink["netcross_core.expert_model.EvidenceLink"]
     ExpertEvent["netcross_core.expert_model.ExpertEvent"]
+    ExpertiseExports["netcross_gtk4.expertise_view.ExpertiseExports"]
+    ExpertiseSettings["netcross_gtk4.expertise_view.ExpertiseSettings"]
     Exporter["netcross_core.plugins.api.Exporter"]
     Finding["netcross_report.synthesis.Finding"]
     FlowView["netcross_core.flow_view.FlowView"]
@@ -89,7 +91,9 @@ flowchart LR
     StreamQuality["netcross_core.extract.media.StreamQuality"]
     _Detector["netcross_core.exploit_signatures._Detector"]
     netcross_core_security_expert_correlation__FlowState["netcross_core.security.expert_correlation._FlowState"]
+    AnalysisOptions -->|expertise| ExpertiseSettings
     AnalysisOptions -->|notify| NotifySettings
+    AnalysisResult -->|expertise| ExpertiseExports
     AnalysisResult -->|report| Report
     AnnotationStore -->|by_label| PacketAnnotation
     CaptureInfo -->|interfaces| InterfaceRecord
@@ -2966,6 +2970,7 @@ classDiagram
         +collect_endpoints(capture_path, protocol) list~EndpointStat~
         +collect_protocol_hierarchy(capture_path) list~ProtocolHierarchyStat~
         +collect_io_stat(capture_path, interval, name) MetricSeries
+        +collect_capture_stats(captures, on_error) dict
     }
 
     %% ===== netcross_core.tshark_stats.conversations =====
@@ -3511,6 +3516,7 @@ classDiagram
         <<module>>
         +evaluate(rule_id, report) list~Finding~
         +available_rule_ids() list~str~
+        +print_rule_engine(report) dict~str, list~Finding~~
     }
 
     %% ===== netcross_report.security_html =====
@@ -3921,6 +3927,8 @@ classDiagram
 | `netcross_gtk4.dashboard_context` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
 | `netcross_gtk4.diff_pipeline` | pipeline de comparaison baseline/courant extrait de MainWindow._run_diff_thread (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.duplicate_view` | Presentation helpers for cross-capture duplicate detection (Job 41). |
+| `netcross_gtk4.expertise_panel` | panneau « Expertise (exports JSON) » de la page Resultats (issue #673). |
+| `netcross_gtk4.expertise_view` | sections d'expertise de l'analyse simple (issue #673), sans GTK. |
 | `netcross_gtk4.extraction_panel` | panneau GTK « Contenus (extraction) » de la page Resultats (issue #675). |
 | `netcross_gtk4.extraction_view` | extraction des contenus depuis la GUI (issue #675). |
 | `netcross_gtk4.forensic_panel` | panneau GTK « Recherche forensic » de la page Resultats (issue #675). |
@@ -3968,6 +3976,7 @@ classDiagram
         +dict? client_groups
         +str? client_reference
         +NotifySettings? notify
+        +ExpertiseSettings? expertise
     }
     class AnalysisResult {
         <<dataclass>>
@@ -3982,6 +3991,7 @@ classDiagram
         +Any security_report
         +Any search_index
         +Any client_comparison
+        +ExpertiseExports? expertise
     }
     class mod_netcross_gtk4_analysis_pipeline["netcross_gtk4.analysis_pipeline"] {
         <<module>>
@@ -4059,6 +4069,7 @@ classDiagram
         +load_names_table(path)
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
+        +expertise_settings() ExpertiseSettings
         +on_export_csv(_btn)
         +on_export_pdf(_btn)
         +export_pdf_to(path)
@@ -4207,6 +4218,40 @@ classDiagram
     class mod_netcross_gtk4_duplicate_view["netcross_gtk4.duplicate_view"] {
         <<module>>
         +format_duplicate_indicator(report) str
+    }
+
+    %% ===== netcross_gtk4.expertise_panel =====
+    class ExpertisePanel {
+        <<Gtk.Box>>
+        +set_exports(exports) None
+        +export_to(key, path) str
+    }
+
+    %% ===== netcross_gtk4.expertise_view =====
+    class ExpertiseSettings {
+        <<dataclass, frozen>>
+        +bool rule_engine
+        +bool expert_section
+        +bool media_quality
+        +bool tshark_stats
+        +bool flow_timeline
+        +float flow_timeline_window
+        +active() bool
+    }
+    class ExpertiseExports {
+        <<dataclass, frozen>>
+        +dict? flow_timelines
+        +dict? tshark_stats
+    }
+    class ExpertiseSettingsError {
+        <<ValueError>>
+    }
+    class mod_netcross_gtk4_expertise_view["netcross_gtk4.expertise_view"] {
+        <<module>>
+        +validate_settings(settings, live) None
+        +timeline_summary(doc) str
+        +tshark_stats_summary(doc) str
+        +write_json(path, payload) str
     }
 
     %% ===== netcross_gtk4.extraction_panel =====
@@ -4441,7 +4486,9 @@ classDiagram
     }
 
     %% ===== relations =====
+    AnalysisOptions --> ExpertiseSettings : expertise
     AnalysisOptions --> NotifySettings : notify
+    AnalysisResult --> ExpertiseExports : expertise
 ```
 
 ## CLI (`src/*.py`)

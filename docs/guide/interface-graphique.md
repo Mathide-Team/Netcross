@@ -50,6 +50,11 @@ Options principales :
 | Postes à comparer, Référence | Compare des postes entre eux dans la même analyse : un groupe par poste, `NOM=IP1[,IP2...]`, séparés par « ; » (au moins deux), comparé au poste de référence (le premier par défaut). Résultat dans le rapport, synthèse et export CSV sur la page Résultats. Indisponible avec l'anonymisation | `--client-group`, `--client-reference`, `--client-diff-csv` |
 | Fenêtre temporelle (ms) | Précision des mesures de débit (réduire pour les micro-rafales) | `--bucket-ms` |
 | Séparer les interfaces d'un pcapng | Un fichier capturé sur plusieurs interfaces devient un point par interface, nommé `NOM:INTERFACE` | `--split-interfaces` |
+| Moteur de règles | Évalue chaque règle du catalogue déclaratif ; section « MOTEUR DE REGLES DECLARATIF » du rapport | `--rule-engine` |
+| Section expertise | Objets de session détaillés (flux, segments, diagnostics, preuves) à la fin du rapport | `--expert-section` |
+| Qualité média | Relit les fichiers : voix et vidéo RTP, documents transportés, sans rien écrire (l'extraction vers un dossier est sur la page Résultats) | `--media-quality` |
+| Statistiques tshark | `tshark -z` sur chaque fichier (conversations, endpoints, hiérarchie de protocoles, IO), export JSON sur la page Résultats | `--tshark-stats` |
+| Chronologie des flux, Fenêtre (s) | Chronologie de chaque conversation, point par point, par fenêtres de N secondes ; export JSON sur la page Résultats | `--flow-timeline`, `--flow-timeline-window` |
 
 Réglages fins, à ne modifier qu'en connaissance de cause :
 
@@ -159,6 +164,10 @@ Sous le rapport, plusieurs sections se déplient :
   ports, comme `--netflow` ; « Exporter JSON... » écrit le même fichier que
   `--netflow ... --json-report`. Les flux agrégés ne se corrèlent pas entre
   points de capture : ils ne sont pas mêlés à l'analyse.
+- **Expertise (exports JSON)** : si « Chronologie des flux » ou
+  « Statistiques tshark » étaient cochées, leur résumé et un bouton
+  d'export chacun, même fichier que `--flow-timeline` et `--tshark-stats`.
+  Les trois autres sections d'expertise sont dans le rapport texte.
 - **Sécurité** : le rapport de sécurité, si la case correspondante était
   cochée, avec export HTML et JSON.
 
@@ -175,6 +184,6 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
 ## Ce que l'interface ne fait pas
 
 Certaines fonctions restent réservées à la ligne de commande : fusion,
-découpage, conversion et rejeu de captures, notifications, plugins,
+découpage, conversion et rejeu de captures, plugins,
 module IA, historique des analyses, base CVE complète (`--cve-db`),
 export SIEM. Voir `--help` et les pages de la section Analyses.

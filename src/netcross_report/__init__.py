@@ -45,7 +45,7 @@ from netcross_report.path_metrics import (
     degradation_summary,
     rank_path_segments,
 )
-from netcross_report.rule_engine import available_rule_ids, evaluate
+from netcross_report.rule_engine import available_rule_ids, evaluate, print_rule_engine
 from netcross_report.security_report import (
     SecurityDashboard,
     SecurityItem,
@@ -136,6 +136,7 @@ __all__ = [
     "health_score",
     "list_history",
     "print_history",
+    "print_rule_engine",
     "print_security_report",
     "print_session_objects",
     "print_triage",
