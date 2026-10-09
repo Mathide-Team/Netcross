@@ -42,7 +42,9 @@ from netcross_gtk4.expertise_view import (
     validate_settings,
 )
 from netcross_gtk4.notifications import NotifySettings, send_notifications
+from netcross_gtk4.report_exports import HistorySettings, ReportContext, record_history
 from netcross_report.security_report import build_security_report, print_security_report
+from netcross_report.siem_export import observed_bounds
 
 logger = get_logger(__name__)
 
@@ -88,6 +90,8 @@ class AnalysisOptions:
     # Issue #672 : options avancees (--max-packets, --sample,
     # --parallel-workers, --test-net-external, --known-*, --cve-db)
     advanced: AdvancedSettings | None = None
+    # Issue #674 : historique SQLite (--history-db, --history-label)
+    history: HistorySettings | None = None
 
 
 @dataclass
@@ -112,6 +116,8 @@ class AnalysisResult:
     client_comparison: Any = None
     # Issue #673 : chronologie des flux et statistiques tshark (JSON)
     expertise: ExpertiseExports | None = None
+    # Issue #674 : bornes STIX, historique, contexte du ticket de support
+    report_context: ReportContext | None = None
 
 
 def load_packets(
@@ -476,6 +482,31 @@ def _run_pipeline(
             print()
             print_security_report(security_report)
 
+    history = options.history or HistorySettings()
+    history_message = ""
+    if history.db_path:
+        from netcross_report import HistoryDatabaseError
+
+        try:
+            history_message = record_history(
+                report, history, findings=findings, tls=tls_findings, quic=quic_findings, redact=options.redact
+            )
+        except HistoryDatabaseError as exc:
+            # L'analyse reste valable : on la garde et on dit clairement que
+            # la trace demandee n'a pas ete conservee (issue #287).
+            logger.exception("historique non enregistre : {}", exc)
+            history_message = f"ERREUR historique non enregistre : {exc}"
+        _log(history_message)
+    observed_from, observed_until = observed_bounds(all_packets)
+    report_context = ReportContext(
+        observed_from=observed_from,
+        observed_until=observed_until,
+        captures=len(captures),
+        redact=options.redact,
+        history=history,
+        history_message=history_message,
+    )
+
     text = buf.getvalue()
     _log("Analyse terminée.")
 
@@ -493,6 +524,7 @@ def _run_pipeline(
         client_comparison=client_comparison,
         security_report=security_report,
         expertise=expertise_exports,
+        report_context=report_context,
     )
 
 

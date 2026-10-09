@@ -213,7 +213,7 @@ def test_fenetre_transmet_les_reglages(monkeypatch):
     while ctx.iteration(False):
         pass
     assert recus[0].expertise.flow_timeline_window == 2.5
-    assert vus[0][-1] is exports
+    assert vus[0][11] is exports  # avant report_context (#674)
     window.expertise_panel.set_exports(exports)
     window._on_diff_done([], None, None, "")
     assert window.expertise_panel.exports is None
