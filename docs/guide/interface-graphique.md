@@ -55,6 +55,11 @@ Options principales :
 | Qualité média | Relit les fichiers : voix et vidéo RTP, documents transportés, sans rien écrire (l'extraction vers un dossier est sur la page Résultats) | `--media-quality` |
 | Statistiques tshark | `tshark -z` sur chaque fichier (conversations, endpoints, hiérarchie de protocoles, IO), export JSON sur la page Résultats | `--tshark-stats` |
 | Chronologie des flux, Fenêtre (s) | Chronologie de chaque conversation, point par point, par fenêtres de N secondes ; export JSON sur la page Résultats | `--flow-timeline`, `--flow-timeline-window` |
+| Paquets max., Échantillonnage 1/N | N premiers paquets, ou 1 paquet sur N (l'échantillonnage passe d'abord). La troncature est toujours annoncée dans le rapport | `--max-packets`, `--sample 1/N` |
+| Lecteurs parallèles | Nombre de processus tshark avec « Lecture parallèle » (0 = un par cœur) ; au-delà du nombre de cœurs, le journal prévient que la lecture peut ralentir | `--parallel-workers` |
+| Plages TEST-NET externes | 192.0.2.0/24, 198.51.100.0/24 et 203.0.113.0/24 traitées comme des adresses externes (laboratoires, démonstrations). Nécessite « Rapport de sécurité » | `--test-net-external` |
+| Destinations connues..., Hôtes connus... | Listes JSON d'IP (liste plate ou clé `hosts`) : destinations habituelles et hôtes déjà vus, les autres sont signalés. Nécessitent « Rapport de sécurité » ; un fichier sans IP bloque le lancement | `--known-destinations`, `--known-hosts` |
+| Base CVE... | Base CVE complète à la place de la base minimale embarquée. Nécessite « Rapport de sécurité » ; un fichier absent bloque le lancement | `--cve-db` |
 
 Réglages fins, à ne modifier qu'en connaissance de cause :
 
@@ -185,5 +190,4 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
 
 Certaines fonctions restent réservées à la ligne de commande : fusion,
 découpage, conversion et rejeu de captures, plugins,
-module IA, historique des analyses, base CVE complète (`--cve-db`),
-export SIEM. Voir `--help` et les pages de la section Analyses.
+module IA, historique des analyses, export SIEM. Voir `--help` et les pages de la section Analyses.

@@ -32,6 +32,8 @@ from netcross_core.parsing import parse_capture
 from netcross_core.report_text import print_report
 from netcross_core.wireshark_expert import build_wireshark_expert_events
 from netcross_gtk4 import capture_list
+from netcross_gtk4.advanced_options import AdvancedSettings, load_host_set, workers_note
+from netcross_gtk4.advanced_options import validate as validate_advanced
 from netcross_gtk4.expertise_view import (
     ExpertiseExports,
     ExpertiseSettings,
@@ -83,6 +85,9 @@ class AnalysisOptions:
     # Issue #673 : sections d'expertise (--rule-engine, --expert-section,
     # --media-quality, --tshark-stats, --flow-timeline)
     expertise: ExpertiseSettings | None = None
+    # Issue #672 : options avancees (--max-packets, --sample,
+    # --parallel-workers, --test-net-external, --known-*, --cve-db)
+    advanced: AdvancedSettings | None = None
 
 
 @dataclass
@@ -113,6 +118,7 @@ def load_packets(
     captures: Sequence[tuple[str, str]],
     parallel: bool,
     on_progress: Callable[[str], None] | None = None,
+    max_workers: int | None = None,
 ) -> list:
     """Charge les paquets depuis une liste de (label, chemin).
 
@@ -123,7 +129,7 @@ def load_packets(
     if parallel:
         from pcap_parser.capture import parse_captures_parallel
 
-        all_packets, per_file_stats = parse_captures_parallel(captures)
+        all_packets, per_file_stats = parse_captures_parallel(captures, max_workers=max_workers)
         if on_progress:
             for s in per_file_stats:
                 if s["error"]:
@@ -255,8 +261,29 @@ def _run_pipeline(
     for label, segments in capture_list.segments_par_point(captures).items():
         _log(f"[{label}] {segments} segments lus a la suite (capture en rotation)")
 
+    # Issue #672 : refus et fichiers de securite lus AVANT la lecture des
+    # captures, comme la CLI (une erreur ne coute pas une analyse)
+    advanced = options.advanced or AdvancedSettings()
+    advanced_errors = validate_advanced(advanced, security=options.security)
+    if advanced_errors:
+        raise ValueError("; ".join(advanced_errors))
+    known_destinations = load_host_set(advanced.known_destinations, "--known-destinations")
+    known_hosts = load_host_set(advanced.known_hosts, "--known-hosts")
+
     # 1. Chargement
-    all_packets = load_packets(captures, options.parallel, on_progress)
+    if options.parallel and advanced.parallel_workers:
+        _log(f"Lecture parallele : {advanced.parallel_workers} lecteur(s) (--parallel-workers)")
+        note = workers_note(advanced.parallel_workers, os.cpu_count())
+        if note:
+            _log(f"  ATTENTION : {note}")
+    all_packets = load_packets(captures, options.parallel, on_progress, max_workers=advanced.parallel_workers)
+    truncation_note = None
+    if advanced.max_packets is not None or advanced.sample_n:
+        from netcross_core.packet_limits import apply_packet_limits
+
+        all_packets, truncation_note = apply_packet_limits(all_packets, advanced.max_packets, advanced.sample_n)
+        if truncation_note:
+            _log(f"ATTENTION : {truncation_note}")
 
     # 2. Doublons
     duplicate_counts = None
@@ -297,6 +324,9 @@ def _run_pipeline(
         exclude_duplicates=options.exclude_duplicates,
         duplicate_counts=duplicate_counts,
     )
+    if truncation_note:  # issue #283 : jamais silencieuse, comme la CLI
+        report.truncated = True
+        report.truncation_note = truncation_note
 
     # 6. Expertise tshark
     _log("Expertise tshark (signaux bruts)...")
@@ -326,6 +356,8 @@ def _run_pipeline(
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         print_report(report)
+        if report.truncated:
+            print(f"\nATTENTION : {report.truncation_note}")
 
     # 9. Triage
     findings = None
@@ -423,7 +455,16 @@ def _run_pipeline(
     if options.notify is not None and options.notify.active and not options.security:
         _log("Notifications ignorees : elles portent sur le rapport de securite, non demande.")
     if options.security:
-        security_report = run_security_analysis(report, all_packets, captures, _log)
+        security_report = run_security_analysis(
+            report,
+            all_packets,
+            captures,
+            _log,
+            known_destinations=known_destinations,
+            known_hosts=known_hosts,
+            test_net_external=advanced.test_net_external,
+            cve_db=advanced.cve_db,
+        )
         if options.notify is not None and options.notify.active:
             # Avant l'impression : la section « Notifications » du rapport
             # de securite trace chaque canal, comme dans la CLI.
@@ -507,11 +548,23 @@ def _run_expertise(settings, report, findings, flows, all_packets, captures, buf
     return ExpertiseExports(flow_timelines=flow_timelines, tshark_stats=tshark_stats)
 
 
-def run_security_analysis(report, all_packets, captures, log: Callable[[str], None]):
+def run_security_analysis(
+    report,
+    all_packets,
+    captures,
+    log: Callable[[str], None],
+    *,
+    known_destinations=None,
+    known_hosts=None,
+    test_net_external: bool = False,
+    cve_db: str | None = None,
+):
     """Analyse de securite de la GUI (issue #357), alignee sur
     --security-report : signatures d'exploits relues sur les fichiers,
-    correlation CVE sur la base minimale embarquee (la GUI n'a pas de
-    --cve-db), puis `build_security_report`. Retourne le SecurityReport."""
+    correlation CVE sur la base choisie (--cve-db, issue #672) ou, a
+    defaut, sur la base minimale embarquee, puis `build_security_report`.
+    Retourne le SecurityReport."""
+    from netcross_core.security import connect_cve_db
     from netcross_core.security.cve_db import close_db
     from netcross_core.security.cve_seed import open_seed_db
     from netcross_core.security.findings import apply_security_findings, scan_capture_exploits
@@ -527,17 +580,29 @@ def run_security_analysis(report, all_packets, captures, log: Callable[[str], No
         log(f"  [{label}] {len(found)} signature(s) d'exploit")
         detections.extend(found)
     cve_conn = None
+    if cve_db:
+        cve_conn = connect_cve_db(cve_db)
+        log(f"  Base CVE : {cve_db} (--cve-db)")
     try:
-        cve_conn, seed = open_seed_db()
-        log(
-            f"  Base CVE minimale embarquee ({len(seed.entries)} CVE critiques, NVD {seed.generated}) : "
-            "une version absente de cette selection n'est pas pour autant non vulnerable."
-        )
+        if cve_conn is None:
+            cve_conn, seed = open_seed_db()
+            log(
+                f"  Base CVE minimale embarquee ({len(seed.entries)} CVE critiques, NVD {seed.generated}) : "
+                "une version absente de cette selection n'est pas pour autant non vulnerable."
+            )
     except (OSError, ValueError) as exc:
         logger.warning("run_security_analysis: base CVE embarquée illisible ({})", exc)
         log(f"  Base CVE embarquee illisible ({exc}) : services listes sans correlation CVE.")
     try:
-        apply_security_findings(report, all_packets, detections=detections, cve_conn=cve_conn)
+        apply_security_findings(
+            report,
+            all_packets,
+            detections=detections,
+            cve_conn=cve_conn,
+            known_destinations=known_destinations,
+            known_hosts=known_hosts,
+            treat_test_net_as_external=test_net_external,
+        )
     finally:
         if cve_conn is not None:
             close_db(cve_conn)
