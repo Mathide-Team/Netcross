@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-177 modules · 262 classes · 606 fonctions publiques de module.
+178 modules · 262 classes · 606 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,10 +37,10 @@ flowchart TD
     CLI -->|"42 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"18 imports"| netcross_report
-    netcross_gtk4 -->|"91 imports"| netcross_core
+    netcross_gtk4 -->|"87 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"10 imports"| netcross_report
-    netcross_api -->|"26 imports"| netcross_core
+    netcross_api -->|"28 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -60,6 +60,7 @@ flowchart LR
     AnalysisOptions["netcross_gtk4.analysis_pipeline.AnalysisOptions"]
     AnalysisResult["netcross_gtk4.analysis_pipeline.AnalysisResult"]
     AnnotationStore["netcross_gtk4.annotations_view.AnnotationStore"]
+    ApiAnalysisOptions["netcross_api.app.ApiAnalysisOptions"]
     BPFFilter["netcross_core.models.BPFFilter"]
     Baseline["netcross_ai.anomaly.Baseline"]
     CaptureInfo["pcap_parser.capinfos_source.CaptureInfo"]
@@ -83,7 +84,7 @@ flowchart LR
     LiveDiffState["netcross_core.live_diff.LiveDiffState"]
     LoadedPlugins["netcross_core.plugins.loader.LoadedPlugins"]
     ModelPack["netcross_ai.model_pack.ModelPack"]
-    NotifySettings["netcross_gtk4.notifications.NotifySettings"]
+    NotifySettings["netcross_core.notify.request.NotifySettings"]
     OsGuess["netcross_core.discovery.os_detect.OsGuess"]
     PacketAnnotation["netcross_core.models.PacketAnnotation"]
     Pkt["netcross_core.models.Pkt"]
@@ -98,6 +99,7 @@ flowchart LR
     AnalysisResult -->|expertise| ExpertiseExports
     AnalysisResult -->|report| Report
     AnnotationStore -->|by_label| PacketAnnotation
+    ApiAnalysisOptions -->|notify| NotifySettings
     CaptureInfo -->|interfaces| InterfaceRecord
     ClientReport -->|report| Report
     ContentExtraction -->|media| StreamQuality
@@ -2207,6 +2209,7 @@ classDiagram
 |---|---|
 | `netcross_core.notify` | notifications sortantes sur seuil de gravite (webhook, Slack, courriel), issue #280. |
 | `netcross_core.notify.dispatch` | repartition, garde-fous et tracabilite des notifications (issue #280). |
+| `netcross_core.notify.request` | notifications d'une analyse terminee, reglages et envoi partages par la GUI (issue #676) et l'API (issue #875). |
 | `netcross_core.notify.summary` | resume d'analyse a notifier (issue #280). |
 | `netcross_core.notify.transports` | canaux de notification (issue #280). |
 
@@ -2231,6 +2234,22 @@ classDiagram
         +send_notifications(summary, notifiers, state_path, silence_seconds, now) list~DeliveryResult~
         +notifiers_from_config(cfg, webhook, slack, email_to, env) tuple~list~Notifier~, list~DeliveryResult~~
         +run_notifications(summary_factory, threshold, cfg, webhook, slack, email_to, state_path, silence_hours, env) list~DeliveryResult~
+    }
+
+    %% ===== netcross_core.notify.request =====
+    class NotifySettings {
+        <<dataclass, frozen>>
+        +str? threshold
+        +str? webhook
+        +str? slack
+        +str? email
+        +str detail
+        +active() bool
+    }
+    class mod_netcross_core_notify_request["netcross_core.notify.request"] {
+        <<module>>
+        +validate_settings(settings, security, security_hint) list~str~
+        +send_notifications(report, security_report, settings, report_path, runner, config_loader) list~dict~
     }
 
     %% ===== netcross_core.notify.summary =====
@@ -3784,6 +3803,7 @@ classDiagram
         +frozenset~str~? known_destinations
         +frozenset~str~? known_hosts
         +int? parallel_workers
+        +NotifySettings? notify
         +str? names_path
         +bool split_interfaces
         +bool rule_engine
@@ -3805,9 +3825,9 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
@@ -4389,20 +4409,9 @@ classDiagram
     }
 
     %% ===== netcross_gtk4.notifications =====
-    class NotifySettings {
-        <<dataclass, frozen>>
-        +str? threshold
-        +str? webhook
-        +str? slack
-        +str? email
-        +str detail
-        +active() bool
-    }
     class mod_netcross_gtk4_notifications["netcross_gtk4.notifications"] {
         <<module>>
         +settings_from_widgets(threshold_index, webhook, slack, email, complete_detail) NotifySettings
-        +validate_settings(settings, security) list~str~
-        +send_notifications(report, security_report, settings, report_path, runner, config_loader) list~dict~
     }
 
     %% ===== netcross_gtk4.panel_state =====
@@ -4531,7 +4540,6 @@ classDiagram
     %% ===== relations =====
     AnalysisOptions --> AdvancedSettings : advanced
     AnalysisOptions --> ExpertiseSettings : expertise
-    AnalysisOptions --> NotifySettings : notify
     AnalysisResult --> ExpertiseExports : expertise
 ```
 
