@@ -53,7 +53,7 @@ actif, non réglable.
 | Limiter ou échantillonner les paquets | oui (« Paquets max. », « Echantillonnage 1/N » en analyse simple, troncature annoncée dans le rapport ; issue #672) | `--max-packets`, `--sample` | `max_packets`, `sample` (issue #672) |
 | Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | `names` (fichier joint, issue #672) |
 | Plages TEST-NET traitées comme externes | oui (case « Plages TEST-NET externes », avec « Rapport de securite » ; issue #672) | `--test-net-external` | `test_net_external` (issue #672) |
-| Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) ; table : `GET /analyses/{analysis_id}/redact-map` (issue #876) |
+| Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC », table : « Table d'anonymisation (--redact-map)... » des Résultats, issue #876) | `--redact`, `--redact-map` | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) ; table : `GET /analyses/{analysis_id}/redact-map` (issue #876) |
 
 ## Diagnostics et triage
 
@@ -143,7 +143,7 @@ de sécurité, déjà produit par `POST /analyses`.
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
 | Exports | oui (PDF, CSV, JSON) | `--pdf-report`, `--diff-csv`, `--json-report` | `GET /comparisons/{id}/csv` (issue #669) |
-| Anonymisation partagée | oui | `--redact`, `--redact-map` | `redact` (un seul pseudonyme par adresse pour baseline et courant), table : `GET /comparisons/{comparison_id}/redact-map` (issues #669, #876) |
+| Anonymisation partagée | oui (table commune : « Table d'anonymisation (--redact-map)... », issue #876) | `--redact`, `--redact-map` | `redact` (un seul pseudonyme par adresse pour baseline et courant), table : `GET /comparisons/{comparison_id}/redact-map` (issues #669, #876) |
 | Historique | non | `--history-db`, `--history-label`, `--history-show` | non |
 | Code de sortie 1 sur régression | sans objet | oui | `regression: true` dans la réponse (issue #669) |
 

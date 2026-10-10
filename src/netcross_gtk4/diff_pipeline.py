@@ -59,6 +59,8 @@ class DiffResult:
     tls_findings_current: list | None = None
     quic_findings_baseline: list | None = None
     quic_findings_current: list | None = None
+    # Issue #876 : table commune baseline/courant (--redact-map)
+    redaction_map: tuple = ()
 
 
 def run_diff_pipeline(
@@ -260,4 +262,5 @@ def run_diff_pipeline(
         tls_findings_current=tls_findings_current,
         quic_findings_baseline=quic_findings_baseline,
         quic_findings_current=quic_findings_current,
+        redaction_map=tuple(redactor.entries()) if redactor is not None else (),
     )

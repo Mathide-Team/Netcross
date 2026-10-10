@@ -182,7 +182,11 @@ Sous le rapport, plusieurs sections se déplient :
   STIX 2.1 du rapport de sécurité (même fichier que `--siem-export`) ;
   ticket de support anonymisé « diagnostic », seulement après avoir coché
   le consentement (`--support-ticket --support-consent`, rien n'est
-  envoyé) ; derniers runs de l'historique choisi (`--history-show N`).
+  envoyé) ; derniers runs de l'historique choisi (`--history-show N`) ;
+  après une analyse anonymisée (simple ou comparaison), **Table
+  d'anonymisation (--redact-map)...** écrit le CSV adresse réelle →
+  pseudonyme de `--redact-map` (une seule table pour baseline et courant).
+  Ce fichier désanonymise le rapport : gardez-le pour vous.
 
 Après une comparaison ou une capture en direct, certaines sections sont
 grisées : elles ont besoin des fichiers de capture d'une analyse simple.
