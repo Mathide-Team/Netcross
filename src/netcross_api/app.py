@@ -246,7 +246,7 @@ async def _refuser_corps_trop_gros(request: Request, call_next):
     avant d'appeler la route : sans ce contrôle, un envoi énorme serait
     reçu en entier avant d'être refusé. Un envoi sans Content-Length
     (chunked) reste borné fichier par fichier par ``_save_upload``."""
-    if request.method == "POST" and request.url.path.startswith("/captures"):
+    if request.method == "POST" and request.url.path.startswith(("/captures", "/batches")):
         longueur = request.headers.get("content-length", "")
         if longueur.isdigit() and int(longueur) > _MAX_UPLOAD_BYTES * _MAX_FILES + _MULTIPART_MARGIN:
             logger.debug(
@@ -2212,3 +2212,206 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #872 : lots de captures (équivalent de cross_capture_batch_cli.py)
+# ---------------------------------------------------------------------------
+
+_BATCH_FILES = File(
+    description="Captures du lot (.pcap, .pcapng, .cap, .erf, .gz) ou une archive .zip "
+    "(extraite à plat, sous-dossiers compris, comme --recursive)",
+)
+_BATCH_NO_GROUP_FORM = Form(default=False, description="Aucun regroupement (équiv. --no-group)")
+_BATCH_GROUP_WINDOW_FORM = Form(
+    default=None, description="Décalage d'horloge maximal toléré, en secondes (équiv. --group-window)"
+)
+_BATCH_MIN_OVERLAP_FORM = Form(default=None, description="Recouvrement temporel minimal, ]0, 1] (équiv. --min-overlap)")
+_BATCH_MIN_COMMON_IPS_FORM = Form(default=None, description="IP communes minimales (équiv. --min-common-ips)")
+_BATCH_JOBS_FORM = Form(default=1, description="Captures inventoriées en parallèle (équiv. --jobs)")
+_BATCH_SECURITY_FORM = Form(
+    default=False, description="Analyse de sécurité dans chaque rapport (équiv. --security-report)"
+)
+
+
+def _batch_options(
+    no_group: bool,
+    group_window: float | None,
+    min_overlap: float | None,
+    min_common_ips: int | None,
+    jobs: int,
+    security_report: bool,
+) -> Any:
+    """Réglages du lot validés comme la CLI (400 sinon)."""
+    from netcross_report.batch_runner import BatchOptions, check_options
+
+    defaults = BatchOptions()
+    options = BatchOptions(
+        group=not no_group,
+        group_window=defaults.group_window if group_window is None else group_window,
+        min_overlap=defaults.min_overlap if min_overlap is None else min_overlap,
+        min_common_ips=defaults.min_common_ips if min_common_ips is None else min_common_ips,
+        jobs=jobs,
+        security_report=security_report,
+    )
+    refus = check_options(options)
+    if refus:
+        for flag in ("--group-window", "--min-overlap", "--min-common-ips", "--jobs"):
+            refus = refus.replace(flag, flag[2:].replace("-", "_"))
+        raise HTTPException(status_code=400, detail=refus)
+    if jobs > _MAX_PARALLEL_WORKERS:
+        raise HTTPException(status_code=400, detail=f"jobs doit etre <= {_MAX_PARALLEL_WORKERS}.")
+    logger.debug("_batch_options: retour {}", summarize(options, "options"))
+    return options
+
+
+def _batch_view(entry: dict) -> dict:
+    """État public d'un lot (sans répertoire de travail)."""
+    view = {k: v for k, v in entry.items() if k not in ("workdir", "index")}
+    batch_id = entry["batch_id"]
+    view["status_url"] = f"/batches/{batch_id}"
+    if entry["status"] == "completed":
+        view["index_url"] = f"/batches/{batch_id}/index"
+        view["report_url_template"] = f"/batches/{batch_id}/reports/{{name}}"
+    return view
+
+
+@app.post(
+    "/batches",
+    tags=["batches"],
+    status_code=202,
+    responses={
+        201: {"description": "Lot terminé (?wait=true)"},
+        400: {"model": ErrorResponse},
+        413: {"model": ErrorResponse},
+    },
+)
+async def create_batch(
+    files: list[UploadFile] = _BATCH_FILES,
+    no_group: bool = _BATCH_NO_GROUP_FORM,
+    group_window: float | None = _BATCH_GROUP_WINDOW_FORM,
+    min_overlap: float | None = _BATCH_MIN_OVERLAP_FORM,
+    min_common_ips: int | None = _BATCH_MIN_COMMON_IPS_FORM,
+    jobs: int = _BATCH_JOBS_FORM,
+    security_report: bool = _BATCH_SECURITY_FORM,
+    wait: bool = Query(default=False, description="Attendre la fin du lot (201) au lieu de 202"),
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Lot de captures (issue #872, équivalent de ``cross_capture_batch_cli.py``).
+
+    Inventaire de chaque capture, regroupement conservateur des captures qui
+    observent le même événement, un rapport par capture et par groupe, index
+    du lot. Une capture illisible n'arrête pas le lot (listée en échec).
+    ``--skip-existing`` n'a pas d'équivalent : chaque lot repart de zéro.
+    Avancement et résultat : ``GET /batches/{batch_id}``.
+    """
+    import shutil
+
+    from netcross_api.batches import (
+        BatchInputError,
+        batch_store,
+        extract_archive,
+        new_workdir,
+        run_batch_job,
+        safe_name,
+        unique_path,
+    )
+
+    options = _batch_options(no_group, group_window, min_overlap, min_common_ips, jobs, security_report)
+    if not files:
+        raise HTTPException(status_code=400, detail="Aucun fichier reçu")
+    if len(files) > _MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Trop de fichiers ({len(files)}, max {_MAX_FILES})")
+    workdir, captures_dir = new_workdir()
+    names: list[str] = []
+    ignored: list[str] = []
+    try:
+        for upload in files:
+            if not upload.filename:
+                raise HTTPException(status_code=400, detail="Nom de fichier manquant")
+            name = safe_name(upload.filename)
+            tmp = await _save_upload(upload, name)
+            try:
+                if name.lower().endswith(".zip"):
+                    ignored += await run_in_threadpool(
+                        extract_archive, tmp, captures_dir, _MAX_UPLOAD_BYTES * _MAX_FILES
+                    )
+                else:
+                    shutil.move(tmp, unique_path(captures_dir, name))
+            finally:
+                Path(tmp).unlink(missing_ok=True)
+            names.append(name)
+    except BatchInputError as exc:
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except BaseException:
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise
+    batch_id = batch_store.create(options, names, workdir)
+    status_url = f"/batches/{batch_id}"
+    if not wait:
+        _get_executor().submit(run_batch_job, batch_id, options, ignored)
+        entry = batch_store.get(batch_id)
+        assert entry is not None
+        return JSONResponse(status_code=202, content=_batch_view(entry), headers={"Location": status_url})
+    await run_in_threadpool(run_batch_job, batch_id, options, ignored)
+    entry = batch_store.get(batch_id)
+    assert entry is not None
+    if entry["status"] == "failed":
+        raise HTTPException(status_code=400, detail=entry["error"])
+    logger.debug("create_batch: lot {} terminé", batch_id)
+    return JSONResponse(status_code=201, content=_batch_view(entry), headers={"Location": status_url})
+
+
+def _batch_entry(batch_id: str, completed: bool = False) -> dict:
+    from netcross_api.batches import batch_store
+
+    entry = batch_store.get(batch_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Lot {batch_id} introuvable")
+    if completed and entry["status"] != "completed":
+        detail = entry["error"] if entry["status"] == "failed" else f"Lot {batch_id} en cours ({entry['status']})"
+        raise HTTPException(status_code=409, detail=detail)
+    return entry
+
+
+@app.get("/batches", tags=["batches"])
+async def list_batches(_auth: None = Depends(_verify_api_key)) -> JSONResponse:
+    """Lots conservés en mémoire (les plus anciens terminés sont évincés)."""
+    from netcross_api.batches import batch_store
+
+    return JSONResponse({"batches": batch_store.list()})
+
+
+@app.get("/batches/{batch_id}", tags=["batches"], responses={404: {"model": ErrorResponse}})
+async def get_batch(batch_id: str, _auth: None = Depends(_verify_api_key)) -> JSONResponse:
+    """Avancement (``progress``, lignes de la CLI) et résultat du lot :
+    groupes et justification, captures isolées et motif, échecs, rapports,
+    constats par sévérité, synthèse."""
+    return JSONResponse(_batch_view(_batch_entry(batch_id)))
+
+
+@app.get(
+    "/batches/{batch_id}/index",
+    tags=["batches"],
+    responses={200: {"content": {"text/plain": {}}}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+async def get_batch_index(batch_id: str, _auth: None = Depends(_verify_api_key)) -> PlainTextResponse:
+    """Index du lot (``index.txt`` de la CLI)."""
+    return PlainTextResponse(_batch_entry(batch_id, completed=True)["index"])
+
+
+@app.get(
+    "/batches/{batch_id}/reports/{name}",
+    tags=["batches"],
+    responses={200: {"content": {"text/plain": {}}}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+async def get_batch_report(batch_id: str, name: str, _auth: None = Depends(_verify_api_key)) -> PlainTextResponse:
+    """Rapport texte d'une capture ou d'un groupe (``rapport-*.txt``)."""
+    from netcross_api.batches import report_path
+
+    entry = _batch_entry(batch_id, completed=True)
+    path = report_path(entry, name)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"Rapport {name} introuvable dans le lot {batch_id}")
+    return PlainTextResponse(path.read_text(encoding="utf-8"))

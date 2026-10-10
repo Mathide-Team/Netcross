@@ -1391,6 +1391,209 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /batches:
+    post:
+      tags:
+      - batches
+      summary: Create Batch
+      description: 'Lot de captures (issue #872, équivalent de ``cross_capture_batch_cli.py``).
+
+
+        Inventaire de chaque capture, regroupement conservateur des captures qui
+
+        observent le même événement, un rapport par capture et par groupe, index
+
+        du lot. Une capture illisible n''arrête pas le lot (listée en échec).
+
+        ``--skip-existing`` n''a pas d''équivalent : chaque lot repart de zéro.
+
+        Avancement et résultat : ``GET /batches/{batch_id}``.'
+      operationId: create_batch_batches_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: wait
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Attendre la fin du lot (201) au lieu de 202
+          default: false
+          title: Wait
+        description: Attendre la fin du lot (201) au lieu de 202
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_create_batch_batches_post'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '201':
+          description: Lot terminé (?wait=true)
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Content Too Large
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - batches
+      summary: List Batches
+      description: Lots conservés en mémoire (les plus anciens terminés sont évincés).
+      operationId: list_batches_batches_get
+      security:
+      - APIKeyHeader: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /batches/{batch_id}:
+    get:
+      tags:
+      - batches
+      summary: Get Batch
+      description: 'Avancement (``progress``, lignes de la CLI) et résultat du lot
+        :
+
+        groupes et justification, captures isolées et motif, échecs, rapports,
+
+        constats par sévérité, synthèse.'
+      operationId: get_batch_batches__batch_id__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /batches/{batch_id}/index:
+    get:
+      tags:
+      - batches
+      summary: Get Batch Index
+      description: Index du lot (``index.txt`` de la CLI).
+      operationId: get_batch_index_batches__batch_id__index_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/plain: {}
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /batches/{batch_id}/reports/{name}:
+    get:
+      tags:
+      - batches
+      summary: Get Batch Report
+      description: Rapport texte d'une capture ou d'un groupe (``rapport-*.txt``).
+      operationId: get_batch_report_batches__batch_id__reports__name__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/plain: {}
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AnalysisAccepted:
@@ -1468,6 +1671,53 @@ components:
       - analysis_id
       title: AnalysisSummary
       description: Résumé d'une analyse (retourné par POST /captures).
+    Body_create_batch_batches_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+          description: Captures du lot (.pcap, .pcapng, .cap, .erf, .gz) ou une archive
+            .zip (extraite à plat, sous-dossiers compris, comme --recursive)
+        no_group:
+          type: boolean
+          title: No Group
+          description: Aucun regroupement (équiv. --no-group)
+          default: false
+        group_window:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Group Window
+          description: Décalage d'horloge maximal toléré, en secondes (équiv. --group-window)
+        min_overlap:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Min Overlap
+          description: Recouvrement temporel minimal, ]0, 1] (équiv. --min-overlap)
+        min_common_ips:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Min Common Ips
+          description: IP communes minimales (équiv. --min-common-ips)
+        jobs:
+          type: integer
+          title: Jobs
+          description: Captures inventoriées en parallèle (équiv. --jobs)
+          default: 1
+        security_report:
+          type: boolean
+          title: Security Report
+          description: Analyse de sécurité dans chaque rapport (équiv. --security-report)
+          default: false
+      type: object
+      required:
+      - files
+      title: Body_create_batch_batches_post
     Body_create_comparison_comparisons_post:
       properties:
         baseline_files:

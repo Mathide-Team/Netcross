@@ -24,6 +24,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
+| `NETCROSS_API_MAX_BATCHES` | 20 | Lots conservés en mémoire avec leurs rapports (issue #872) ; au-delà, les plus anciens lots terminés sont supprimés. |
 
 ```bash
 NETCROSS_API_TOKEN=$(openssl rand -hex 32) NETCROSS_DB_PATH=/var/lib/netcross/api.db \
@@ -67,6 +68,8 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
 | `GET` | `/analyses/{id}/markdown` | Rapport Markdown, identique à `--md-report` (issue #864) ; liste complète des routes : [parité des surfaces](parite-surfaces.md) |
+| `POST` | `/batches` | Lot de captures ou archive ZIP, équivalent de `cross_capture_batch_cli.py` (issue #872, voir [mode lot](batch-mode.md#api-rest-issue-872)) |
+| `GET` | `/batches/{id}` | Avancement et résultat d'un lot ; `/index` et `/reports/{name}` pour les textes |
 | `GET` | `/analyses` | Liste des analyses |
 | `GET` | `/health` | Health check |
 
