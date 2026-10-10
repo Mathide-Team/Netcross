@@ -2212,3 +2212,9 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# Issue #873 : documentation Lua (après _verify_api_key, même authentification)
+from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
+
+_lua_doc_routes.register(app, _verify_api_key)

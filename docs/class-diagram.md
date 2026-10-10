@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-180 modules · 265 classes · 616 fonctions publiques de module.
+181 modules · 265 classes · 622 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -40,7 +40,7 @@ flowchart TD
     netcross_gtk4 -->|"90 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
-    netcross_api -->|"31 imports"| netcross_core
+    netcross_api -->|"33 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -1257,6 +1257,8 @@ classDiagram
         +get_class(conn, nom) FicheClasse?
         +get_methode(conn, methode_id) Methode?
         +get_attribut(conn, attribut_id) Attribut?
+        +search_document(conn, terme, limit, full) dict~str, Any~
+        +suggest_classes(conn, nom, n) list~str~
     }
 
     %% ===== netcross_core.models =====
@@ -3786,6 +3788,7 @@ classDiagram
 |---|---|
 | `netcross_api` | service REST FastAPI pour exposer les analyses Netcross (issue #209). |
 | `netcross_api.app` | application FastAPI pour exposer les analyses Netcross (issues #209, #354, #356). |
+| `netcross_api.lua_doc_routes` | documentation hors ligne de l'API Lua Wireshark (issue #873), équivalent de ``netcross-lua-doc --json``. |
 | `netcross_api.models` | modèles Pydantic pour les requêtes/réponses API (issue #209). |
 | `netcross_api.store` | analyses de l'API : statut, document JSON, persistance. |
 
@@ -3855,6 +3858,15 @@ classDiagram
         +get_analysis_redact_map(analysis_id, _auth) PlainTextResponse
         +get_comparison_redact_map(comparison_id, _auth) PlainTextResponse
         +get_comparison_csv(comparison_id, _auth) PlainTextResponse
+    }
+
+    %% ===== netcross_api.lua_doc_routes =====
+    class mod_netcross_api_lua_doc_routes["netcross_api.lua_doc_routes"] {
+        <<module>>
+        +get_lua_classes() dict~str, Any~
+        +get_lua_class(name) dict~str, Any~
+        +search_lua_doc(q, limit, full) dict~str, Any~
+        +register(app, verify) None
     }
 
     %% ===== netcross_api.models =====

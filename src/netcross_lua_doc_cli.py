@@ -35,7 +35,6 @@ import sys
 import textwrap
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 from loguru import logger
 
@@ -186,31 +185,6 @@ def render_resultats(conn: sqlite3.Connection, terme: str, res: list[ResultatRec
 
 
 # ---------------------------------------------------------------------------
-# Sortie JSON
-# ---------------------------------------------------------------------------
-
-
-def _json_resultats(conn: sqlite3.Connection, terme: str, res: list[ResultatRecherche], full: bool) -> dict[str, Any]:
-    logger.debug(
-        "_json_resultats: conn={} terme={} res={} full={}",
-        summarize(conn, "conn"),
-        summarize(terme, "terme"),
-        summarize(res, "res"),
-        summarize(full, "full"),
-    )
-    items: list[dict[str, Any]] = []
-    for r in res:
-        item = asdict(r)
-        item["est_attribut"] = r.est_attribut
-        if full:
-            detail = lua_doc.get_attribut(conn, r.ref_id) if r.est_attribut else lua_doc.get_methode(conn, r.ref_id)
-            item["detail"] = asdict(detail) if detail else None
-        items.append(item)
-    logger.debug("_json_resultats: retour dictionnaire")
-    return {"meta": lua_doc.get_meta(conn), "terme": terme, "resultats": items}
-
-
-# ---------------------------------------------------------------------------
 # Point d'entree
 # ---------------------------------------------------------------------------
 
@@ -299,8 +273,7 @@ def _run(conn: sqlite3.Connection, args: argparse.Namespace, terme: str) -> int:
     if args.classe:
         fiche = lua_doc.get_class(conn, args.classe)
         if fiche is None:
-            proches = [r.classe for r in lua_doc.search(conn, args.classe, 50)]
-            suggestion = sorted(set(proches))[:5]
+            suggestion = lua_doc.suggest_classes(conn, args.classe)
             msg = f"Classe inconnue : {args.classe}"
             if suggestion:
                 msg += f" (voir : {', '.join(suggestion)})"
@@ -314,11 +287,13 @@ def _run(conn: sqlite3.Connection, args: argparse.Namespace, terme: str) -> int:
         logger.debug("_run: si args.classe -> retour 0")
         return 0
 
-    res = lua_doc.search(conn, terme, args.limit)
     if args.json:
-        print(json.dumps(_json_resultats(conn, terme, res, args.full), ensure_ascii=False, indent=2))
-        logger.debug("_run: si args.json -> retour 0 if res else 1")
-        return 0 if res else 1
+        # meme document que GET /lua-doc/search (issue #873)
+        doc = lua_doc.search_document(conn, terme, args.limit, args.full)
+        print(json.dumps(doc, ensure_ascii=False, indent=2))
+        logger.debug("_run: si args.json -> retour 0 if resultats else 1")
+        return 0 if doc["resultats"] else 1
+    res = lua_doc.search(conn, terme, args.limit)
     if not res:
         print(f"Aucun resultat pour « {terme} » (Wireshark {version}).", file=sys.stderr)
         logger.debug("_run: si not res -> retour 1")
