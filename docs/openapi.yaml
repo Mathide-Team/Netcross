@@ -1666,6 +1666,36 @@ components:
           title: Parallel Workers
           description: Lecture parallèle avec N processus tshark (équivalent de --parallel
             --parallel-workers N)
+        notify_on:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify On
+          description: 'Seuil de notification : critique, elevee, moyenne ou faible
+            (équivalent de --notify-on)'
+        notify_webhook:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Webhook
+          description: URL de webhook (équivalent de --notify-webhook)
+        notify_slack:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Slack
+          description: URL de webhook Slack (équivalent de --notify-slack)
+        notify_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Email
+          description: Destinataire du courriel (équivalent de --notify-email)
+        notify_detail:
+          type: string
+          title: Notify Detail
+          description: resume ou complet (équivalent de --notify-detail)
+          default: resume
         names:
           anyOf:
           - type: string
@@ -1849,6 +1879,36 @@ components:
           title: Parallel Workers
           description: Lecture parallèle avec N processus tshark (équivalent de --parallel
             --parallel-workers N)
+        notify_on:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify On
+          description: 'Seuil de notification : critique, elevee, moyenne ou faible
+            (équivalent de --notify-on)'
+        notify_webhook:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Webhook
+          description: URL de webhook (équivalent de --notify-webhook)
+        notify_slack:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Slack
+          description: URL de webhook Slack (équivalent de --notify-slack)
+        notify_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Email
+          description: Destinataire du courriel (équivalent de --notify-email)
+        notify_detail:
+          type: string
+          title: Notify Detail
+          description: resume ou complet (équivalent de --notify-detail)
+          default: resume
         names:
           anyOf:
           - type: string
