@@ -5,7 +5,10 @@
 - ``POST /tools/split`` : ``--split MODE:VALEUR`` (archive zip des morceaux) ;
 - ``POST /tools/convert`` : ``--convert``, ``--convert-format`` ;
 - ``POST /tools/export`` : ``--export-pcap`` et ses filtres ;
-- ``POST /tools/adjust-time`` : ``--adjust-time-output`` et ses modes.
+- ``POST /tools/adjust-time`` : ``--adjust-time-output`` et ses modes ;
+- ``POST /tools/replay`` : ``--replay`` (issue #871), seulement sur les
+  interfaces listees par l'administrateur dans ``NETCROSS_REPLAY_INTERFACES``
+  (vide par defaut : rejeu refuse, 403).
 
 Même validation et mêmes messages que la CLI (``netcross_core.capture_tools``) ;
 aucune analyse. Fichiers temporaires supprimés après la réponse.
@@ -27,7 +30,7 @@ from starlette.concurrency import run_in_threadpool
 
 from netcross_core import capture_tools
 from netcross_core.logging_config import get_logger
-from pcap_parser.capture import TsharkNotFoundError
+from pcap_parser.capture import TcpreplayNotFoundError, TsharkNotFoundError
 
 logger = get_logger(__name__)
 
@@ -54,7 +57,14 @@ _SPLIT_FILE = File(..., description="Capture à découper")
 _CONVERT_FILE = File(..., description="Capture à convertir")
 _EXPORT_FILE = File(..., description="Capture source")
 _ADJUST_FILE = File(..., description="Capture à recaler")
+_REPLAY_FILE = File(..., description="Capture à rejouer")
 _ALIGN_FILE = File(None, description="Capture de référence (équivalent de --align-to)")
+
+_REPLAY_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **{k: v for k, v in _RESPONSES.items() if k != 200},
+    403: {"description": "Interface non autorisée par NETCROSS_REPLAY_INTERFACES (rejeu désactivé par défaut)"},
+    503: {"description": "tcpreplay absent du serveur"},
+}
 
 SaveUpload = Callable[[UploadFile, str], Awaitable[str]]
 
@@ -63,7 +73,7 @@ async def _run(work: Callable[[], Any]) -> Any:
     """Exécute l'outil hors de la boucle ; erreurs -> codes HTTP."""
     try:
         return await run_in_threadpool(work)
-    except TsharkNotFoundError as exc:
+    except (TsharkNotFoundError, TcpreplayNotFoundError) as exc:
         logger.warning("outils de capture : {}", exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (ValueError, FileNotFoundError) as exc:
@@ -228,4 +238,34 @@ def register(app: FastAPI, verify: Callable[..., None], save_upload: SaveUpload,
             raise
         return _file_response(workdir, out, f"netcross-adjust.{fmt}", fmt, message)
 
-    logger.debug("tools_routes.register: 5 routes")
+    @app.post("/tools/replay", tags=["tools"], responses=_REPLAY_RESPONSES, dependencies=deps)
+    async def replay_capture_route(
+        file: UploadFile = _REPLAY_FILE,
+        interface: str = Form(..., description="Interface d'émission (équivalent de --replay)"),
+        speed: str = Form("1.0", description="Multiplicateur ou topspeed (équivalent de --replay-speed)"),
+        loop: int = Form(1, description="Nombre de passes, >= 1 (équivalent de --replay-loop)"),
+    ) -> dict[str, str]:
+        """Rejeu sur une interface réseau via tcpreplay (équivalent de
+        ``--replay``) : ÉMET du trafic réel. Refusé (403) si ``interface``
+        n'est pas autorisée par ``NETCROSS_REPLAY_INTERFACES`` côté serveur.
+        Réponse à la fin du rejeu."""
+        allowed = capture_tools.allowed_replay_interfaces()
+        if interface not in allowed:
+            logger.warning("rejeu refuse sur {} (autorisees : {})", interface, sorted(allowed))
+            detail = (
+                f"rejeu refuse sur {interface} : interface non autorisee par {capture_tools.REPLAY_INTERFACES_ENV}"
+                if allowed
+                else f"rejeu desactive sur ce serveur ({capture_tools.REPLAY_INTERFACES_ENV} vide)"
+            )
+            raise HTTPException(status_code=403, detail=detail)
+        workdir = _workdir()
+        try:
+            path = await _saved(workdir, file, "capture")
+            name = Path(file.filename or "capture").name
+            await _run(lambda: capture_tools.replay(path, interface, speed=speed, loop=loop))
+        finally:
+            shutil.rmtree(workdir, True)
+        logger.info("rejeu de {} sur {} (speed={}, loop={})", name, interface, speed, loop)
+        return {"message": capture_tools.replay_message(name, interface, speed, loop)}
+
+    logger.debug("tools_routes.register: 6 routes")

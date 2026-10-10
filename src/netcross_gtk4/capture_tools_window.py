@@ -2,7 +2,8 @@
 (issues #868, #869, #870, #886, #887) : fusion, decoupage, conversion,
 export filtre et recalage temporel, equivalents des modes utilitaires de
 la CLI (``--merge``, ``--split``, ``--convert``, ``--export-pcap``,
-``--adjust-time-output``).
+``--adjust-time-output``) ; onglet « Rejeu » (``--replay``, issue #871),
+interruptible, apres confirmation explicite.
 
 Validation, messages et traitements : ``netcross_core.capture_tools``,
 partage avec la CLI et l'API. Aucune analyse n'est lancee. Les actions
@@ -12,6 +13,7 @@ partage avec la CLI et l'API. Aucune analyse n'est lancee. Les actions
 from __future__ import annotations
 
 import os
+import subprocess
 import threading
 from collections.abc import Callable
 
@@ -125,6 +127,7 @@ class CaptureToolsWindow(Gtk.Window):
         self._build_convert()
         self._build_export()
         self._build_adjust()
+        self._build_replay()
 
     # -- construction --------------------------------------------------------
 
@@ -213,6 +216,41 @@ class CaptureToolsWindow(Gtk.Window):
         self._action(grid, 5, "Recaler", self.run_adjust)
         self.notebook.append_page(grid, Gtk.Label(label="Recalage temporel"))
 
+    def _build_replay(self) -> None:
+        grid = _grid()
+        warning = Gtk.Label(
+            label="ATTENTION : le rejeu EMET du trafic reseau reel sur l'interface choisie. "
+            "Ne jamais l'utiliser sur un reseau de production sans autorisation explicite "
+            "(saturation de lien, alarmes IDS/IPS, adresses source usurpees). "
+            "Reserver a un banc de test isole.",
+            wrap=True,
+            xalign=0.0,
+        )
+        grid.attach(warning, 0, 0, 2, 1)
+        self.replay_source = PathChooser("Capture...")
+        _row(grid, 1, "Capture :", self.replay_source)
+        self.replay_interface = Gtk.Entry(placeholder_text="ex : veth0")
+        _row(grid, 2, "Interface (--replay) :", self.replay_interface)
+        self.replay_speed = Gtk.Entry(text="1.0", placeholder_text="multiplicateur ou topspeed")
+        _row(grid, 3, "Vitesse (--replay-speed) :", self.replay_speed)
+        self.replay_loop = Gtk.SpinButton.new_with_range(1, 100000, 1)
+        self.replay_loop.set_value(1)
+        _row(grid, 4, "Passes (--replay-loop) :", self.replay_loop)
+        self.replay_confirm = Gtk.CheckButton(label="J'ai l'autorisation d'emettre sur cette interface")
+        grid.attach(self.replay_confirm, 1, 5, 1, 1)
+        actions = Gtk.Box(spacing=6)
+        self.replay_btn = Gtk.Button(label="Rejouer")
+        self.replay_btn.connect("clicked", lambda _b: self._launch(self.run_replay))
+        self.replay_stop_btn = Gtk.Button(label="Arreter", sensitive=False)
+        self.replay_stop_btn.connect("clicked", lambda _b: self.stop_replay())
+        actions.append(self.replay_btn)
+        actions.append(self.replay_stop_btn)
+        grid.attach(actions, 1, 6, 1, 1)
+        self.buttons.append(self.replay_btn)
+        self._replay_proc: subprocess.Popen | None = None
+        self._replay_stopped = False
+        self.notebook.append_page(grid, Gtk.Label(label="Rejeu"))
+
     # -- etat --------------------------------------------------------------
 
     def set_merge_files(self, paths: list[str]) -> None:
@@ -289,6 +327,39 @@ class CaptureToolsWindow(Gtk.Window):
             return capture_tools.adjust_time(source, out, normalize=True)
         reference = self._need(self.adjust_reference.path, "la capture de reference")
         return capture_tools.adjust_time(source, out, align_to=reference)
+
+    def run_replay(self) -> str:
+        if not self.replay_confirm.get_active():
+            raise ValueError("cochez la confirmation d'autorisation avant de rejouer")
+        source = self._need(self.replay_source.path, "la capture a rejouer")
+        interface = self.replay_interface.get_text().strip()
+        if not interface:
+            raise ValueError("indiquez l'interface d'emission")
+        speed = self.replay_speed.get_text().strip() or "1.0"
+        loop = self.replay_loop.get_value_as_int()
+        self._replay_stopped = False
+        proc = capture_tools.start_replay(source, interface, speed=speed, loop=loop)
+        self._replay_proc = proc
+        GLib.idle_add(self.replay_stop_btn.set_sensitive, True)
+        try:
+            capture_tools.wait_replay(proc, stopped=False)
+        except RuntimeError:
+            logger.debug("run_replay: echec (arret demande : {})", self._replay_stopped)
+            if not self._replay_stopped:
+                raise
+        finally:
+            self._replay_proc = None
+            GLib.idle_add(self.replay_stop_btn.set_sensitive, False)
+        if self._replay_stopped:
+            return f"Rejeu de {source} sur {interface} interrompu."
+        return capture_tools.replay_message(source, interface, speed, loop)
+
+    def stop_replay(self) -> None:
+        proc = self._replay_proc
+        if proc is not None and proc.poll() is None:
+            self._replay_stopped = True
+            proc.terminate()
+            logger.info("CaptureToolsWindow: rejeu interrompu")
 
     # -- execution en arriere-plan -------------------------------------------
 

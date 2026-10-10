@@ -1546,6 +1546,48 @@ paths:
           description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
       security:
       - APIKeyHeader: []
+  /tools/replay:
+    post:
+      tags:
+      - tools
+      summary: Replay Capture Route
+      description: 'Rejeu sur une interface réseau via tcpreplay (équivalent de
+
+        ``--replay``) : ÉMET du trafic réel. Refusé (403) si ``interface``
+
+        n''est pas autorisée par ``NETCROSS_REPLAY_INTERFACES`` côté serveur.
+
+        Réponse à la fin du rejeu.'
+      operationId: replay_capture_route_tools_replay_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_replay_capture_route_tools_replay_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Replay Capture Route Tools Replay Post
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: tcpreplay absent du serveur
+        '403':
+          description: Interface non autorisée par NETCROSS_REPLAY_INTERFACES (rejeu
+            désactivé par défaut)
+      security:
+      - APIKeyHeader: []
   /lua-doc/classes:
     get:
       tags:
@@ -1989,6 +2031,32 @@ components:
       required:
       - files
       title: Body_netflow_summary_analyses__analysis_id__netflow_post
+    Body_replay_capture_route_tools_replay_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à rejouer
+        interface:
+          type: string
+          title: Interface
+          description: Interface d'émission (équivalent de --replay)
+        speed:
+          type: string
+          title: Speed
+          description: Multiplicateur ou topspeed (équivalent de --replay-speed)
+          default: '1.0'
+        loop:
+          type: integer
+          title: Loop
+          description: Nombre de passes, >= 1 (équivalent de --replay-loop)
+          default: 1
+      type: object
+      required:
+      - file
+      - interface
+      title: Body_replay_capture_route_tools_replay_post
     Body_split_capture_route_tools_split_post:
       properties:
         file:

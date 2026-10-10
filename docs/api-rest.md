@@ -76,6 +76,8 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/lua-doc/classes` | Classes de l'API Lua Wireshark (`netcross-lua-doc --classes --json`, issue #873) |
 | `GET` | `/lua-doc/classes/{name}` | Fiche d'une classe, insensible à la casse ; 404 avec suggestions (`--class NOM --json`) |
 | `GET` | `/lua-doc/search?q=...&limit=20&full=false` | Recherche plein texte (`netcross-lua-doc --json TERME`) ; 503 si `data/lua_api.json` est absent du serveur |
+
+| `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl
