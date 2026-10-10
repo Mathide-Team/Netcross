@@ -1843,6 +1843,7 @@ async def get_plugins(
     logger.debug("get_plugins: retour {} plugin(s)", len(rows))
     return JSONResponse(payload)
 
+
 # Issue #877 : paramètre répétable (liste) ; défini au niveau du module car un
 # appel de fonction en valeur par défaut d'un type mutable est refusé (B008).
 _SUPPORT_MARKER_QUERY = Query(
