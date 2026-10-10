@@ -734,6 +734,13 @@ class MainWindow(Gtk.ApplicationWindow):
 
         header = Gtk.HeaderBar()
         self.set_titlebar(header)
+        # Issue #874 : consultation de l'historique (analyses et comparaisons)
+        self.history_btn = Gtk.Button(label="Historique des runs")
+        self.history_btn.set_tooltip_text("Consulter une base --history-db (filtres type, etiquette, nombre)")
+        self.history_btn.connect("clicked", lambda _b: self.open_history())
+        header.pack_start(self.history_btn)
+        self.history_window = None
+
         # Issues #868-#870, #886, #887 : fusion, decoupage, conversion...
         self.capture_tools_btn = Gtk.Button(label="Outils de capture")
         self.capture_tools_btn.set_tooltip_text(
@@ -764,6 +771,21 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.stack.set_visible_child_name("config")
         logger.debug("MainWindow: fenêtre prête (3 pages construites)")
+
+    def open_history(self):
+        """Fenetre « Historique des runs » (base et etiquette de la configuration)."""
+        from netcross_gtk4.history_window import HistoryWindow
+
+        if self.history_window is None:
+            settings = self.history_settings()
+            self.history_window = HistoryWindow(parent=self, db_path=settings.db_path, label=settings.label)
+            self.history_window.connect("close-request", self._on_history_closed)
+        self.history_window.present()
+        return self.history_window
+
+    def _on_history_closed(self, _win):
+        self.history_window = None
+        return False
 
     def open_capture_tools(self):
         """Fenetre « Outils de capture », une seule a la fois."""
@@ -2029,6 +2051,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "nat_window_ms": nat_window_ms,
                     "idle_timeout_seconds": idle_timeout_seconds,
                     "triage": self.diff_triage_check.get_active(),
+                    "history": self.history_settings(),
                     "triage_topn": int(self.diff_triage_topn_spin.get_value()),
                 },
                 daemon=True,
@@ -2145,6 +2168,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # (--live-current) -- baseline et reglages releves ici, thread
         # principal ; None = capture en direct simple.
         self._live_diff = None
+        self._live_diff_history = self.history_settings()  # issue #874 : releve ici, thread principal
         if self.diff_check.get_active():
             baseline_captures = self.baseline_panel.captures()
             if len(baseline_captures) < 2:
@@ -2464,6 +2488,9 @@ class MainWindow(Gtk.ApplicationWindow):
             GLib.idle_add(self._reset_live_ui)
             logger.debug("MainWindow._analyze_live_diff: except Exception -> retour")
             return
+        history = getattr(self, "_live_diff_history", None)
+        if history is not None and history.db_path:
+            self._record_diff_history(result, history, options.redact)
         GLib.idle_add(
             self._on_diff_done,
             result.findings,
@@ -2637,6 +2664,7 @@ class MainWindow(Gtk.ApplicationWindow):
         idle_timeout_seconds=None,
         triage=False,
         triage_topn=5,
+        history=None,
     ):
         logger.debug(
             "_run_diff_thread: {} capture(s) baseline, {} capture(s) courant",
@@ -2675,6 +2703,8 @@ class MainWindow(Gtk.ApplicationWindow):
             logger.debug("MainWindow._run_diff_thread: except Exception -> retour")
             return
 
+        if history is not None and history.db_path:
+            self._record_diff_history(result, history, redact)
         GLib.idle_add(
             self._on_diff_done,
             result.findings,
@@ -2688,6 +2718,22 @@ class MainWindow(Gtk.ApplicationWindow):
             result.redaction_map,
         )
         logger.debug("MainWindow._run_diff_thread: fin")
+
+    def _record_diff_history(self, result, history, redact):
+        """Issue #874 : ``--history-db`` de la comparaison ; une base
+        illisible n'annule pas la comparaison (message dans le journal)."""
+        from netcross_gtk4.report_exports import record_diff_history
+        from netcross_report import HistoryDatabaseError
+
+        try:
+            message = record_diff_history(
+                result.findings, result.baseline_report, result.current_report, history, redact=redact
+            )
+        except HistoryDatabaseError as exc:
+            logger.warning("_record_diff_history: {}", exc)
+            message = f"Historique non enregistre : {exc}"
+        GLib.idle_add(self._log, message)
+        return message
 
     def _on_analysis_error(self, message):
         logger.debug("_on_analysis_error: {}", message)

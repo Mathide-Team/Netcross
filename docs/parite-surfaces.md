@@ -15,8 +15,8 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 35 cases à cocher, 26 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 33 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| GUI | `netcross_gtk4` : 3 pages, 35 cases à cocher, 27 réglages numériques | Analyse interactive et exploration visuelle |
+| API | 34 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -144,8 +144,8 @@ de sécurité, déjà produit par `POST /analyses`.
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
 | Exports | oui (PDF, CSV, JSON) | `--pdf-report`, `--diff-csv`, `--json-report` | `GET /comparisons/{id}/csv` (issue #669) |
-| Anonymisation partagée | oui (table commune : « Table d'anonymisation (--redact-map)... », issue #876) | `--redact`, `--redact-map` | `redact` (un seul pseudonyme par adresse pour baseline et courant), table : `GET /comparisons/{comparison_id}/redact-map` (issues #669, #876) |
-| Historique | non | `--history-db`, `--history-label`, `--history-show` | non |
+| Anonymisation partagée | oui | `--redact`, `--redact-map` | `redact` (issue #669) |
+| Historique | oui (« Historique... » et « Etiquette » de la configuration, aussi en comparaison et en comparaison en direct ; consultation : fenêtre « Historique des runs » ; issue #874) | `--history-db`, `--history-label`, `--history-show` | `history`, `history_label` (base fixée par `NETCROSS_HISTORY_DB`), consultation `GET /history` (issue #874) |
 | Code de sortie 1 sur régression | sans objet | oui | `regression: true` dans la réponse (issue #669) |
 
 Options de la CLI de comparaison reprises de l'analyse principale, avec
@@ -180,7 +180,8 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Dossier entier de captures | non | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | non |
-| Documentation de l'API Lua de Wireshark | oui (bouton « Documentation Lua » de la barre de titre : classes, fiche, recherche, « Resultats max. », « Detail complet (--full) », JSON ; issue #873) | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | `GET /lua-doc/classes`, `/lua-doc/classes/{name}`, `/lua-doc/search` (même JSON que `--json`, issue #873) |
+| Documentation de l'API Lua de Wireshark | non | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | non |
+| Historique des runs (analyses et comparaisons) | fenêtre « Historique des runs » (bouton de la barre de titre) : base, type, étiquette, nombre (issue #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history` : `run_type`, `label`, `limit` (base du serveur `NETCROSS_HISTORY_DB`, issue #874) |
 | Historique des analyses | non | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /analyses` |
 | Mode debug | `--debug` au lancement | `--debug` (toutes les CLI) | `NETCROSS_DEBUG=1` |
 
@@ -271,6 +272,7 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `POST /comparisons` | Comparaison baseline/courant (issue #669) |
 | `GET /comparisons/{comparison_id}` | Résultat d'une comparaison (issue #669) |
 | `GET /comparisons/{comparison_id}/csv` | CSV des écarts (issue #669) |
+| `GET /history` | Historique des runs, filtres type, étiquette, nombre (issue #874) |
 | `POST /tools/merge` | Fusion de captures (issue #868) |
 | `POST /tools/split` | Découpage, archive zip (issue #869) |
 | `POST /tools/convert` | Conversion de format (issue #870) |
@@ -280,7 +282,6 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /lua-doc/classes/{name}` | Fiche d'une classe Lua (issue #873) |
 | `GET /lua-doc/search` | Recherche dans la documentation Lua, `q`, `limit`, `full` (issue #873) |
 | `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
-
 | `POST /tools/replay` | Rejeu sur une interface autorisée (issue #871) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
