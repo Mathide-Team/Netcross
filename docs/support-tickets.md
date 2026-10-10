@@ -163,6 +163,23 @@ la lumière du vrai réseau (« à quelle machine correspond `host-3` ? »).
 Le transmettre avec le ticket annulerait entièrement l'anonymisation. Même
 discipline que `--redact-map`.
 
+## Interface graphique (issues #674, #877)
+
+Page Résultats, panneau « SIEM, ticket de support, historique », après
+une analyse de fichiers :
+
+| Réglage | Équivalent CLI |
+| --- | --- |
+| case « J'autorise la remontee d'un ticket anonymise » | `--support-consent` |
+| cases « Environnement », « Journal », « Trace d'appels », « Marqueurs » (toutes cochées par défaut, au moins une) | `--support-scope` |
+| champ des marqueurs `CLE=VALEUR`, séparés par `;` | `--support-marker` (répétable) |
+| bouton « Ticket de support (--support-ticket)... » | `--support-ticket` |
+| bouton « Correspondance du ticket (--support-map)... », actif après un ticket | `--support-map` |
+
+Un marqueur mal formé est refusé avec le message de la CLI et aucun
+ticket n'est écrit. La correspondance est celle du dernier ticket écrit
+(même CSV que `--support-map`) ; une nouvelle analyse l'oublie.
+
 ## Utilisation programmatique
 
 ```python

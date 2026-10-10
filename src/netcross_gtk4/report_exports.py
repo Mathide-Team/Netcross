@@ -3,16 +3,18 @@ historique SQLite et ticket de support dans la GUI (issue #674), sans GTK.
 
 Memes fonctions que la CLI (``--sequence-diagram``, ``--siem-export``,
 ``--history-db``/``--history-label``/``--history-show``,
-``--support-ticket``/``--support-consent``) : un export GUI et un export
-CLI de la meme analyse sont identiques.
+``--support-ticket``/``--support-consent``, et depuis l'issue #877
+``--support-scope``/``--support-marker``/``--support-map``) : un export
+GUI et un export CLI de la meme analyse sont identiques.
 """
 
 from __future__ import annotations
 
 import contextlib
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 from netcross_core.logging_config import get_logger
 
@@ -91,28 +93,109 @@ def export_siem(report, path: str, fmt: str, context: ReportContext) -> str:
     return write_siem(report, path, fmt, observed_from=context.observed_from, observed_until=context.observed_until)
 
 
-def write_support_ticket(path: str, context: ReportContext, *, consent: bool) -> tuple[str, int]:
-    """Ticket « diagnostic » de ``--support-ticket`` (toutes les portees,
-    comme ``--support-consent`` sans ``--support-scope``). Refuse sans
-    consentement. Renvoie (chemin, occurrences redigees)."""
+class SupportTicketError(ValueError):
+    """Reglage du ticket refuse (portee, marqueur), meme message que la CLI."""
+
+
+def parse_support_markers(text: str) -> dict[str, str]:
+    """``"trace_id=T-042; ticket=INC-7"`` -> dict (``--support-marker``
+    repete ; separateur ``;``). Refuse une entree sans ``=`` ou sans cle."""
+    logger.debug("parse_support_markers: text={!r}", text)
+    markers: dict[str, str] = {}
+    for spec in (part.strip() for part in (text or "").split(";")):
+        if not spec:
+            continue
+        cle, sep, valeur = spec.partition("=")
+        if not sep or not cle.strip():
+            logger.debug("parse_support_markers: refus de {!r}", spec)
+            raise SupportTicketError(f"--support-marker : format attendu CLE=VALEUR, recu {spec!r}.")
+        markers[cle.strip()] = valeur.strip()
+    logger.debug("parse_support_markers: retour {} marqueur(s)", len(markers))
+    return markers
+
+
+def check_support_scopes(scopes) -> tuple[str, ...]:
+    """Portees cochees (``--support-scope``), dans l'ordre de ``SCOPES`` ;
+    au moins une, aucune inconnue."""
+    from netcross_core.support import SCOPES
+
+    logger.debug("check_support_scopes: scopes={}", scopes)
+    demandees = tuple(scopes)
+    inconnues = [s for s in demandees if s not in SCOPES]
+    if inconnues:
+        raise SupportTicketError(
+            f"--support-scope : portee(s) inconnue(s) {', '.join(inconnues)} (attendu parmi : {', '.join(SCOPES)})."
+        )
+    if not demandees:
+        raise SupportTicketError("--support-scope : cochez au moins une portee du ticket.")
+    retenues = tuple(s for s in SCOPES if s in demandees)
+    logger.debug("check_support_scopes: retour {}", retenues)
+    return retenues
+
+
+@dataclass(frozen=True)
+class SupportTicketResult:
+    path: str
+    occurrences: int
+    scopes: tuple[str, ...]
+    markers: dict[str, str] = field(default_factory=dict)
+    # Correspondance reelle <-> pseudonyme du ticket (``--support-map``) :
+    # a garder chez l'operateur, jamais avec le ticket.
+    scrubber: Any = None
+
+
+def write_support_ticket(
+    path: str,
+    context: ReportContext,
+    *,
+    consent: bool,
+    scopes=None,
+    markers: dict[str, str] | None = None,
+) -> SupportTicketResult:
+    """Ticket « diagnostic » de ``--support-ticket`` : portees
+    (``--support-scope``, toutes par defaut) et marqueurs
+    (``--support-marker``) comme la CLI. Refuse sans consentement."""
     from netcross_core.support import SCOPES, Consent, ConsentRequiredError, TextScrubber, build_ticket, write_ticket
 
+    logger.debug("write_support_ticket: path={} scopes={} markers={}", path, scopes, markers)
     if not consent:
         raise ConsentRequiredError("ticket refuse : cochez d'abord le consentement a la remontee (--support-consent)")
+    retenues = SCOPES if scopes is None else check_support_scopes(scopes)
+    scrubber = TextScrubber()
     ticket = build_ticket(
         consent=Consent(
             granted=True,
-            scopes=SCOPES,
+            scopes=retenues,
             granted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             source="gui",
         ),
         kind="diagnostic",
+        markers=dict(markers or {}),
         log_lines=[
             f"captures analysees : {context.captures}",
             "interfaces live : 0",
             f"anonymisation des adresses (--redact) : {'oui' if context.redact else 'non'}",
         ],
-        scrubber=TextScrubber(),
+        scrubber=scrubber,
     )
     written = write_ticket(ticket, path)
-    return written, ticket.anonymization["total_occurrences"]
+    logger.debug("write_support_ticket: ticket ecrit dans {}", written)
+    return SupportTicketResult(
+        path=written,
+        occurrences=ticket.anonymization["total_occurrences"],
+        scopes=retenues,
+        markers=dict(markers or {}),
+        scrubber=scrubber,
+    )
+
+
+def write_support_map(scrubber, path: str) -> str:
+    """Meme CSV que ``--support-map`` (correspondance du dernier ticket)."""
+    from netcross_core.support.ticket import write_support_map_csv
+
+    logger.debug("write_support_map: path={}", path)
+    if scrubber is None:
+        raise ValueError("aucun ticket ecrit : la correspondance suit le ticket de support")
+    written = write_support_map_csv(scrubber, path)
+    logger.debug("write_support_map: retour {}", written)
+    return written

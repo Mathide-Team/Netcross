@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-184 modules · 268 classes · 622 fonctions publiques de module.
+184 modules · 270 classes · 625 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"27 imports"| netcross_report
-    netcross_gtk4 -->|"94 imports"| netcross_core
+    netcross_gtk4 -->|"96 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
     netcross_api -->|"33 imports"| netcross_core
@@ -4535,13 +4535,27 @@ classDiagram
         +str history_message
         +tuple~tuple~str, str, str~, ...~ redaction_map
     }
+    class SupportTicketError {
+        <<ValueError>>
+    }
+    class SupportTicketResult {
+        <<dataclass, frozen>>
+        +str path
+        +int occurrences
+        +tuple~str, ...~ scopes
+        +dict~str, str~ markers
+        +Any scrubber
+    }
     class mod_netcross_gtk4_report_exports["netcross_gtk4.report_exports"] {
         <<module>>
         +record_history(report, settings, findings, tls, quic, redact) str
         +history_text(db_path, limit, label) str
         +sequence_views(flows, max_flows, flow_objects) list?
         +export_siem(report, path, fmt, context) str
-        +write_support_ticket(path, context, consent) tuple~str, int~
+        +parse_support_markers(text) dict~str, str~
+        +check_support_scopes(scopes) tuple~str, ...~
+        +write_support_ticket(path, context, consent, scopes, markers) SupportTicketResult
+        +write_support_map(scrubber, path) str
     }
 
     %% ===== netcross_gtk4.report_exports_panel =====
@@ -4549,9 +4563,11 @@ classDiagram
         <<Gtk.Box>>
         +set_context(report, security_report, context) None
         +set_redaction_map(entries) None
+        +selected_scopes() tuple~str, ...~
         +selected_siem_format() str
         +export_siem_to(path) str
         +write_ticket_to(path) str
+        +write_support_map_to(path) str
         +write_redaction_map_to(path) str
         +show_history() str
     }
