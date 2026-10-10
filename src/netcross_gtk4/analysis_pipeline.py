@@ -301,12 +301,14 @@ def _run_pipeline(
         duplicate_total = sum(duplicate_counts.values())
         _log(f"  -> {duplicate_total} paquet(s) dupliqué(s) détecté(s)")
 
+    redaction_map: tuple = ()
     # 3. Anonymisation
     if options.redact:
         _log("Anonymisation des adresses IP/MAC (--redact)...")
         from netcross_core.redact import redact_packets
 
         redactor = redact_packets(all_packets)
+        redaction_map = tuple(redactor.entries())  # issue #876 : --redact-map
         _log(f"  -> {len(redactor)} adresse(s) anonymisée(s)")
 
     # 4. Corrélation
@@ -505,6 +507,7 @@ def _run_pipeline(
         redact=options.redact,
         history=history,
         history_message=history_message,
+        redaction_map=redaction_map,
     )
 
     text = buf.getvalue()

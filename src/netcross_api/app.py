@@ -18,8 +18,12 @@ Déploiement (#356), par variables d'environnement lues au démarrage :
     NETCROSS_API_MAX_FILES  nombre maximal de fichiers par requête (défaut 16)
     NETCROSS_API_WORKERS    analyses simultanées en tâche de fond (défaut 2)
     NETCROSS_DB_PATH        base SQLite : analyses conservées au redémarrage
+    NETCROSS_HISTORY_DB     historique des runs (--history-db) : GET /history, history=true
     NETCROSS_CVE_DB         base CVE complète (équiv. --cve-db) ; sans elle,
                             base minimale embarquée, comme la CLI
+    NETCROSS_PLUGIN_PATH    fichiers plugins locaux (équiv. --plugin-path),
+                            séparés par « : » ; fixés par l'administrateur,
+                            jamais envoyés par le client (issue #867)
 
 Le service dépend de netcross_core (analyse). FastAPI/uvicorn sont en
 dépendance optionnelle (extra ``api``).
@@ -163,6 +167,15 @@ _DUPLICATE_THRESHOLD_FORM = Form(
     default=DEFAULT_DUPLICATE_THRESHOLD_MS,
     gt=0,
     description="Fenêtre de tolérance pour la détection des doublons en ms (équivalent de --duplicate-threshold-ms)",
+)
+
+# Issue #867 : plugins autorisés (équiv. --plugins). Seuls des plugins déjà
+# installés côté serveur (entry points) ou listés par l'administrateur dans
+# NETCROSS_PLUGIN_PATH peuvent être nommés : le client n'envoie jamais de code.
+_PLUGINS_FORM = Form(
+    default=None,
+    description="Plugins à exécuter, séparés par des virgules (équiv. --plugins) ; détecteurs uniquement, "
+    "voir GET /plugins",
 )
 
 # -- Issue #675 : singletons pour les parametres de formulaire --
@@ -326,6 +339,8 @@ class ApiAnalysisOptions:
     detect_duplicates: bool = False
     exclude_duplicates: bool = False
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS
+    # Issue #867 : plugins autorisés (équiv. --plugins)
+    plugins: tuple[str, ...] = ()
 
 
 def _options_metadata(options: ApiAnalysisOptions) -> dict:
@@ -379,6 +394,7 @@ def _options(
     detect_duplicates: bool = False,
     exclude_duplicates: bool = False,
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS,
+    plugins: str | None = None,
 ) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
     qui relisent les fichiers d'origine (adresses réelles).
@@ -408,6 +424,15 @@ def _options(
             raise HTTPException(status_code=400, detail="sample : N doit etre > 0")
     if max_packets is not None and max_packets < 1:
         raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
+    # Issue #867 : comme `--plugins` (noms séparés par des virgules). Les
+    # détecteurs alimentent le rapport de sécurité, absent avec redact.
+    plugin_names = tuple(dict.fromkeys(n.strip() for n in (plugins or "").split(",") if n.strip()))
+    if plugin_names and redact:
+        raise HTTPException(
+            status_code=400,
+            detail="plugins n'est pas disponible avec redact : les détecteurs alimentent le rapport de "
+            "sécurité, absent avec l'anonymisation",
+        )
     if parallel_workers is not None and not 1 <= parallel_workers <= _MAX_PARALLEL_WORKERS:
         raise HTTPException(status_code=400, detail=f"parallel_workers doit etre entre 1 et {_MAX_PARALLEL_WORKERS}")
     notify_extras = [
@@ -465,6 +490,7 @@ def _options(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        plugins=plugin_names,
     )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
@@ -540,6 +566,41 @@ def _read_captures(captures: list[tuple[str, str]], parallel_workers: int | None
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
         packets.extend(pkts)
     return packets
+
+
+def _plugin_paths() -> list[str]:
+    """Fichiers plugins locaux fixés par l'administrateur (issue #867) :
+    ``NETCROSS_PLUGIN_PATH``, chemins séparés par ``os.pathsep``. Équivalent
+    serveur de ``--plugin-path`` : le client ne fournit jamais de code."""
+    raw = os.environ.get("NETCROSS_PLUGIN_PATH", "")
+    paths = [p for p in raw.split(os.pathsep) if p.strip()]
+    logger.debug("_plugin_paths: retour {} chemin(s)", len(paths))
+    return paths
+
+
+def _run_plugin_detectors(report: Any, all_packets: list, names: tuple[str, ...]) -> None:
+    """Exécute les détecteurs autorisés comme la CLI (issue #867) : les
+    constats vont dans ``report.security_findings``, la traçabilité dans
+    ``report.plugin_runs`` (section « plugins » du rapport de sécurité).
+    Un plugin introuvable ou refusé donne une ligne d'erreur, jamais un
+    échec de l'analyse. Les exporteurs écrivent des fichiers côté serveur :
+    l'API ne les exécute pas et le dit."""
+    from netcross_core.plugins import load_error_runs, load_plugins, run_detectors
+    from netcross_core.plugins.runner import run_line
+
+    loaded = load_plugins(list(names), _plugin_paths())
+    report.plugin_runs += load_error_runs(loaded.errors)
+    report.plugin_runs += run_detectors(loaded.detectors, all_packets, report)
+    for name in loaded.exporters:
+        run = {
+            "plugin": name,
+            "kind": "exporter",
+            "status": "ignore",
+            "reason": "exporteur non execute par l'API (ecriture de fichiers cote serveur)",
+        }
+        run["line"] = run_line(run)
+        report.plugin_runs.append(run)
+    logger.debug("_run_plugin_detectors: {} ligne(s) de plugin", len(report.plugin_runs))
 
 
 def _open_cve_db():
@@ -640,6 +701,8 @@ def _analyse_captures(
                     from netcross_core.security.cve_db import close_db
 
                     close_db(cve_conn)
+            if options.plugins:
+                _run_plugin_detectors(report, all_packets, options.plugins)
             security_report = build_security_report(report)
             if options.notify is not None:
                 # Issue #875 : trace de chaque canal dans le rapport de
@@ -922,6 +985,7 @@ async def upload_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    plugins: str | None = _PLUGINS_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -980,6 +1044,7 @@ async def upload_capture(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        plugins=plugins,
     )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
@@ -1141,6 +1206,7 @@ async def upload_multi_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    plugins: str | None = _PLUGINS_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -1197,6 +1263,7 @@ async def upload_multi_capture(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        plugins=plugins,
     )
     # Issue #474 lot 2 : avec split_interfaces, un seul pcapng multi-interfaces
     # suffit (un point ETIQUETTE:INTERFACE par interface).
@@ -1918,6 +1985,42 @@ async def run_analysis_ai(
     return JSONResponse(payload)
 
 
+@app.get("/plugins", tags=["plugins"])
+async def get_plugins(
+    plugins: str | None = Query(
+        default=None,
+        description="Noms à marquer comme autorisés, séparés par des virgules (comme --plugins avec --list-plugins)",
+    ),
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Plugins disponibles côté serveur (équiv. ``--list-plugins``, issue #867).
+
+    Installés (entry points ``netcross.detectors`` / ``netcross.exporters``)
+    et locaux (``NETCROSS_PLUGIN_PATH``). Un plugin listé n'est exécuté que
+    s'il est nommé dans le champ ``plugins`` d'une analyse.
+    """
+    from netcross_core.plugins import list_plugins
+
+    names = [n.strip() for n in (plugins or "").split(",") if n.strip()]
+    rows = list_plugins(names, _plugin_paths())
+    known = {r["name"] for r in rows}
+    payload = {
+        "plugins": rows,
+        "unknown": [n for n in names if n not in known],
+        "plugin_path_configured": bool(_plugin_paths()),
+    }
+    logger.debug("get_plugins: retour {} plugin(s)", len(rows))
+    return JSONResponse(payload)
+
+
+# Issue #877 : paramètre répétable (liste) ; défini au niveau du module car un
+# appel de fonction en valeur par défaut d'un type mutable est refusé (B008).
+_SUPPORT_MARKER_QUERY = Query(
+    default=None,
+    description="Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex. trace_id=T-042)",
+)
+
+
 @app.post(
     "/analyses/{analysis_id}/support-ticket",
     tags=["analyses"],
@@ -1927,24 +2030,86 @@ async def create_support_ticket(
     analysis_id: str,
     consent: bool = Query(..., description="true : l'utilisateur consent à la remontée d'un ticket anonymisé"),
     kind: str = Query(default="diagnostic", description="Type de ticket (diagnostic, erreur, etc.)"),
+    scopes: str | None = Query(
+        default=None,
+        description="Portées autorisées, séparées par des virgules (équiv. --support-scope) ; toutes par défaut",
+    ),
+    marker: list[str] | None = _SUPPORT_MARKER_QUERY,
+    include_map: bool = Query(
+        default=False,
+        description=(
+            "true : renvoie aussi la table de correspondance réelle <-> pseudonyme "
+            "(équiv. --support-map), à NE PAS transmettre avec le ticket"
+        ),
+    ),
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
     """Ticket de support anonymisé (équiv. --support-ticket).
 
     Construit un ticket anonymisé en mémoire à partir des erreurs
     d'analyse. Le consentement explicite (consent=true) est obligatoire.
+    Issue #877 : ``scopes`` restreint les portées (comme
+    ``--support-scope``), ``marker`` ajoute des marqueurs (comme
+    ``--support-marker``) et ``include_map=true`` ajoute la table de
+    correspondance des rédactions sous ``support_map`` (comme
+    ``--support-map``) -- usage opérateur, jamais jointe au ticket.
     """
+    logger.debug("create_support_ticket(analysis_id={}, kind={}, scopes={})", analysis_id, kind, scopes)
     entry = store.get(analysis_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Analyse introuvable")
-    from netcross_core.support.ticket import Consent, build_ticket
+    from datetime import datetime, timezone
 
-    consent_obj = Consent(granted=consent, source="api")
+    from netcross_core.support.scrubber import TextScrubber
+    from netcross_core.support.ticket import KINDS, SCOPES, Consent, build_ticket
+
     if not consent:
         raise HTTPException(status_code=400, detail="Consentement explicite requis (consent=true)")
+    if kind not in KINDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"kind inconnu : {kind!r} (attendu parmi : {', '.join(KINDS)})",
+        )
+    granted_scopes: tuple[str, ...] = SCOPES
+    if scopes is not None:
+        demandees = tuple(s.strip() for s in scopes.split(",") if s.strip())
+        inconnues = [s for s in demandees if s not in SCOPES]
+        if inconnues or not demandees:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"scopes : portée(s) inconnue(s) {', '.join(inconnues) or '(aucune)'} "
+                    f"(attendu parmi : {', '.join(SCOPES)})"
+                ),
+            )
+        granted_scopes = demandees
+    markers: dict[str, str] = {}
+    for spec in marker or []:
+        cle, sep, valeur = spec.partition("=")
+        if not sep or not cle.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"marker : format attendu CLE=VALEUR, reçu {spec!r}",
+            )
+        markers[cle.strip()] = valeur.strip()
+
+    consent_obj = Consent(
+        granted=True,
+        scopes=granted_scopes,
+        granted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        source="api",
+    )
+    scrubber = TextScrubber()
     errors = entry.get("errors") or []
-    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors)
-    return JSONResponse({"ticket": ticket.to_dict()})
+    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors, markers=markers, scrubber=scrubber)
+    payload: dict[str, Any] = {"ticket": ticket.to_dict()}
+    if include_map:
+        payload["support_map"] = [
+            {"valeur_reelle": real, "pseudonyme": pseudo, "categorie": cat}
+            for real, pseudo, cat in scrubber.mapping_csv_rows()
+        ]
+    logger.debug("create_support_ticket: retour ticket (support_map={})", include_map)
+    return JSONResponse(payload)
 
 
 @app.post(
@@ -2097,6 +2262,14 @@ _comparisons: dict[str, dict] = {}
 _LOSS_THRESHOLD_FORM = Form(default=2.0, gt=0, description="Seuil d'écart de pertes en points de % (défaut: 2.0)")
 _LATENCY_THRESHOLD_FORM = Form(default=5.0, gt=0, description="Seuil d'écart de latence en ms (défaut: 5.0)")
 _TRIAGE_TOP_N_FORM = Form(default=5, ge=1, le=50, description="Nombre de segments au triage (défaut: 5)")
+_HISTORY_FORM = Form(
+    default=False,
+    description="true : enregistre la comparaison dans l'historique du serveur (NETCROSS_HISTORY_DB), "
+    "équivalent de --history-db (issue #874)",
+)
+_HISTORY_LABEL_FORM = Form(
+    default=None, description="Étiquette du run dans l'historique (équivalent de --history-label)"
+)
 
 
 _BASELINE_FILES = File(default=..., description="Fichiers pcap baseline")
@@ -2126,6 +2299,8 @@ async def create_comparison(
     loss_threshold_pp: float = _LOSS_THRESHOLD_FORM,
     latency_threshold_ms: float = _LATENCY_THRESHOLD_FORM,
     triage_top_n: int = _TRIAGE_TOP_N_FORM,
+    history: bool = _HISTORY_FORM,
+    history_label: str | None = _HISTORY_LABEL_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -2139,6 +2314,10 @@ async def create_comparison(
     import uuid
 
     options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    if history:
+        _history_routes.require_history_db()
+    elif history_label:
+        raise HTTPException(status_code=400, detail="history_label necessite history=true (comme --history-db)")
     if not baseline_files or not current_files:
         raise HTTPException(status_code=400, detail="baseline_files et current_files sont requis")
     baseline_label_list = _parse_labels(baseline_labels, len(baseline_files))
@@ -2206,6 +2385,14 @@ async def create_comparison(
                 "baseline_summary": baseline_summary,
                 "current_summary": current_summary,
             }
+            if history:
+                result.update(
+                    _history_routes.record_comparison(
+                        findings, baseline_report, current_report, history_label or None, redact
+                    )
+                )
+            _comparisons[comparison_id] = {"status": COMPLETED, "result": result, "error": None}
+
             _comparisons[comparison_id] = {
                 "status": COMPLETED,
                 "result": result,
@@ -2381,3 +2568,19 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# Issue #874 : historique des runs (base fixée par NETCROSS_HISTORY_DB)
+from netcross_api import history_routes as _history_routes  # noqa: E402
+
+_history_routes.register(app, _verify_api_key)
+
+# Issues #868, #869, #870, #886, #887 : manipulation de captures
+from netcross_api import tools_routes as _tools_routes  # noqa: E402
+
+_tools_routes.register(app, _verify_api_key, _save_upload, lambda: _MAX_FILES)
+
+# Issue #873 : documentation Lua (après _verify_api_key, même authentification)
+from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
+
+_lua_doc_routes.register(app, _verify_api_key)
