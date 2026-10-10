@@ -41,6 +41,8 @@ class ReportContext:
     redact: bool = False
     history: HistorySettings = HistorySettings()
     history_message: str = ""
+    # Issue #876 : table adresse reelle -> pseudonyme (--redact-map)
+    redaction_map: tuple[tuple[str, str, str], ...] = ()
 
 
 def record_history(report, settings: HistorySettings, *, findings=None, tls=None, quic=None, redact=False) -> str:

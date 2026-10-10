@@ -182,7 +182,11 @@ Sous le rapport, plusieurs sections se déplient :
   STIX 2.1 du rapport de sécurité (même fichier que `--siem-export`) ;
   ticket de support anonymisé « diagnostic », seulement après avoir coché
   le consentement (`--support-ticket --support-consent`, rien n'est
-  envoyé) ; derniers runs de l'historique choisi (`--history-show N`).
+  envoyé) ; derniers runs de l'historique choisi (`--history-show N`) ;
+  après une analyse anonymisée (simple ou comparaison), **Table
+  d'anonymisation (--redact-map)...** écrit le CSV adresse réelle →
+  pseudonyme de `--redact-map` (une seule table pour baseline et courant).
+  Ce fichier désanonymise le rapport : gardez-le pour vous.
 
 Après une comparaison ou une capture en direct, certaines sections sont
 grisées : elles ont besoin des fichiers de capture d'une analyse simple.
@@ -193,6 +197,40 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
     lente ou dépasser la hauteur de l'écran. Préférez alors
     l'**Exploration statistique** (Top-N réglable) ou l'export CSV.
     Le défaut est suivi dans le dépôt.
+
+## Outils de capture
+
+Le bouton **Outils de capture** de la barre de titre ouvre une fenêtre à
+onglets qui transforme des fichiers sans lancer d'analyse, comme les
+modes utilitaires de la CLI :
+
+| Onglet | Équivalent CLI |
+|---|---|
+| Fusion (captures, « Dedupliquer les paquets identiques ») | `--merge`, `--merge-dedup` |
+| Decoupage (durée, nombre de paquets ou taille ; dossier) | `--split`, `--split-output-dir` |
+| Conversion (pcap, pcapng, erf, csv, json) | `--convert`, `--convert-format` |
+| Export filtre (filtre Wireshark, début, fin, adresses) | `--export-pcap`, `--export-bpf`, `--export-time-*`, `--export-endpoints` |
+| Recalage temporel (décalage, t=0, alignement sur une référence) | `--adjust-time-output`, `--time-offset`, `--normalize-time`, `--align-to` |
+| Rejeu (interface, vitesse, passes ; bouton « Arreter ») | `--replay`, `--replay-speed`, `--replay-loop` |
+
+Les mêmes saisies sont refusées avec les mêmes messages que la CLI ; le
+résultat ou l'erreur s'affiche en bas de la fenêtre. Les outils Wireshark
+(`tshark`, `editcap`, `mergecap`, `reordercap`) doivent être installés.
+
+L'onglet **Rejeu** émet du trafic réel : il reste inactif tant que la case
+« J'ai l'autorisation d'emettre sur cette interface » n'est pas cochée.
+Réservez-le à un banc de test isolé ; tcpreplay et les droits d'émission
+(root ou `CAP_NET_RAW`) sont nécessaires.
+
+## Documentation Lua
+
+Le bouton **Documentation Lua** de la barre de titre ouvre la
+documentation hors ligne de l'API Lua de Wireshark, la même que
+`netcross-lua-doc` : liste des classes à gauche (un clic ouvre la fiche
+complète), recherche plein texte (« Resultats max. » = `--limit`,
+« Detail complet (--full) » = `--full`), bouton **JSON** pour le document
+de `--json`. Aucun accès réseau ; la banque est celle de la CLI
+(`~/.cache/netcross/lua_api.db`).
 
 ## Historique des runs
 
@@ -205,6 +243,5 @@ l'ouverture.
 
 ## Ce que l'interface ne fait pas
 
-Certaines fonctions restent réservées à la ligne de commande : fusion,
-découpage, conversion et rejeu de captures, plugins,
+Certaines fonctions restent réservées à la ligne de commande : plugins,
 module IA. Voir `--help` et les pages de la section Analyses.

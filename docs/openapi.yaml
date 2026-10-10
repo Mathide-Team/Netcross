@@ -1243,6 +1243,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/redact-map:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Redact Map
+      description: 'Table adresse réelle -> pseudonyme d''une analyse ``redact=true``
+
+        (équivalent de ``--redact-map``, issue #876). Gardée en mémoire
+
+        seulement (jamais en SQLite) ; à conserver en privé.'
+      operationId: get_analysis_redact_map_analyses__analysis_id__redact_map_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /comparisons/{comparison_id}/redact-map:
+    get:
+      tags:
+      - comparisons
+      summary: Get Comparison Redact Map
+      description: 'Table commune baseline/courant d''une comparaison ``redact=true``
+
+        (équivalent de ``--redact-map`` de ``netcross-diff``, issue #876).'
+      operationId: get_comparison_redact_map_comparisons__comparison_id__redact_map_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: comparison_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Comparison Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /comparisons/{comparison_id}/csv:
     get:
       tags:
@@ -1291,49 +1391,244 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /history:
+  /tools/merge:
+    post:
+      tags:
+      - tools
+      summary: Merge Captures Route
+      description: Fusion ordonnée par horodatage (équivalent de ``--merge``).
+      operationId: merge_captures_route_tools_merge_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_merge_captures_route_tools_merge_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/split:
+    post:
+      tags:
+      - tools
+      summary: Split Capture Route
+      description: 'Découpage ; réponse = archive zip des morceaux, dans l''ordre
+
+        (équivalent de ``--split`` / ``--split-output-dir``).'
+      operationId: split_capture_route_tools_split_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_split_capture_route_tools_split_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/convert:
+    post:
+      tags:
+      - tools
+      summary: Convert Capture Route
+      description: Conversion de format ou export structuré (équivalent de ``--convert``).
+      operationId: convert_capture_route_tools_convert_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_convert_capture_route_tools_convert_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/export:
+    post:
+      tags:
+      - tools
+      summary: Export Subset Route
+      description: Sous-ensemble filtré (équivalent de ``--export-pcap``).
+      operationId: export_subset_route_tools_export_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_export_subset_route_tools_export_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/adjust-time:
+    post:
+      tags:
+      - tools
+      summary: Adjust Time Route
+      description: 'Recalage des horodatages (équivalent de ``--adjust-time-output``)
+        ;
+
+        un seul mode parmi ``time_offset``, ``normalize``, ``align_to``.'
+      operationId: adjust_time_route_tools_adjust_time_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_adjust_time_route_tools_adjust_time_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/replay:
+    post:
+      tags:
+      - tools
+      summary: Replay Capture Route
+      description: 'Rejeu sur une interface réseau via tcpreplay (équivalent de
+
+        ``--replay``) : ÉMET du trafic réel. Refusé (403) si ``interface``
+
+        n''est pas autorisée par ``NETCROSS_REPLAY_INTERFACES`` côté serveur.
+
+        Réponse à la fin du rejeu.'
+      operationId: replay_capture_route_tools_replay_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_replay_capture_route_tools_replay_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Replay Capture Route Tools Replay Post
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: tcpreplay absent du serveur
+        '403':
+          description: Interface non autorisée par NETCROSS_REPLAY_INTERFACES (rejeu
+            désactivé par défaut)
+      security:
+      - APIKeyHeader: []
+  /lua-doc/classes:
     get:
       tags:
-      - history
-      summary: List History Route
-      description: 'Runs de l''historique du serveur, du plus récent au plus ancien
+      - lua-doc
+      summary: Get Lua Classes
+      description: Liste des classes (équivalent de ``netcross-lua-doc --classes --json``).
+      operationId: get_lua_classes_lua_doc_classes_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Lua Classes Lua Doc Classes Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
+      security:
+      - APIKeyHeader: []
+  /lua-doc/classes/{name}:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Class
+      description: 'Fiche complète d''une classe, insensible à la casse (équivalent
+        de
 
-        (équivalent de ``netcross-history --db ...``).'
-      operationId: list_history_route_history_get
+        ``netcross-lua-doc --class NOM --json``).'
+      operationId: get_lua_class_lua_doc_classes__name__get
       security:
       - APIKeyHeader: []
       parameters:
-      - name: run_type
-        in: query
-        required: false
+      - name: name
+        in: path
+        required: true
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          description: analyse ou diff (équivalent de --run-type)
-          title: Run Type
-        description: analyse ou diff (équivalent de --run-type)
-      - name: label
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          description: Étiquette exacte (équivalent de --label)
-          title: Label
-        description: Étiquette exacte (équivalent de --label)
-      - name: limit
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: integer
-            minimum: 1
-          - type: 'null'
-          description: Nombre maximal de runs (équivalent de --limit)
-          title: Limit
-        description: Nombre maximal de runs (équivalent de --limit)
+          type: string
+          title: Name
       responses:
         '200':
           description: Successful Response
@@ -1342,7 +1637,72 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-                title: Response List History Route History Get
+                title: Response Get Lua Class Lua Doc Classes  Name  Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /lua-doc/search:
+    get:
+      tags:
+      - lua-doc
+      summary: Search Lua Doc
+      description: 'Recherche plein texte (équivalent de ``netcross-lua-doc --json
+        TERME``).
+
+        Aucun résultat : liste vide (code 200), comme le JSON de la CLI.'
+      operationId: search_lua_doc_lua_doc_search_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          description: Terme de recherche (classes, méthodes, fonctions, attributs)
+          title: Q
+        description: Terme de recherche (classes, méthodes, fonctions, attributs)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          description: Nombre maximal de résultats (équivalent de --limit)
+          default: 20
+          title: Limit
+        description: Nombre maximal de résultats (équivalent de --limit)
+      - name: full
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Détail complet de chaque résultat (équivalent de --full)
+          default: false
+          title: Full
+        description: Détail complet de chaque résultat (équivalent de --full)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Search Lua Doc Lua Doc Search Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
         '422':
           description: Validation Error
           content:
@@ -1426,6 +1786,56 @@ components:
       - analysis_id
       title: AnalysisSummary
       description: Résumé d'une analyse (retourné par POST /captures).
+    Body_adjust_time_route_tools_adjust_time_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à recaler
+        time_offset:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time Offset
+          description: Décalage en secondes (équivalent de --time-offset)
+        normalize:
+          type: boolean
+          title: Normalize
+          description: Premier paquet à t=0 (équivalent de --normalize-time)
+          default: false
+        align_to:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Align To
+          description: Capture de référence (équivalent de --align-to)
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_adjust_time_route_tools_adjust_time_post
+    Body_convert_capture_route_tools_convert_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à convertir
+        format:
+          type: string
+          title: Format
+          description: pcap, pcapng, erf, csv ou json (équivalent de --convert-format)
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_convert_capture_route_tools_convert_post
     Body_create_comparison_comparisons_post:
       properties:
         baseline_files:
@@ -1505,23 +1915,51 @@ components:
           title: Triage Top N
           description: 'Nombre de segments au triage (défaut: 5)'
           default: 5
-        history:
-          type: boolean
-          title: History
-          description: 'true : enregistre la comparaison dans l''historique du serveur
-            (NETCROSS_HISTORY_DB), équivalent de --history-db (issue #874)'
-          default: false
-        history_label:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: History Label
-          description: Étiquette du run dans l'historique (équivalent de --history-label)
       type: object
       required:
       - baseline_files
       - current_files
       title: Body_create_comparison_comparisons_post
+    Body_export_subset_route_tools_export_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture source
+        bpf:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bpf
+          description: Filtre d'affichage Wireshark (équivalent de --export-bpf)
+        time_start:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time Start
+          description: Début, secondes après le 1er paquet (--export-time-start)
+        time_end:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time End
+          description: Fin, secondes après le 1er paquet (--export-time-end)
+        endpoints:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Endpoints
+          description: IP1,IP2,... en source ou destination (--export-endpoints)
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_export_subset_route_tools_export_post
     Body_extract_contents_analyses__analysis_id__extract_post:
       properties:
         files:
@@ -1545,6 +1983,29 @@ components:
       required:
       - files
       title: Body_extract_contents_analyses__analysis_id__extract_post
+    Body_merge_captures_route_tools_merge_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+          description: Captures à fusionner (pcap/pcapng, formats mélangeables)
+        dedup:
+          type: boolean
+          title: Dedup
+          description: Supprimer les paquets identiques (équivalent de --merge-dedup)
+          default: false
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng (défaut de mergecap) ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - files
+      title: Body_merge_captures_route_tools_merge_post
     Body_netflow_summary_analyses__analysis_id__netflow_post:
       properties:
         files:
@@ -1570,6 +2031,49 @@ components:
       required:
       - files
       title: Body_netflow_summary_analyses__analysis_id__netflow_post
+    Body_replay_capture_route_tools_replay_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à rejouer
+        interface:
+          type: string
+          title: Interface
+          description: Interface d'émission (équivalent de --replay)
+        speed:
+          type: string
+          title: Speed
+          description: Multiplicateur ou topspeed (équivalent de --replay-speed)
+          default: '1.0'
+        loop:
+          type: integer
+          title: Loop
+          description: Nombre de passes, >= 1 (équivalent de --replay-loop)
+          default: 1
+      type: object
+      required:
+      - file
+      - interface
+      title: Body_replay_capture_route_tools_replay_post
+    Body_split_capture_route_tools_split_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à découper
+        split:
+          type: string
+          title: Split
+          description: 'MODE:VALEUR : time:60, count:10000 ou size:100M (équivalent
+            de --split)'
+      type: object
+      required:
+      - file
+      - split
+      title: Body_split_capture_route_tools_split_post
     Body_upload_capture_captures_post:
       properties:
         file:
@@ -1636,6 +2140,36 @@ components:
           title: Parallel Workers
           description: Lecture parallèle avec N processus tshark (équivalent de --parallel
             --parallel-workers N)
+        notify_on:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify On
+          description: 'Seuil de notification : critique, elevee, moyenne ou faible
+            (équivalent de --notify-on)'
+        notify_webhook:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Webhook
+          description: URL de webhook (équivalent de --notify-webhook)
+        notify_slack:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Slack
+          description: URL de webhook Slack (équivalent de --notify-slack)
+        notify_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Email
+          description: Destinataire du courriel (équivalent de --notify-email)
+        notify_detail:
+          type: string
+          title: Notify Detail
+          description: resume ou complet (équivalent de --notify-detail)
+          default: resume
         names:
           anyOf:
           - type: string
@@ -1819,6 +2353,36 @@ components:
           title: Parallel Workers
           description: Lecture parallèle avec N processus tshark (équivalent de --parallel
             --parallel-workers N)
+        notify_on:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify On
+          description: 'Seuil de notification : critique, elevee, moyenne ou faible
+            (équivalent de --notify-on)'
+        notify_webhook:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Webhook
+          description: URL de webhook (équivalent de --notify-webhook)
+        notify_slack:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Slack
+          description: URL de webhook Slack (équivalent de --notify-slack)
+        notify_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Email
+          description: Destinataire du courriel (équivalent de --notify-email)
+        notify_detail:
+          type: string
+          title: Notify Detail
+          description: resume ou complet (équivalent de --notify-detail)
+          default: resume
         names:
           anyOf:
           - type: string

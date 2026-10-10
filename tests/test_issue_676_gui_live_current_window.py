@@ -142,7 +142,9 @@ def test_fin_de_capture_compare_avec_le_courant_capture(window, threads, monkeyp
     assert appels["current"] == []
     assert appels["current_packets"] == paquets
     assert appels["current_points"] == ["LAN", "WAN"]
-    assert fin == [(["ecart"], "B", "C", "TEXTE")]
+    # 4 emplacements TLS/QUIC vides (pas de fichiers en direct), puis la
+    # table d'anonymisation (issue #876)
+    assert fin == [(["ecart"], "B", "C", "TEXTE", None, None, None, None, ())]
     assert "Comparaison..." in _log(window)
     assert window._live_capturing is False
 
@@ -184,6 +186,7 @@ def test_fin_reelle_avec_le_vrai_pipeline(window, threads, monkeypatch):
     window._join_live_and_analyze()
 
     assert len(fin) == 1
-    _findings, baseline_report, current_report, text = fin[0]
+    _findings, baseline_report, current_report, text, *_tls_quic, redaction_map = fin[0]
+    assert redaction_map == ()
     assert baseline_report is not None and current_report is not None
     assert isinstance(text, str)
