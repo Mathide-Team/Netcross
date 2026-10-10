@@ -67,6 +67,7 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
 | `GET` | `/analyses/{id}/markdown` | Rapport Markdown, identique à `--md-report` (issue #864) ; liste complète des routes : [parité des surfaces](parite-surfaces.md) |
+| `POST` | `/analyses/{id}/ai` | Module IA local, équivalent des options `--ai-*` (issue #866, voir [module IA](module-ia.md#api-rest-issue-866)) |
 | `GET` | `/analyses` | Liste des analyses |
 | `GET` | `/health` | Health check |
 
