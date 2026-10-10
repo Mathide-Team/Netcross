@@ -24,6 +24,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
+| `NETCROSS_PLUGIN_PATH` | absent | Fichiers plugins locaux, séparés par `:` (équivalent de `--plugin-path`, issue #867). Fixés par l'administrateur : le client ne fait que nommer un plugin dans le champ `plugins`. Voir [plugins](plugins.md#api-rest-issue-867). |
 
 ```bash
 NETCROSS_API_TOKEN=$(openssl rand -hex 32) NETCROSS_DB_PATH=/var/lib/netcross/api.db \
@@ -67,6 +68,7 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
 | `GET` | `/analyses/{id}/markdown` | Rapport Markdown, identique à `--md-report` (issue #864) ; liste complète des routes : [parité des surfaces](parite-surfaces.md) |
+| `GET` | `/plugins` | Plugins disponibles côté serveur, équivalent de `--list-plugins` ; champ `plugins` à l'analyse (issue #867, voir [plugins](plugins.md#api-rest-issue-867)) |
 | `GET` | `/analyses` | Liste des analyses |
 | `GET` | `/health` | Health check |
 

@@ -75,7 +75,7 @@ actif, non réglable.
 | Comparaison de postes | oui (champs « Postes a comparer » et « Reference » de la configuration, section du rapport, panneau « Comparaison de postes » de la page Résultats avec export CSV ; issue #675) | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
 | NetFlow / sFlow | oui, NetFlow v5 (panneau « NetFlow v5 (resume d'exports) » de la page Résultats : exports ajoutés, Top, même résumé texte, export JSON ; autonome comme la CLI, issue #675) | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
 | Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
-| Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | non |
+| Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | `GET /plugins` (équiv. `--list-plugins`), champ `plugins` de `POST /captures` et `/captures/multi` (détecteurs, rapport de sécurité) ; chemin fixé par l'administrateur (`NETCROSS_PLUGIN_PATH`), exporteurs non exécutés (issue #867) |
 
 ## Formats de sortie
 

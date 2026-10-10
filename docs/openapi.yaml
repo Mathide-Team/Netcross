@@ -846,6 +846,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /plugins:
+    get:
+      tags:
+      - plugins
+      summary: Get Plugins
+      description: 'Plugins disponibles côté serveur (équiv. ``--list-plugins``, issue
+        #867).
+
+
+        Installés (entry points ``netcross.detectors`` / ``netcross.exporters``)
+
+        et locaux (``NETCROSS_PLUGIN_PATH``). Un plugin listé n''est exécuté que
+
+        s''il est nommé dans le champ ``plugins`` d''une analyse.'
+      operationId: get_plugins_plugins_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: plugins
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Noms à marquer comme autorisés, séparés par des virgules (comme
+            --plugins avec --list-plugins)
+          title: Plugins
+        description: Noms à marquer comme autorisés, séparés par des virgules (comme
+          --plugins avec --list-plugins)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/support-ticket:
     post:
       tags:
@@ -1702,6 +1744,13 @@ components:
           description: Fenêtre de tolérance pour la détection des doublons en ms (équivalent
             de --duplicate-threshold-ms)
           default: 1.0
+        plugins:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plugins
+          description: Plugins à exécuter, séparés par des virgules (équiv. --plugins)
+            ; détecteurs uniquement, voir GET /plugins
       type: object
       required:
       - file
@@ -1905,6 +1954,13 @@ components:
           description: Fenêtre de tolérance pour la détection des doublons en ms (équivalent
             de --duplicate-threshold-ms)
           default: 1.0
+        plugins:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plugins
+          description: Plugins à exécuter, séparés par des virgules (équiv. --plugins)
+            ; détecteurs uniquement, voir GET /plugins
       type: object
       required:
       - files

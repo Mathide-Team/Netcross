@@ -20,6 +20,9 @@ Déploiement (#356), par variables d'environnement lues au démarrage :
     NETCROSS_DB_PATH        base SQLite : analyses conservées au redémarrage
     NETCROSS_CVE_DB         base CVE complète (équiv. --cve-db) ; sans elle,
                             base minimale embarquée, comme la CLI
+    NETCROSS_PLUGIN_PATH    fichiers plugins locaux (équiv. --plugin-path),
+                            séparés par « : » ; fixés par l'administrateur,
+                            jamais envoyés par le client (issue #867)
 
 Le service dépend de netcross_core (analyse). FastAPI/uvicorn sont en
 dépendance optionnelle (extra ``api``).
@@ -163,6 +166,15 @@ _DUPLICATE_THRESHOLD_FORM = Form(
     default=DEFAULT_DUPLICATE_THRESHOLD_MS,
     gt=0,
     description="Fenêtre de tolérance pour la détection des doublons en ms (équivalent de --duplicate-threshold-ms)",
+)
+
+# Issue #867 : plugins autorisés (équiv. --plugins). Seuls des plugins déjà
+# installés côté serveur (entry points) ou listés par l'administrateur dans
+# NETCROSS_PLUGIN_PATH peuvent être nommés : le client n'envoie jamais de code.
+_PLUGINS_FORM = Form(
+    default=None,
+    description="Plugins à exécuter, séparés par des virgules (équiv. --plugins) ; détecteurs uniquement, "
+    "voir GET /plugins",
 )
 
 # -- Issue #675 : singletons pour les parametres de formulaire --
@@ -326,6 +338,8 @@ class ApiAnalysisOptions:
     detect_duplicates: bool = False
     exclude_duplicates: bool = False
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS
+    # Issue #867 : plugins autorisés (équiv. --plugins)
+    plugins: tuple[str, ...] = ()
 
 
 def _options_metadata(options: ApiAnalysisOptions) -> dict:
@@ -379,6 +393,7 @@ def _options(
     detect_duplicates: bool = False,
     exclude_duplicates: bool = False,
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS,
+    plugins: str | None = None,
 ) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
     qui relisent les fichiers d'origine (adresses réelles).
@@ -408,6 +423,15 @@ def _options(
             raise HTTPException(status_code=400, detail="sample : N doit etre > 0")
     if max_packets is not None and max_packets < 1:
         raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
+    # Issue #867 : comme `--plugins` (noms séparés par des virgules). Les
+    # détecteurs alimentent le rapport de sécurité, absent avec redact.
+    plugin_names = tuple(dict.fromkeys(n.strip() for n in (plugins or "").split(",") if n.strip()))
+    if plugin_names and redact:
+        raise HTTPException(
+            status_code=400,
+            detail="plugins n'est pas disponible avec redact : les détecteurs alimentent le rapport de "
+            "sécurité, absent avec l'anonymisation",
+        )
     if parallel_workers is not None and not 1 <= parallel_workers <= _MAX_PARALLEL_WORKERS:
         raise HTTPException(status_code=400, detail=f"parallel_workers doit etre entre 1 et {_MAX_PARALLEL_WORKERS}")
     notify_extras = [
@@ -465,6 +489,7 @@ def _options(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        plugins=plugin_names,
     )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
@@ -540,6 +565,41 @@ def _read_captures(captures: list[tuple[str, str]], parallel_workers: int | None
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
         packets.extend(pkts)
     return packets
+
+
+def _plugin_paths() -> list[str]:
+    """Fichiers plugins locaux fixés par l'administrateur (issue #867) :
+    ``NETCROSS_PLUGIN_PATH``, chemins séparés par ``os.pathsep``. Équivalent
+    serveur de ``--plugin-path`` : le client ne fournit jamais de code."""
+    raw = os.environ.get("NETCROSS_PLUGIN_PATH", "")
+    paths = [p for p in raw.split(os.pathsep) if p.strip()]
+    logger.debug("_plugin_paths: retour {} chemin(s)", len(paths))
+    return paths
+
+
+def _run_plugin_detectors(report: Any, all_packets: list, names: tuple[str, ...]) -> None:
+    """Exécute les détecteurs autorisés comme la CLI (issue #867) : les
+    constats vont dans ``report.security_findings``, la traçabilité dans
+    ``report.plugin_runs`` (section « plugins » du rapport de sécurité).
+    Un plugin introuvable ou refusé donne une ligne d'erreur, jamais un
+    échec de l'analyse. Les exporteurs écrivent des fichiers côté serveur :
+    l'API ne les exécute pas et le dit."""
+    from netcross_core.plugins import load_error_runs, load_plugins, run_detectors
+    from netcross_core.plugins.runner import run_line
+
+    loaded = load_plugins(list(names), _plugin_paths())
+    report.plugin_runs += load_error_runs(loaded.errors)
+    report.plugin_runs += run_detectors(loaded.detectors, all_packets, report)
+    for name in loaded.exporters:
+        run = {
+            "plugin": name,
+            "kind": "exporter",
+            "status": "ignore",
+            "reason": "exporteur non execute par l'API (ecriture de fichiers cote serveur)",
+        }
+        run["line"] = run_line(run)
+        report.plugin_runs.append(run)
+    logger.debug("_run_plugin_detectors: {} ligne(s) de plugin", len(report.plugin_runs))
 
 
 def _open_cve_db():
@@ -635,6 +695,8 @@ def _analyse_captures(
                     from netcross_core.security.cve_db import close_db
 
                     close_db(cve_conn)
+            if options.plugins:
+                _run_plugin_detectors(report, all_packets, options.plugins)
             security_report = build_security_report(report)
             if options.notify is not None:
                 # Issue #875 : trace de chaque canal dans le rapport de
@@ -914,6 +976,7 @@ async def upload_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    plugins: str | None = _PLUGINS_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -972,6 +1035,7 @@ async def upload_capture(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        plugins=plugins,
     )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
@@ -1133,6 +1197,7 @@ async def upload_multi_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    plugins: str | None = _PLUGINS_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -1189,6 +1254,7 @@ async def upload_multi_capture(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        plugins=plugins,
     )
     # Issue #474 lot 2 : avec split_interfaces, un seul pcapng multi-interfaces
     # suffit (un point ETIQUETTE:INTERFACE par interface).
@@ -1739,6 +1805,34 @@ async def extract_contents(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-extract.zip"'},
     )
+
+
+@app.get("/plugins", tags=["plugins"])
+async def get_plugins(
+    plugins: str | None = Query(
+        default=None,
+        description="Noms à marquer comme autorisés, séparés par des virgules (comme --plugins avec --list-plugins)",
+    ),
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Plugins disponibles côté serveur (équiv. ``--list-plugins``, issue #867).
+
+    Installés (entry points ``netcross.detectors`` / ``netcross.exporters``)
+    et locaux (``NETCROSS_PLUGIN_PATH``). Un plugin listé n'est exécuté que
+    s'il est nommé dans le champ ``plugins`` d'une analyse.
+    """
+    from netcross_core.plugins import list_plugins
+
+    names = [n.strip() for n in (plugins or "").split(",") if n.strip()]
+    rows = list_plugins(names, _plugin_paths())
+    known = {r["name"] for r in rows}
+    payload = {
+        "plugins": rows,
+        "unknown": [n for n in names if n not in known],
+        "plugin_path_configured": bool(_plugin_paths()),
+    }
+    logger.debug("get_plugins: retour {} plugin(s)", len(rows))
+    return JSONResponse(payload)
 
 
 @app.post(
