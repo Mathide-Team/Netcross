@@ -74,7 +74,7 @@ actif, non réglable.
 | Extraction des contenus | oui (panneau « Contenus (extraction) » de la page Résultats : audio, vidéo, documents, dossier vide, même manifeste et même rappel d'usage ; après une analyse de fichiers non anonymisée, issue #675) | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
 | Comparaison de postes | oui (champs « Postes a comparer » et « Reference » de la configuration, section du rapport, panneau « Comparaison de postes » de la page Résultats avec export CSV ; issue #675) | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
 | NetFlow / sFlow | oui, NetFlow v5 (panneau « NetFlow v5 (resume d'exports) » de la page Résultats : exports ajoutés, Top, même résumé texte, export JSON ; autonome comme la CLI, issue #675) | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
-| Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
+| Module IA local | oui (ligne « Module IA local » : enregistrer la baseline et son libellé, « Baseline (anomalies)... », exporter l'entraînement, « Jeu d'entrainement... », résumé, point d'accès, résultats JSON ; issue #866) | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
 | Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | non |
 
 ## Formats de sortie
