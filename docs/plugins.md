@@ -79,6 +79,51 @@ netcross-analyze --list-plugins --plugins telnet_clair   # installés ET non aut
   détecteurs et exporteurs ne s'exécutent que s'ils sont nommés dans `--plugins`.
 - Les détecteurs nécessitent `--security-report` (leurs constats y vivent).
 
+## Interface graphique (issue #867)
+
+Dans les options d'analyse, la ligne « Plugins » reprend les options de la
+CLI, avec les mêmes règles :
+
+| Champ | Équivalent CLI |
+| --- | --- |
+| « Plugins (--plugins) » : noms séparés par des virgules | `--plugins` |
+| « Fichiers plugins » : chemins séparés par `;` | `--plugin-path` (répétable) |
+| « Exports NOM=FICHIER » : séparés par `;` | `--plugin-export` (répétable) |
+| bouton « Lister (--list-plugins) » : tableau dans le journal | `--list-plugins` |
+
+Les plugins sont chargés au lancement de l'analyse ; un réglage incohérent
+(fichiers sans nom autorisé, export d'un exporteur non nommé, export mal
+formé, détecteur sans « Rapport de securite ») bloque le lancement avec le
+même message que la CLI. Les constats des détecteurs arrivent dans le
+rapport de sécurité (section « Plugins » et exports JSON/PDF/HTML), les
+exporteurs écrivent après l'analyse, et chaque ligne de trace apparaît dans
+le journal.
+
+## API REST (issue #867)
+
+Le service REST n'accepte **jamais** de code envoyé par le client : les
+plugins exécutables sont ceux installés sur le serveur (entry points) et les
+fichiers listés par l'administrateur dans `NETCROSS_PLUGIN_PATH` (chemins
+séparés par `:`, équivalent de `--plugin-path`), lue à chaque requête.
+
+| Route / champ | Équivalent CLI | Rôle |
+| --- | --- | --- |
+| `GET /plugins?plugins=a,b` | `--list-plugins` | installés et locaux, `authorized` pour les noms passés ; `unknown` : noms introuvables |
+| champ `plugins` de `POST /captures` et `POST /captures/multi` | `--plugins` | détecteurs exécutés après les constats de sécurité ; refusé avec `redact` |
+
+Les constats d'un détecteur apparaissent dans `security_report.anomalies`
+(clés `plugin`, `detector`) de `GET /analyses/{id}/report`, et chaque plugin
+demandé y laisse une ligne dans `security_report.plugins` : `ok`, `refuse`
+(introuvable ou refusé au chargement), `erreur`, ou `ignore` pour un
+exporteur — l'API n'écrit pas de fichier côté serveur, `--plugin-export`
+reste propre à la CLI.
+
+```bash
+NETCROSS_PLUGIN_PATH=/etc/netcross/plugins/maison.py uvicorn netcross_api.app:app
+curl http://localhost:8000/plugins
+curl -F file=@lan.pcap -F label=LAN -F plugins=maison "http://localhost:8000/captures?wait=true"
+```
+
 ## Isolation
 
 - **Un plugin qui échoue ne fait pas échouer l'analyse.** L'exception est attrapée,

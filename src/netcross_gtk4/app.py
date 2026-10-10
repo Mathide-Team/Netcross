@@ -123,6 +123,13 @@ from netcross_gtk4.panel_state import (  # noqa: E402
     run_button_state,
     selected_protocol,
 )
+from netcross_gtk4.plugin_settings import (  # noqa: E402
+    PluginSettings,
+    PluginSettingsError,
+    format_plugin_list,
+    prepare_plugins,
+)
+from netcross_gtk4.plugin_settings import settings_from_widgets as plugin_settings_from_widgets  # noqa: E402
 from netcross_gtk4.report_exports import SEQUENCE_FLOWS_MAX, HistorySettings, sequence_views  # noqa: E402
 from netcross_gtk4.report_exports_panel import ReportExportsPanel  # noqa: E402
 from netcross_gtk4.ring_recorders import RingRecorderError, start_ring_recorders, stop_ring_recorders  # noqa: E402
@@ -737,6 +744,22 @@ class MainWindow(Gtk.ApplicationWindow):
 
         header = Gtk.HeaderBar()
         self.set_titlebar(header)
+        # Issue #874 : consultation de l'historique (analyses et comparaisons)
+        self.history_btn = Gtk.Button(label="Historique des runs")
+        self.history_btn.set_tooltip_text("Consulter une base --history-db (filtres type, etiquette, nombre)")
+        self.history_btn.connect("clicked", lambda _b: self.open_history())
+        header.pack_start(self.history_btn)
+        self.history_window = None
+
+        # Issues #868-#870, #886, #887 : fusion, decoupage, conversion...
+        self.capture_tools_btn = Gtk.Button(label="Outils de capture")
+        self.capture_tools_btn.set_tooltip_text(
+            "Fusion, decoupage, conversion, export filtre, recalage temporel (sans analyse)"
+        )
+        self.capture_tools_btn.connect("clicked", lambda _b: self.open_capture_tools())
+        header.pack_start(self.capture_tools_btn)
+        self.capture_tools_window = None
+
         # Issue #873 : documentation Lua hors ligne (netcross-lua-doc)
         self.lua_doc_btn = Gtk.Button(label="Documentation Lua")
         self.lua_doc_btn.set_tooltip_text("API Lua de Wireshark, hors ligne (equivalent de netcross-lua-doc)")
@@ -758,6 +781,35 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.stack.set_visible_child_name("config")
         logger.debug("MainWindow: fenêtre prête (3 pages construites)")
+
+    def open_history(self):
+        """Fenetre « Historique des runs » (base et etiquette de la configuration)."""
+        from netcross_gtk4.history_window import HistoryWindow
+
+        if self.history_window is None:
+            settings = self.history_settings()
+            self.history_window = HistoryWindow(parent=self, db_path=settings.db_path, label=settings.label)
+            self.history_window.connect("close-request", self._on_history_closed)
+        self.history_window.present()
+        return self.history_window
+
+    def _on_history_closed(self, _win):
+        self.history_window = None
+        return False
+
+    def open_capture_tools(self):
+        """Fenetre « Outils de capture », une seule a la fois."""
+        from netcross_gtk4.capture_tools_window import CaptureToolsWindow
+
+        if self.capture_tools_window is None:
+            self.capture_tools_window = CaptureToolsWindow(parent=self)
+            self.capture_tools_window.connect("close-request", self._on_capture_tools_closed)
+        self.capture_tools_window.present()
+        return self.capture_tools_window
+
+    def _on_capture_tools_closed(self, _win):
+        self.capture_tools_window = None
+        return False
 
     def open_lua_doc(self):
         """Fenetre « Documentation Lua » (issue #873), une seule a la fois."""
@@ -1114,6 +1166,28 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         notify_box.append(self.notify_complete_check)
         self.single_options_box.append(notify_box)
+
+        # Issue #867 : plugins tiers, equivalent de --plugins / --plugin-path /
+        # --plugin-export / --list-plugins. Chargement explicite : seul un
+        # plugin nomme ici s'execute ; detecteurs => rapport de securite.
+        plugins_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        plugins_box.append(Gtk.Label(label="Plugins (--plugins) :", halign=Gtk.Align.START))
+        self.plugins_entry = Gtk.Entry(placeholder_text="noms autorises, separes par des virgules")
+        self.plugins_entry.set_tooltip_text(
+            "Detecteurs et exporteurs tiers a executer (entry points installes ou fichiers ci-contre). "
+            "Code tiers execute dans le processus : voir docs/plugins.md. "
+            "Les detecteurs necessitent « Rapport de securite »."
+        )
+        self.plugin_path_entry = Gtk.Entry(placeholder_text="Fichiers plugins (--plugin-path), separes par ;")
+        self.plugin_export_entry = Gtk.Entry(placeholder_text="Exports NOM=FICHIER (--plugin-export), separes par ;")
+        for entry in (self.plugins_entry, self.plugin_path_entry, self.plugin_export_entry):
+            entry.set_hexpand(True)
+            plugins_box.append(entry)
+        list_plugins_btn = Gtk.Button(label="Lister (--list-plugins)")
+        list_plugins_btn.set_tooltip_text("Plugins installes et locaux, autorises ou non, dans le journal.")
+        list_plugins_btn.connect("clicked", self._on_list_plugins)
+        plugins_box.append(list_plugins_btn)
+        self.single_options_box.append(plugins_box)
 
         # Issue #675 : comparaison de postes (--client-group, --client-reference)
         clients_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -1496,6 +1570,28 @@ class MainWindow(Gtk.ApplicationWindow):
         ):
             widget.set_sensitive(active)
         logger.debug("MainWindow._on_notify_threshold_changed: actif={}", active)
+
+    def plugin_settings(self) -> PluginSettings:
+        """Issue #867 : reglages des plugins lus sur les champs (leve
+        PluginSettingsError sur un export mal forme)."""
+        logger.debug("MainWindow.plugin_settings()")
+        return plugin_settings_from_widgets(
+            self.plugins_entry.get_text(),
+            self.plugin_path_entry.get_text(),
+            self.plugin_export_entry.get_text(),
+        )
+
+    def _on_list_plugins(self, *_args):
+        """Issue #867 : equivalent de --list-plugins, dans le journal."""
+        logger.debug("MainWindow._on_list_plugins()")
+        try:
+            text = format_plugin_list(self.plugin_settings())
+        except PluginSettingsError as exc:
+            logger.debug("MainWindow._on_list_plugins: reglage invalide ({})", exc)
+            text = str(exc)
+        self.stack.set_visible_child_name("log")
+        self._log(text)
+        logger.debug("MainWindow._on_list_plugins: fin")
 
     def _notify_settings(self) -> NotifySettings:
         """Reglages de notification, lus sur le thread principal."""
@@ -1980,6 +2076,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
         notify = None
         ai = None
+
+        plugins = None
         client_groups: dict = {}
         client_reference = None
         advanced = None
@@ -1999,6 +2097,17 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.stack.set_visible_child_name("log")
                 self._log(f"Module IA : {'; '.join(ai_errors)} -- analyse non lancee.")
                 logger.debug("MainWindow.on_run_analysis: si ai_errors -> retour")
+                return
+            try:
+                plugins, plugin_errors = prepare_plugins(self.plugin_settings(), self.security_check.get_active())
+            except PluginSettingsError as exc:
+                logger.debug("MainWindow.on_run_analysis: reglage de plugin invalide ({})", exc)
+                plugins, plugin_errors = None, [str(exc)]
+            if plugin_errors:
+                # Echec immediat, comme la CLI (issue #867).
+                self.stack.set_visible_child_name("log")
+                self._log(f"Plugins : {'; '.join(plugin_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si plugin_errors -> retour")
                 return
             try:
                 client_groups = parse_client_groups(self.client_groups_entry.get_text())
@@ -2062,6 +2171,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "nat_window_ms": nat_window_ms,
                     "idle_timeout_seconds": idle_timeout_seconds,
                     "triage": self.diff_triage_check.get_active(),
+                    "history": self.history_settings(),
                     "triage_topn": int(self.diff_triage_topn_spin.get_value()),
                 },
                 daemon=True,
@@ -2112,6 +2222,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "advanced": advanced,
                     "history": self.history_settings(),
                     "ai": ai,
+                    "plugins": plugins,
                 },
                 daemon=True,
             ).start()
@@ -2179,6 +2290,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # (--live-current) -- baseline et reglages releves ici, thread
         # principal ; None = capture en direct simple.
         self._live_diff = None
+        self._live_diff_history = self.history_settings()  # issue #874 : releve ici, thread principal
         if self.diff_check.get_active():
             baseline_captures = self.baseline_panel.captures()
             if len(baseline_captures) < 2:
@@ -2498,12 +2610,20 @@ class MainWindow(Gtk.ApplicationWindow):
             GLib.idle_add(self._reset_live_ui)
             logger.debug("MainWindow._analyze_live_diff: except Exception -> retour")
             return
+        history = getattr(self, "_live_diff_history", None)
+        if history is not None and history.db_path:
+            self._record_diff_history(result, history, options.redact)
         GLib.idle_add(
             self._on_diff_done,
             result.findings,
             result.baseline_report,
             result.current_report,
             result.text,
+            None,
+            None,
+            None,
+            None,
+            result.redaction_map,
         )
         GLib.idle_add(self._reset_live_ui)
         logger.debug("MainWindow._analyze_live_diff: fin")
@@ -2578,6 +2698,7 @@ class MainWindow(Gtk.ApplicationWindow):
         advanced=None,
         history=None,
         ai=None,
+        plugins=None,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -2616,6 +2737,7 @@ class MainWindow(Gtk.ApplicationWindow):
             advanced=advanced,
             history=history,
             ai=ai,
+            plugins=plugins,
         )
 
         def _on_progress(msg):
@@ -2668,6 +2790,7 @@ class MainWindow(Gtk.ApplicationWindow):
         idle_timeout_seconds=None,
         triage=False,
         triage_topn=5,
+        history=None,
     ):
         logger.debug(
             "_run_diff_thread: {} capture(s) baseline, {} capture(s) courant",
@@ -2706,6 +2829,8 @@ class MainWindow(Gtk.ApplicationWindow):
             logger.debug("MainWindow._run_diff_thread: except Exception -> retour")
             return
 
+        if history is not None and history.db_path:
+            self._record_diff_history(result, history, redact)
         GLib.idle_add(
             self._on_diff_done,
             result.findings,
@@ -2716,8 +2841,25 @@ class MainWindow(Gtk.ApplicationWindow):
             result.tls_findings_current,
             result.quic_findings_baseline,
             result.quic_findings_current,
+            result.redaction_map,
         )
         logger.debug("MainWindow._run_diff_thread: fin")
+
+    def _record_diff_history(self, result, history, redact):
+        """Issue #874 : ``--history-db`` de la comparaison ; une base
+        illisible n'annule pas la comparaison (message dans le journal)."""
+        from netcross_gtk4.report_exports import record_diff_history
+        from netcross_report import HistoryDatabaseError
+
+        try:
+            message = record_diff_history(
+                result.findings, result.baseline_report, result.current_report, history, redact=redact
+            )
+        except HistoryDatabaseError as exc:
+            logger.warning("_record_diff_history: {}", exc)
+            message = f"Historique non enregistre : {exc}"
+        GLib.idle_add(self._log, message)
+        return message
 
     def _on_analysis_error(self, message):
         logger.debug("_on_analysis_error: {}", message)
@@ -2884,6 +3026,7 @@ class MainWindow(Gtk.ApplicationWindow):
         tls_findings_current=None,
         quic_findings_baseline=None,
         quic_findings_current=None,
+        redaction_map=(),
     ):
         logger.debug(
             "_on_diff_done: findings={} tls_base={} tls_courant={} quic_base={} quic_courant={}",
@@ -2898,6 +3041,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.client_compare_panel.set_comparison(None)  # ni de comparaison de postes
         self.expertise_panel.set_exports(None)  # ni d'exports d'expertise (issue #673)
         self.report_exports_panel.set_context(None, None, None)  # ni SIEM/ticket/historique (issue #674)
+        self.report_exports_panel.set_redaction_map(redaction_map)  # sauf la table d'anonymisation (#876)
         self._appliquer_outcome(
             diff_outcome(
                 findings,

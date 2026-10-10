@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-185 modules · 269 classes · 626 fonctions publiques de module.
+192 modules · 278 classes · 663 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -32,20 +32,20 @@ flowchart TD
     netcross_ai["netcross_ai"]
     netcross_core["netcross_core"]
     pcap_parser["pcap_parser"]
-    CLI -->|"19 imports"| netcross_report
+    CLI -->|"20 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"27 imports"| netcross_report
-    netcross_gtk4 -->|"4 imports"| netcross_ai
-    netcross_gtk4 -->|"95 imports"| netcross_core
+    netcross_gtk4 -->|"30 imports"| netcross_report
+    netcross_gtk4 -->|"103 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
-    netcross_api -->|"13 imports"| netcross_report
-    netcross_api -->|"33 imports"| netcross_core
-    netcross_api -->|"2 imports"| pcap_parser
-    netcross_report -->|"36 imports"| netcross_core
+    netcross_api -->|"18 imports"| netcross_report
+    netcross_api -->|"5 imports"| netcross_ai
+    netcross_api -->|"42 imports"| netcross_core
+    netcross_api -->|"3 imports"| pcap_parser
+    netcross_report -->|"40 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
-    netcross_core -->|"18 imports"| pcap_parser
+    netcross_core -->|"19 imports"| pcap_parser
 ```
 
 ## Relations inter-modules
@@ -64,6 +64,8 @@ flowchart LR
     ApiAnalysisOptions["netcross_api.app.ApiAnalysisOptions"]
     BPFFilter["netcross_core.models.BPFFilter"]
     Baseline["netcross_ai.anomaly.Baseline"]
+    BatchPlan["netcross_core.batch.BatchPlan"]
+    BatchResult["netcross_report.batch_runner.BatchResult"]
     CaptureInfo["pcap_parser.capinfos_source.CaptureInfo"]
     ClientReport["netcross_core.client_diff.ClientReport"]
     ContentExtraction["netcross_core.extract.contents.ContentExtraction"]
@@ -105,6 +107,7 @@ flowchart LR
     AnalysisResult -->|report| Report
     AnnotationStore -->|by_label| PacketAnnotation
     ApiAnalysisOptions -->|notify| NotifySettings
+    BatchResult -->|plan| BatchPlan
     CaptureInfo -->|interfaces| InterfaceRecord
     ClientReport -->|report| Report
     ContentExtraction -->|media| StreamQuality
@@ -249,6 +252,9 @@ classDiagram
         +stop_ring_recorder(proc, timeout) str
         +merge_captures(paths, output_path, dedup) None
         +replay_capture(path, interface, speed, loop) None
+        +replay_command(path, interface, speed, loop) list~str~
+        +start_replay(path, interface, speed, loop) subprocess.Popen
+        +wait_replay(proc, stopped) None
         +split_capture(path, output_dir, by, value) list~str~
         +list_interfaces(path) list~InterfaceSlice~
         +split_by_interface(path, output_dir) list~InterfaceSlice~
@@ -458,6 +464,7 @@ classDiagram
 | `netcross_core.baseline_profile` | profil de reference dynamique construit a partir de l'historique SQLite (Job 12/issue #9, section 8.5 de FEATURES.md). |
 | `netcross_core.batch` | Mode batch : inventaire d'un dossier de captures et regroupement automatique CONSERVATEUR des captures qui semblent etre plusieurs points de vue d'un meme evenement (issue #277). |
 | `netcross_core.bpf_filters` | catalogue de filtres BPF predefinis et filtres sauvegardes par l'utilisateur (Job 47 / issue #167). |
+| `netcross_core.capture_tools` | manipulation de fichiers de capture partagee par la CLI, la GUI et l'API (issues #868, #869, #870, #886, #887). |
 | `netcross_core.causality` | moteur de correlation causale (Session 3 de la section 13.3 de FEATURES.md, Job 4/issue #4). |
 | `netcross_core.client_diff` | comparaison "client vs client" : meme capture, memes points, seule la source (l'IP du poste) change. |
 | `netcross_core.compliance` | evaluateur de conformite, huitieme et neuvieme objets de contrat de la Session 0 (FEATURES.md section 13.3) : `ReferenceProfile`/`ComplianceResult` (netcross_core.expert_model). |
@@ -488,7 +495,7 @@ classDiagram
 | `netcross_core.voip` | Analyse VoIP orientee appel. |
 | `netcross_core.wireshark_expert` | Session 1 de FEATURES.md section 13.3 ("exploitation de l'expertise Wireshark/TShark") : convertit les signaux d'expertise BRUTS deja produits par le moteur de dissection de tshark (champs… |
 
-### Diagramme
+### Diagramme (1/2)
 
 ```mermaid
 classDiagram
@@ -648,6 +655,23 @@ classDiagram
         +load_bpf_filters(path) list~BPFFilter~
         +available_bpf_filters(path) list~BPFFilter~
         +upsert_bpf_filter(new, path) list~BPFFilter~
+    }
+
+    %% ===== netcross_core.capture_tools =====
+    class mod_netcross_core_capture_tools["netcross_core.capture_tools"] {
+        <<module>>
+        +parse_size(text) int?
+        +parse_split_spec(spec) tuple~str, float or int~
+        +parse_endpoints(text) list~str~?
+        +split_label_dir(output_dir, label) str
+        +merge(paths, output_path, dedup) str
+        +split(path, output_dir, spec) list~str~
+        +convert(path_in, path_out, fmt) str
+        +export_subset(path_in, path_out, bpf_filter, time_start, time_end, endpoints) str
+        +adjust_time(path_in, path_out, offset, normalize, align_to) str
+        +allowed_replay_interfaces(environ) frozenset~str~
+        +replay_message(path, interface, speed, loop) str
+        +replay(path, interface, speed, loop) str
     }
 
     %% ===== netcross_core.causality =====
@@ -1730,31 +1754,6 @@ classDiagram
         +print_tls_diagnostics(findings) None
     }
 
-    %% ===== netcross_core.voip =====
-    class Call {
-        <<dataclass>>
-        +str call_id
-        +tuple~str, ...~ participants
-        +list~dict~ signaling
-        +float? setup_duration_ms
-        +float? duration_ms
-        +list~dict~ rtp_streams
-        +list~dict~ events
-        +str quality
-        +str correlation_method
-        +to_dict() dict
-    }
-    class mod_netcross_core_voip["netcross_core.voip"] {
-        <<module>>
-        +build_calls(all_packets, rtp_streams) tuple~list~Call~, dict~str, int~~
-    }
-
-    %% ===== netcross_core.wireshark_expert =====
-    class mod_netcross_core_wireshark_expert["netcross_core.wireshark_expert"] {
-        <<module>>
-        +build_wireshark_expert_events(all_packets) list~ExpertEvent~
-    }
-
     %% ===== relations =====
     DiffFinding --> EvidenceLink : evidence
     CaptureGroup --> CaptureInventory : members
@@ -1791,6 +1790,38 @@ classDiagram
     Pkt --> Banner : service_banners
     Report --> ChecksumError : checksum_errors
     Report --> SequenceGap : sequence_gaps
+```
+
+### Diagramme (2/2)
+
+```mermaid
+classDiagram
+    direction LR
+
+    %% ===== netcross_core.voip =====
+    class Call {
+        <<dataclass>>
+        +str call_id
+        +tuple~str, ...~ participants
+        +list~dict~ signaling
+        +float? setup_duration_ms
+        +float? duration_ms
+        +list~dict~ rtp_streams
+        +list~dict~ events
+        +str quality
+        +str correlation_method
+        +to_dict() dict
+    }
+    class mod_netcross_core_voip["netcross_core.voip"] {
+        <<module>>
+        +build_calls(all_packets, rtp_streams) tuple~list~Call~, dict~str, int~~
+    }
+
+    %% ===== netcross_core.wireshark_expert =====
+    class mod_netcross_core_wireshark_expert["netcross_core.wireshark_expert"] {
+        <<module>>
+        +build_wireshark_expert_events(all_packets) list~ExpertEvent~
+    }
 ```
 
 ## `netcross_core.application`
@@ -3336,6 +3367,7 @@ classDiagram
 | Module | Rôle |
 |---|---|
 | `netcross_report` | synthese, triage, et generation de rapports (PDF, JSON) a partir d'un Report netcross_core. |
+| `netcross_report.batch_runner` | Moteur du mode lot (issues #277, #872), commun à la CLI (``cross_capture_batch_cli.py``), à l'API (``POST /batches``) et à la GUI. |
 | `netcross_report.charts` | graphiques matplotlib exportes en PNG pour le PDF. |
 | `netcross_report.comm_map` | cartographie des communications observees (Job 15/issue #15, FEATURES.md section 6.6). |
 | `netcross_report.expert_events` | construit les vues `ExpertEvent`/ `Diagnosis` (Session 36, cinquieme et sixieme objets de contrat de la Session 0, FEATURES.md section 13.3) a partir d'une liste de `Finding`/ `DiffFinding` deja… |
@@ -3362,6 +3394,47 @@ classDiagram
 ```mermaid
 classDiagram
     direction LR
+
+    %% ===== netcross_report.batch_runner =====
+    class BatchOptions {
+        <<dataclass, frozen>>
+        +bool recursive
+        +bool group
+        +float group_window
+        +float min_overlap
+        +int min_common_ips
+        +int jobs
+        +bool skip_existing
+        +bool security_report
+    }
+    class BatchResult {
+        <<dataclass>>
+        +BatchPlan plan
+        +str index
+        +str index_path
+        +dict~int, str~ group_reports
+        +dict~str, str~ capture_reports
+        +dict~str, dict~ summaries
+        +list~str~ errors
+        +list~str~ ignored
+        +list~str~ synthesis
+        +has_failures() bool
+        +to_dict() dict
+    }
+    class mod_netcross_report_batch_runner["netcross_report.batch_runner"] {
+        <<module>>
+        +list_captures(folder, recursive) tuple~list~str~, list~str~~
+        +make_labels(paths) dict~str, str~
+        +build_inventory(label, path) CaptureInventory
+        +load_cached_inventory(output, label, path) CaptureInventory?
+        +save_cached_inventory(output, inv) None
+        +collect_inventories(paths, labels, output, jobs, skip_existing, progress) list~CaptureInventory~
+        +analyse_and_write(members, out_path, security) dict
+        +run_analyses(plan, output, security, skip_existing, progress)
+        +build_synthesis(plan, summaries, errors, ignored, security) list~str~
+        +check_options(options) str?
+        +run_batch(captures, ignored, output, options, source, progress) BatchResult
+    }
 
     %% ===== netcross_report.charts =====
     class mod_netcross_report_charts["netcross_report.charts"] {
@@ -3799,9 +3872,12 @@ classDiagram
 |---|---|
 | `netcross_api` | service REST FastAPI pour exposer les analyses Netcross (issue #209). |
 | `netcross_api.app` | application FastAPI pour exposer les analyses Netcross (issues #209, #354, #356). |
+| `netcross_api.batches` | lots de captures de l'API (issue #872). |
+| `netcross_api.history_routes` | historique SQLite des runs (issue #874). |
 | `netcross_api.lua_doc_routes` | documentation hors ligne de l'API Lua Wireshark (issue #873), équivalent de ``netcross-lua-doc --json``. |
 | `netcross_api.models` | modèles Pydantic pour les requêtes/réponses API (issue #209). |
 | `netcross_api.store` | analyses de l'API : statut, document JSON, persistance. |
+| `netcross_api.tools_routes` | manipulation de captures (issues #868, #869, #870, #886, #887), équivalents des modes utilitaires de la CLI : |
 
 ### Diagramme
 
@@ -3838,6 +3914,7 @@ classDiagram
         +bool detect_duplicates
         +bool exclude_duplicates
         +float duplicate_threshold_ms
+        +tuple~str, ...~ plugins
     }
     class AnalysisError {
         <<Exception>>
@@ -3845,9 +3922,9 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, plugins, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, plugins, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
@@ -3859,16 +3936,54 @@ classDiagram
         +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
         +forensic_search(analysis_id, body, _auth) JSONResponse
         +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
-        +create_support_ticket(analysis_id, consent, kind, _auth) JSONResponse
+        +run_analysis_ai(analysis_id, baseline, baseline_base, training, baseline_save, baseline_label, training_export, summary, endpoint, _auth) JSONResponse
+        +get_plugins(plugins, _auth) JSONResponse
+        +create_support_ticket(analysis_id, consent, kind, scopes, marker, include_map, _auth) JSONResponse
         +client_comparison(analysis_id, body, _auth) JSONResponse
         +netflow_summary(analysis_id, files, exporters, top, _auth) JSONResponse
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
-        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, wait, _auth) JSONResponse
+        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, history, history_label, wait, _auth) JSONResponse
         +get_comparison(comparison_id, _auth) JSONResponse
         +get_analysis_redact_map(analysis_id, _auth) PlainTextResponse
         +get_comparison_redact_map(comparison_id, _auth) PlainTextResponse
         +get_comparison_csv(comparison_id, _auth) PlainTextResponse
+        +create_batch(files, no_group, group_window, min_overlap, min_common_ips, jobs, security_report, wait, _auth) JSONResponse
+        +list_batches(_auth) JSONResponse
+        +get_batch(batch_id, _auth) JSONResponse
+        +get_batch_index(batch_id, _auth) PlainTextResponse
+        +get_batch_report(batch_id, name, _auth) PlainTextResponse
+    }
+
+    %% ===== netcross_api.batches =====
+    class BatchInputError {
+        <<ValueError>>
+    }
+    class BatchStore {
+        +create(options, files, workdir) str
+        +get(batch_id) dict?
+        +update(batch_id, changes) None
+        +progress(batch_id, message) None
+        +list() list~dict~
+        +clear() None
+    }
+    class mod_netcross_api_batches["netcross_api.batches"] {
+        <<module>>
+        +safe_name(name) str
+        +unique_path(directory, name) str
+        +extract_archive(archive, directory, max_bytes) list~str~
+        +run_batch_job(batch_id, options, ignored) None
+        +report_path(entry, name) Path?
+        +new_workdir() tuple~str, str~
+    }
+
+    %% ===== netcross_api.history_routes =====
+    class mod_netcross_api_history_routes["netcross_api.history_routes"] {
+        <<module>>
+        +history_db_path() str?
+        +require_history_db() str
+        +record_comparison(findings, baseline_report, current_report, label, redact) dict~str, Any~
+        +register(app, verify) None
     }
 
     %% ===== netcross_api.lua_doc_routes =====
@@ -3968,6 +4083,12 @@ classDiagram
         +report_document(report) dict~str, Any~
     }
 
+    %% ===== netcross_api.tools_routes =====
+    class mod_netcross_api_tools_routes["netcross_api.tools_routes"] {
+        <<module>>
+        +register(app, verify, save_upload, max_files) None
+    }
+
     %% ===== relations =====
     netcross_api_models_SecurityReport --> SecurityFinding : findings
     MultiAnalysisSummary --> SegmentLoss : segments
@@ -3979,13 +4100,13 @@ classDiagram
 |---|---|
 | `netcross_gtk4` | — |
 | `netcross_gtk4.advanced_options` | options d'analyse avancees de la GUI (issue #672), sans GTK. |
-| `netcross_gtk4.ai_settings` | module IA local dans la GUI (issue #866). |
 | `netcross_gtk4.analysis_pipeline` | pipeline d'analyse extrait de MainWindow (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.annotations_panel` | panneau GTK des annotations (issue #363). |
 | `netcross_gtk4.annotations_view` | logique de presentation pour l'etiquetage/signets sur paquets (Job 40 / issue #160, section "Metadonnees et annotation"). |
 | `netcross_gtk4.app` | interface GTK4 pour netcross_core / netcross_report. |
 | `netcross_gtk4.bpf_panel` | Decisions du panneau de filtres BPF de la capture live, sorties de ``netcross_gtk4/app.py`` (issue #285, quatrieme lot). |
 | `netcross_gtk4.capture_list` | Enumeration, ordre et retrait des lignes des panneaux de captures, sortis de ``netcross_gtk4/app.py`` (issue #285, cinquieme lot). |
+| `netcross_gtk4.capture_tools_window` | fenetre « Outils de capture » (issues #868, #869, #870, #886, #887) : fusion, decoupage, conversion, export filtre et recalage temporel, equivalents des modes utilitaires de la CLI (``--merge``,… |
 | `netcross_gtk4.client_compare_panel` | panneau GTK « Comparaison de postes » de la page Resultats (issue #675). |
 | `netcross_gtk4.client_compare_view` | comparaison de postes dans la GUI (issue #675). |
 | `netcross_gtk4.dashboard_context` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
@@ -3998,6 +4119,7 @@ classDiagram
 | `netcross_gtk4.file_option` | champ « fichier facultatif » de la configuration : bouton de choix, « Retirer », nom du fichier retenu. |
 | `netcross_gtk4.forensic_panel` | panneau GTK « Recherche forensic » de la page Resultats (issue #675). |
 | `netcross_gtk4.forensic_view` | recherche forensic de la GUI (issue #675). |
+| `netcross_gtk4.history_window` | fenetre « Historique des runs » (issue #874) : consultation d'une base ``--history-db`` sans relancer d'analyse, avec les filtres de ``netcross-history`` (``--run-type``, ``--label``, ``--limit``). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
 | `netcross_gtk4.live_report_session` | rapport HTML rafraichi en continu pendant une capture en direct de la GUI (issue #676). |
 | `netcross_gtk4.lua_doc_view` | logique sans GTK de la fenetre « Documentation Lua » (issue #873), equivalent de ``netcross-lua-doc``. |
@@ -4006,6 +4128,7 @@ classDiagram
 | `netcross_gtk4.netflow_view` | resume NetFlow v5 dans la GUI (issue #675). |
 | `netcross_gtk4.notifications` | notifications sortantes (webhook, Slack, courriel) apres une analyse de la GUI (issue #676). |
 | `netcross_gtk4.panel_state` | decisions de visibilite, de sensibilite et de selection des panneaux de la GUI (issue #285, troisieme lot). |
+| `netcross_gtk4.plugin_settings` | plugins tiers dans la GUI (issue #867). |
 | `netcross_gtk4.report_exports` | diagramme de sequence, export SIEM, historique SQLite et ticket de support dans la GUI (issue #674), sans GTK. |
 | `netcross_gtk4.report_exports_panel` | panneau « SIEM, ticket de support, historique » de la page Resultats (issue #674). |
 | `netcross_gtk4.ring_recorders` | rotation de capture (ring buffer) de la GUI en capture en direct (issue #676). |
@@ -4043,27 +4166,6 @@ classDiagram
         +workers_note(workers, cpu_count) str?
     }
 
-    %% ===== netcross_gtk4.ai_settings =====
-    class AISettings {
-        <<dataclass, frozen>>
-        +str? baseline_save
-        +str baseline_label
-        +str? anomalies
-        +str? training_export
-        +str? classify
-        +str? summary
-        +str? endpoint
-        +str? report
-        +requested() bool
-    }
-    class mod_netcross_gtk4_ai_settings["netcross_gtk4.ai_settings"] {
-        <<module>>
-        +settings_from_widgets(baseline_save, baseline_label, anomalies, training_export, classify, summary, endpoint, report) AISettings
-        +validate_settings(settings) list~str~
-        +to_options(settings) Any
-        +run_ai_section(settings, report, all_packets) tuple~dict?, str, list~str~~
-    }
-
     %% ===== netcross_gtk4.analysis_pipeline =====
     class AnalysisOptions {
         <<dataclass>>
@@ -4092,7 +4194,7 @@ classDiagram
         +ExpertiseSettings? expertise
         +AdvancedSettings? advanced
         +HistorySettings? history
-        +Any ai
+        +Any plugins
     }
     class AnalysisResult {
         <<dataclass>>
@@ -4109,14 +4211,13 @@ classDiagram
         +Any client_comparison
         +ExpertiseExports? expertise
         +ReportContext? report_context
-        +dict? ai
     }
     class mod_netcross_gtk4_analysis_pipeline["netcross_gtk4.analysis_pipeline"] {
         <<module>>
         +load_packets(captures, parallel, on_progress, max_workers) list
         +run_analysis_pipeline(captures, options, on_progress) AnalysisResult
         +expand_split_interfaces(captures, workdir, log) list~tuple~str, str~~
-        +run_security_analysis(report, all_packets, captures, log, known_destinations, known_hosts, test_net_external, cve_db)
+        +run_security_analysis(report, all_packets, captures, log, known_destinations, known_hosts, test_net_external, cve_db, plugins)
     }
 
     %% ===== netcross_gtk4.annotations_panel =====
@@ -4184,11 +4285,13 @@ classDiagram
     }
     class MainWindow {
         <<Gtk.ApplicationWindow>>
+        +open_history()
+        +open_capture_tools()
         +open_lua_doc()
         +load_names_table(path)
+        +plugin_settings() PluginSettings
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
-        +ai_settings() AISettings
         +history_settings() HistorySettings
         +advanced_settings() AdvancedSettings
         +expertise_settings() ExpertiseSettings
@@ -4250,6 +4353,24 @@ classDiagram
         +captures_live(contenus) list~tuple~str, str, str?~~
         +deplacer_ligne(row, vers_le_haut) bool
         +retirer_ligne(row, on_change) bool
+    }
+
+    %% ===== netcross_gtk4.capture_tools_window =====
+    class PathChooser {
+        <<Gtk.Box>>
+        +set_path(path) None
+    }
+    class CaptureToolsWindow {
+        <<Gtk.Window>>
+        +set_merge_files(paths) None
+        +run_merge() str
+        +split_spec() str
+        +run_split() str
+        +run_convert() str
+        +run_export() str
+        +run_adjust() str
+        +run_replay() str
+        +stop_replay() None
     }
 
     %% ===== netcross_gtk4.client_compare_panel =====
@@ -4332,6 +4453,7 @@ classDiagram
         +list? tls_findings_current
         +list? quic_findings_baseline
         +list? quic_findings_current
+        +tuple redaction_map
     }
     class mod_netcross_gtk4_diff_pipeline["netcross_gtk4.diff_pipeline"] {
         <<module>>
@@ -4426,6 +4548,13 @@ classDiagram
         +capture_for_point(result, captures) str?
         +wireshark_command(path, frame_number, program) list~str~
         +describe_selection(result, path) str
+    }
+
+    %% ===== netcross_gtk4.history_window =====
+    class HistoryWindow {
+        <<Gtk.Window>>
+        +selected_run_type() str?
+        +show_history() str
     }
 
     %% ===== netcross_gtk4.live_capture_points =====
@@ -4544,6 +4673,31 @@ classDiagram
         +apply_dashboard_selection(kind, selection, key, flow_par_cle, evenements) Any
     }
 
+    %% ===== netcross_gtk4.plugin_settings =====
+    class PluginSettingsError {
+        <<ValueError>>
+    }
+    class PluginSettings {
+        <<dataclass, frozen>>
+        +tuple~str, ...~ names
+        +tuple~str, ...~ paths
+        +tuple~tuple~str, str~, ...~ exports
+        +active() bool
+    }
+    class PreparedPlugins {
+        <<dataclass>>
+        +Any loaded
+        +list~tuple~str, str~~ exports
+    }
+    class mod_netcross_gtk4_plugin_settings["netcross_gtk4.plugin_settings"] {
+        <<module>>
+        +settings_from_widgets(names_text, paths_text, exports_text) PluginSettings
+        +prepare_plugins(settings, security) tuple~PreparedPlugins?, list~str~~
+        +detector_runs(prepared, packets, report) list~dict~
+        +exporter_runs(prepared, report) list~dict~
+        +format_plugin_list(settings) str
+    }
+
     %% ===== netcross_gtk4.report_exports =====
     class HistorySettings {
         <<dataclass, frozen>>
@@ -4558,11 +4712,13 @@ classDiagram
         +bool redact
         +HistorySettings history
         +str history_message
+        +tuple~tuple~str, str, str~, ...~ redaction_map
     }
     class mod_netcross_gtk4_report_exports["netcross_gtk4.report_exports"] {
         <<module>>
         +record_history(report, settings, findings, tls, quic, redact) str
-        +history_text(db_path, limit, label) str
+        +record_diff_history(findings, baseline, current, settings, redact) str
+        +history_text(db_path, limit, label, run_type) str
         +sequence_views(flows, max_flows, flow_objects) list?
         +export_siem(report, path, fmt, context) str
         +write_support_ticket(path, context, consent) tuple~str, int~
@@ -4572,9 +4728,11 @@ classDiagram
     class ReportExportsPanel {
         <<Gtk.Box>>
         +set_context(report, security_report, context) None
+        +set_redaction_map(entries) None
         +selected_siem_format() str
         +export_siem_to(path) str
         +write_ticket_to(path) str
+        +write_redaction_map_to(path) str
         +show_history() str
     }
 
@@ -4697,15 +4855,6 @@ classDiagram
     %% ===== cross_capture_batch_cli =====
     class mod_cross_capture_batch_cli["cross_capture_batch_cli"] {
         <<module>>
-        +list_captures(folder, recursive) tuple~list~str~, list~str~~
-        +make_labels(paths) dict~str, str~
-        +build_inventory(label, path) CaptureInventory
-        +load_cached_inventory(output, label, path) CaptureInventory?
-        +save_cached_inventory(output, inv) None
-        +collect_inventories(paths, labels, output, jobs, skip_existing) list~CaptureInventory~
-        +analyse_and_write(members, out_path, security) dict
-        +run_analyses(plan, output, security, skip_existing)
-        +build_synthesis(plan, summaries, errors, ignored, security) list~str~
         +main(argv)
     }
 
