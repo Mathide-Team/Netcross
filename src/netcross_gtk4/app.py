@@ -120,6 +120,13 @@ from netcross_gtk4.panel_state import (  # noqa: E402
     run_button_state,
     selected_protocol,
 )
+from netcross_gtk4.plugin_settings import (  # noqa: E402
+    PluginSettings,
+    PluginSettingsError,
+    format_plugin_list,
+    prepare_plugins,
+)
+from netcross_gtk4.plugin_settings import settings_from_widgets as plugin_settings_from_widgets  # noqa: E402
 from netcross_gtk4.report_exports import SEQUENCE_FLOWS_MAX, HistorySettings, sequence_views  # noqa: E402
 from netcross_gtk4.report_exports_panel import ReportExportsPanel  # noqa: E402
 from netcross_gtk4.ring_recorders import RingRecorderError, start_ring_recorders, stop_ring_recorders  # noqa: E402
@@ -1112,6 +1119,28 @@ class MainWindow(Gtk.ApplicationWindow):
         notify_box.append(self.notify_complete_check)
         self.single_options_box.append(notify_box)
 
+        # Issue #867 : plugins tiers, equivalent de --plugins / --plugin-path /
+        # --plugin-export / --list-plugins. Chargement explicite : seul un
+        # plugin nomme ici s'execute ; detecteurs => rapport de securite.
+        plugins_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        plugins_box.append(Gtk.Label(label="Plugins (--plugins) :", halign=Gtk.Align.START))
+        self.plugins_entry = Gtk.Entry(placeholder_text="noms autorises, separes par des virgules")
+        self.plugins_entry.set_tooltip_text(
+            "Detecteurs et exporteurs tiers a executer (entry points installes ou fichiers ci-contre). "
+            "Code tiers execute dans le processus : voir docs/plugins.md. "
+            "Les detecteurs necessitent « Rapport de securite »."
+        )
+        self.plugin_path_entry = Gtk.Entry(placeholder_text="Fichiers plugins (--plugin-path), separes par ;")
+        self.plugin_export_entry = Gtk.Entry(placeholder_text="Exports NOM=FICHIER (--plugin-export), separes par ;")
+        for entry in (self.plugins_entry, self.plugin_path_entry, self.plugin_export_entry):
+            entry.set_hexpand(True)
+            plugins_box.append(entry)
+        list_plugins_btn = Gtk.Button(label="Lister (--list-plugins)")
+        list_plugins_btn.set_tooltip_text("Plugins installes et locaux, autorises ou non, dans le journal.")
+        list_plugins_btn.connect("clicked", self._on_list_plugins)
+        plugins_box.append(list_plugins_btn)
+        self.single_options_box.append(plugins_box)
+
         # Issue #675 : comparaison de postes (--client-group, --client-reference)
         clients_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         clients_box.append(Gtk.Label(label="Postes a comparer (--client-group) :", halign=Gtk.Align.START))
@@ -1449,6 +1478,28 @@ class MainWindow(Gtk.ApplicationWindow):
         ):
             widget.set_sensitive(active)
         logger.debug("MainWindow._on_notify_threshold_changed: actif={}", active)
+
+    def plugin_settings(self) -> PluginSettings:
+        """Issue #867 : reglages des plugins lus sur les champs (leve
+        PluginSettingsError sur un export mal forme)."""
+        logger.debug("MainWindow.plugin_settings()")
+        return plugin_settings_from_widgets(
+            self.plugins_entry.get_text(),
+            self.plugin_path_entry.get_text(),
+            self.plugin_export_entry.get_text(),
+        )
+
+    def _on_list_plugins(self, *_args):
+        """Issue #867 : equivalent de --list-plugins, dans le journal."""
+        logger.debug("MainWindow._on_list_plugins()")
+        try:
+            text = format_plugin_list(self.plugin_settings())
+        except PluginSettingsError as exc:
+            logger.debug("MainWindow._on_list_plugins: reglage invalide ({})", exc)
+            text = str(exc)
+        self.stack.set_visible_child_name("log")
+        self._log(text)
+        logger.debug("MainWindow._on_list_plugins: fin")
 
     def _notify_settings(self) -> NotifySettings:
         """Reglages de notification, lus sur le thread principal."""
@@ -1932,6 +1983,7 @@ class MainWindow(Gtk.ApplicationWindow):
             return
 
         notify = None
+        plugins = None
         client_groups: dict = {}
         client_reference = None
         advanced = None
@@ -1943,6 +1995,17 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.stack.set_visible_child_name("log")
                 self._log(f"Notifications : {'; '.join(notify_errors)} -- analyse non lancee.")
                 logger.debug("MainWindow.on_run_analysis: si notify_errors -> retour")
+                return
+            try:
+                plugins, plugin_errors = prepare_plugins(self.plugin_settings(), self.security_check.get_active())
+            except PluginSettingsError as exc:
+                logger.debug("MainWindow.on_run_analysis: reglage de plugin invalide ({})", exc)
+                plugins, plugin_errors = None, [str(exc)]
+            if plugin_errors:
+                # Echec immediat, comme la CLI (issue #867).
+                self.stack.set_visible_child_name("log")
+                self._log(f"Plugins : {'; '.join(plugin_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si plugin_errors -> retour")
                 return
             try:
                 client_groups = parse_client_groups(self.client_groups_entry.get_text())
@@ -2055,6 +2118,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "expertise": self.expertise_settings(),
                     "advanced": advanced,
                     "history": self.history_settings(),
+                    "plugins": plugins,
                 },
                 daemon=True,
             ).start()
@@ -2520,6 +2584,7 @@ class MainWindow(Gtk.ApplicationWindow):
         expertise=None,
         advanced=None,
         history=None,
+        plugins=None,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -2557,6 +2622,7 @@ class MainWindow(Gtk.ApplicationWindow):
             expertise=expertise,
             advanced=advanced,
             history=history,
+            plugins=plugins,
         )
 
         def _on_progress(msg):

@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-184 modules · 268 classes · 622 fonctions publiques de module.
+185 modules · 271 classes · 627 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,7 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"27 imports"| netcross_report
-    netcross_gtk4 -->|"93 imports"| netcross_core
+    netcross_gtk4 -->|"99 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
     netcross_api -->|"33 imports"| netcross_core
@@ -4004,6 +4004,7 @@ classDiagram
 | `netcross_gtk4.netflow_view` | resume NetFlow v5 dans la GUI (issue #675). |
 | `netcross_gtk4.notifications` | notifications sortantes (webhook, Slack, courriel) apres une analyse de la GUI (issue #676). |
 | `netcross_gtk4.panel_state` | decisions de visibilite, de sensibilite et de selection des panneaux de la GUI (issue #285, troisieme lot). |
+| `netcross_gtk4.plugin_settings` | plugins tiers dans la GUI (issue #867). |
 | `netcross_gtk4.report_exports` | diagramme de sequence, export SIEM, historique SQLite et ticket de support dans la GUI (issue #674), sans GTK. |
 | `netcross_gtk4.report_exports_panel` | panneau « SIEM, ticket de support, historique » de la page Resultats (issue #674). |
 | `netcross_gtk4.ring_recorders` | rotation de capture (ring buffer) de la GUI en capture en direct (issue #676). |
@@ -4069,6 +4070,7 @@ classDiagram
         +ExpertiseSettings? expertise
         +AdvancedSettings? advanced
         +HistorySettings? history
+        +Any plugins
     }
     class AnalysisResult {
         <<dataclass>>
@@ -4091,7 +4093,7 @@ classDiagram
         +load_packets(captures, parallel, on_progress, max_workers) list
         +run_analysis_pipeline(captures, options, on_progress) AnalysisResult
         +expand_split_interfaces(captures, workdir, log) list~tuple~str, str~~
-        +run_security_analysis(report, all_packets, captures, log, known_destinations, known_hosts, test_net_external, cve_db)
+        +run_security_analysis(report, all_packets, captures, log, known_destinations, known_hosts, test_net_external, cve_db, plugins)
     }
 
     %% ===== netcross_gtk4.annotations_panel =====
@@ -4161,6 +4163,7 @@ classDiagram
         <<Gtk.ApplicationWindow>>
         +open_lua_doc()
         +load_names_table(path)
+        +plugin_settings() PluginSettings
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
         +history_settings() HistorySettings
@@ -4516,6 +4519,31 @@ classDiagram
         +selected_protocol(index, n_items, lire) str?
         +comm_map_filters(protocole, top_n, only_anomalies) dict~str, Any~
         +apply_dashboard_selection(kind, selection, key, flow_par_cle, evenements) Any
+    }
+
+    %% ===== netcross_gtk4.plugin_settings =====
+    class PluginSettingsError {
+        <<ValueError>>
+    }
+    class PluginSettings {
+        <<dataclass, frozen>>
+        +tuple~str, ...~ names
+        +tuple~str, ...~ paths
+        +tuple~tuple~str, str~, ...~ exports
+        +active() bool
+    }
+    class PreparedPlugins {
+        <<dataclass>>
+        +Any loaded
+        +list~tuple~str, str~~ exports
+    }
+    class mod_netcross_gtk4_plugin_settings["netcross_gtk4.plugin_settings"] {
+        <<module>>
+        +settings_from_widgets(names_text, paths_text, exports_text) PluginSettings
+        +prepare_plugins(settings, security) tuple~PreparedPlugins?, list~str~~
+        +detector_runs(prepared, packets, report) list~dict~
+        +exporter_runs(prepared, report) list~dict~
+        +format_plugin_list(settings) str
     }
 
     %% ===== netcross_gtk4.report_exports =====
