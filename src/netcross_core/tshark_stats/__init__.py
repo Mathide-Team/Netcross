@@ -49,6 +49,7 @@ __all__ = [
     "ProtocolHierarchyStat",
     "ResponseTimeStat",
     "TsharkUnavailableError",
+    "collect_capture_stats",
     "collect_conversations",
     "collect_endpoints",
     "collect_io_stat",
@@ -93,4 +94,36 @@ def collect_io_stat(capture_path: str | Path, interval: float = 1.0, name: str =
     text = run_tshark_stat(capture_path, f"io,stat,{interval}")
     result = parse_io_stat(text, name=name)
     logger.debug("collect_io_stat: {} point(s) de mesure", len(result.points))
+    return result
+
+
+def collect_capture_stats(captures, on_error=None) -> dict:
+    """Statistiques ``tshark -z`` de chaque fichier, document de
+    ``--tshark-stats`` (issue #361), partage par la CLI, l'API et la GUI
+    (issue #673) : conversations et endpoints TCP/UDP, hierarchie de
+    protocoles, IO stat. Une capture en echec porte une cle ``error`` au
+    lieu de faire perdre les autres ; ``on_error(label, path, exc)`` est
+    appele pour chacune (message utilisateur de l'appelant)."""
+    import subprocess
+    from dataclasses import asdict
+
+    result: dict = {"version": 1, "captures": []}
+    for label, path in captures:
+        entry: dict = {"label": label, "path": path}
+        try:
+            entry["conversations"] = {
+                proto: [asdict(c) for c in collect_conversations(path, proto)] for proto in ("tcp", "udp")
+            }
+            entry["endpoints"] = {
+                proto: [asdict(e) for e in collect_endpoints(path, proto)] for proto in ("tcp", "udp")
+            }
+            entry["protocol_hierarchy"] = [asdict(p) for p in collect_protocol_hierarchy(path)]
+            entry["io_stat"] = asdict(collect_io_stat(path))
+        except (TsharkUnavailableError, subprocess.SubprocessError, OSError) as exc:
+            entry = {"label": label, "path": path, "error": str(exc)}
+            logger.warning("tshark-stats {} ({}) : {}", label, path, exc)
+            if on_error is not None:
+                on_error(label, path, exc)
+        result["captures"].append(entry)
+    logger.debug("collect_capture_stats: {} capture(s)", len(result["captures"]))
     return result

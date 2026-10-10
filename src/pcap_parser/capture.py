@@ -51,11 +51,12 @@ from pcap_parser.ek_source import (
     CaptureAccessError,
     TsharkError,
     TsharkNotFoundError,
+    _tshark_path,
     is_permission_error,
     iter_ek_records,
 )
 from pcap_parser.packet import RawPacket, build_packet
-from pcap_parser.remote import CaptureSource, parse_source
+from pcap_parser.remote import CaptureSource, CaptureSourceError, parse_source
 
 
 def _collect_packets(packets: list[RawPacket], path: str, *, read_via_stdin: bool) -> None:
@@ -349,6 +350,114 @@ class CaptureRingBuffer:
         logger.debug("CaptureRingBuffer._prune: fin")
 
 
+def ring_recorder_args(
+    interface: str,
+    directory: str,
+    *,
+    max_files: int,
+    max_duration_per_file: float,
+    prefix: str = "capture",
+    bpf_filter: str | None = None,
+) -> list:
+    """Arguments d'un ``tshark`` d'enregistrement en ring buffer natif
+    (issue #676) : ``-w <directory>/<prefix>.pcapng -b files:N -b duration:S``.
+
+    tshark ecrit lui-meme les trames brutes, fait tourner les fichiers et
+    supprime le plus ancien au-dela de ``max_files`` -- ce que
+    ``CaptureRingBuffer`` ne peut pas faire seul (il ne voit jamais les
+    octets des trames, voir sa docstring). ``-q`` : aucune dissection
+    imprimee, le processus ne fait qu'enregistrer.
+
+    Leve ``CaptureSourceError`` pour une source ``pipe://`` : un second
+    lecteur prendrait les octets du flux au processus d'analyse.
+    """
+    if max_files < 1:
+        raise ValueError("max_files doit etre >= 1")
+    if max_duration_per_file <= 0:
+        raise ValueError("max_duration_per_file doit etre > 0")
+    source = parse_source(interface)
+    if source.kind == "pipe":
+        logger.debug("ring_recorder_args: source pipe {} -> refus", source.display or interface)
+        raise CaptureSourceError(
+            "rotation de capture impossible sur une source pipe:// : "
+            "un second lecteur prendrait les octets du flux a l'analyse"
+        )
+    # tshark attend un nombre entier de secondes pour -b duration.
+    duration = max(1, math.ceil(max_duration_per_file))
+    args = [_tshark_path(), "-i", source.interface, "-q"]
+    if bpf_filter:
+        args += ["-f", bpf_filter]
+    args += list(source.extra_args)
+    args += [
+        "-w",
+        os.path.join(directory, f"{prefix}.pcapng"),
+        "-b",
+        f"files:{max_files}",
+        "-b",
+        f"duration:{duration}",
+    ]
+    logger.debug(
+        "ring_recorder_args: {} fichier(s) de {} s dans {} (filtre BPF : {})",
+        max_files,
+        duration,
+        directory,
+        bpf_filter or "aucun",
+    )
+    return args
+
+
+def start_ring_recorder(
+    interface: str,
+    directory: str,
+    *,
+    max_files: int,
+    max_duration_per_file: float,
+    prefix: str = "capture",
+    bpf_filter: str | None = None,
+) -> subprocess.Popen:
+    """Lance l'enregistrement en ring buffer (voir ``ring_recorder_args``).
+    Le repertoire est cree au besoin. A arreter avec ``stop_ring_recorder``."""
+    os.makedirs(directory, exist_ok=True)
+    args = ring_recorder_args(
+        interface,
+        directory,
+        max_files=max_files,
+        max_duration_per_file=max_duration_per_file,
+        prefix=prefix,
+        bpf_filter=bpf_filter,
+    )
+    # stderr vers un fichier temporaire, pas un tube : un tube non lu se
+    # remplirait sur une longue capture et bloquerait tshark.
+    err_file = tempfile.TemporaryFile()  # noqa: SIM115 -- ferme par stop_ring_recorder
+    proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=err_file)
+    proc.netcross_err_file = err_file  # type: ignore[attr-defined]
+    logger.debug("start_ring_recorder: pid {} pour {}", proc.pid, prefix)
+    return proc
+
+
+def stop_ring_recorder(proc: subprocess.Popen, timeout: float = 5.0) -> str:
+    """Arrete proprement l'enregistreur (SIGTERM, puis SIGKILL apres
+    ``timeout``) : tshark ferme alors le fichier courant, qui reste lisible.
+    Renvoie le stderr de tshark (vide si tout s'est bien passe)."""
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning("stop_ring_recorder: pid {} ne repond pas -> kill", proc.pid)
+            proc.kill()
+            proc.wait()
+    err = b""
+    err_file = getattr(proc, "netcross_err_file", None)
+    if err_file is not None:
+        with contextlib.suppress(OSError, ValueError):
+            err_file.seek(0)
+            err = err_file.read() or b""
+        err_file.close()
+    logger.debug("stop_ring_recorder: pid {} arrete (code {})", proc.pid, proc.returncode)
+    return err.decode("utf-8", "replace").strip()
+
+
 def _wireshark_tool_path(name: str) -> str:
     """Chemin d'un outil de ligne de commande livre avec tshark (mergecap,
     reordercap, editcap). Meme paquet systeme que tshark lui-meme : meme
@@ -543,11 +652,18 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
     TcpreplayNotFoundError si tcpreplay n'est pas installe ; TcpreplayError
     si tcpreplay a demarre mais a echoue (code de retour non nul).
     """
+    _run_tcpreplay(replay_command(path, interface, speed, loop))
+
+
+def replay_command(path: str, interface: str, speed: float | str = 1.0, loop: int = 1) -> list[str]:
+    """Ligne de commande tcpreplay de ``replay_capture``, apres les memes
+    verifications (memes exceptions). Partagee avec ``start_replay``
+    (rejeu interruptible de la GUI, issue #871)."""
     if not os.path.isfile(path):
-        logger.debug("replay_capture: si not os.path.isfile(path) -> levée FileNotFoundError")
+        logger.debug("replay_command: si not os.path.isfile(path) -> levée FileNotFoundError")
         raise FileNotFoundError(f"fichier de capture introuvable : {path}")
     if loop < 1:
-        logger.debug("replay_capture: si loop < 1 -> levée ValueError")
+        logger.debug("replay_command: si loop < 1 -> levée ValueError")
         raise ValueError(f"loop doit etre >= 1 (recu {loop!r})")
 
     topspeed = isinstance(speed, str) and speed.strip().lower() == "topspeed"
@@ -560,11 +676,11 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
                 f"speed doit etre un nombre strictement positif ou la chaine 'topspeed' (recu {speed!r})"
             ) from None
         if speed <= 0:
-            logger.debug("replay_capture: si speed <= 0 -> levée ValueError")
+            logger.debug("replay_command: si speed <= 0 -> levée ValueError")
             raise ValueError(f"speed doit etre strictement positif (recu {speed!r})")
 
     logger.debug(
-        "replay_capture: {} sur {} (vitesse={} boucles={})",
+        "replay_command: {} sur {} (vitesse={} boucles={})",
         path,
         interface,
         "topspeed" if topspeed else speed,
@@ -574,7 +690,29 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
     args = [tcpreplay, f"--intf1={interface}", f"--loop={loop}"]
     args.append("--topspeed" if topspeed else f"--multiplier={speed}")
     args.append(path)
-    _run_tcpreplay(args)
+    return args
+
+
+def start_replay(path: str, interface: str, speed: float | str = 1.0, loop: int = 1) -> subprocess.Popen:
+    """Lance le rejeu sans attendre (GUI, issue #871) : ``proc.terminate()``
+    l'interrompt ; ``wait_replay(proc)`` attend la fin et leve
+    TcpreplayError comme ``replay_capture`` (sauf interruption volontaire)."""
+    args = replay_command(path, interface, speed, loop)
+    logger.debug("start_replay: {}", args)
+    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+def wait_replay(proc: subprocess.Popen, stopped: bool = False) -> None:
+    """Attend la fin d'un rejeu de ``start_replay`` ; TcpreplayError si
+    tcpreplay echoue, rien si ``stopped`` (arret demande)."""
+    _out, err = proc.communicate()
+    logger.debug("wait_replay: code {} (arret demande : {})", proc.returncode, stopped)
+    if proc.returncode != 0 and not stopped:
+        raise TcpreplayError(
+            f"tcpreplay a echoue (code {proc.returncode}) : {(err or '').strip()}",
+            returncode=proc.returncode,
+            stderr=err or "",
+        )
     logger.debug("replay_capture: fin")
 
 

@@ -28,23 +28,13 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _fmt_num(value, unit="", decimals=1):
-    """Formate un nombre avec unites et arrondi."""
-    if value is None:
+def _cell(value) -> str:
+    """Texte sur une ligne, sans ``|`` nu : une barre verticale ou un saut de
+    ligne dans une description (CVE, message d'expertise) casserait le
+    tableau Markdown."""
+    if value is None or value == "":
         return "—"
-    if unit == "bps":
-        if value >= 1_000_000_000:
-            return f"{value / 1_000_000_000:.{decimals}f} Gbps"
-        if value >= 1_000_000:
-            return f"{value / 1_000_000:.{decimals}f} Mbps"
-        if value >= 1_000:
-            return f"{value / 1_000:.{decimals}f} Kbps"
-        return f"{value:.0f} bps"
-    if unit == "ms":
-        return f"{value:.{decimals}f} ms"
-    if isinstance(value, float):
-        return f"{value:.{decimals}f}{(' ' + unit) if unit else ''}"
-    return f"{value}{(' ' + unit) if unit else ''}"
+    return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
 def _finding_row(f: Finding) -> str:
@@ -114,83 +104,107 @@ def _checksum_section(r) -> str:
     return "\n".join(lines)
 
 
+_SECURITY_ITEM_KINDS = (
+    ("exploits", "Exploit"),
+    ("cves", "CVE"),
+    ("anomalies", "Anomalie"),
+)
+
+
 def _security_section(security_report) -> str:
-    """Section rapport de sécurité (issue #218)."""
+    """Section rapport de sécurité (issue #218).
+
+    Lit les clés réellement produites par ``security_report_to_dict()``
+    (socle commun des sorties JSON/HTML/PDF) : tableau de bord, services,
+    puis exploits, CVE et anomalies. Mêmes libellés que le rapport texte
+    (``format_security_report``).
+    """
     if security_report is None:
         return ""
     from netcross_report.security_report import security_report_to_dict
 
     sr = security_report_to_dict(security_report)
-    lines = ["## Rapport de sécurité\n"]
+    d = sr["dashboard"]
+    lines = ["## Rapport de sécurité\n", "### Tableau de bord\n"]
+    lines.append(f"- Score de risque global : **{d['score']}/100** (niveau : **{d['level']}**)")
+    lines.append(f"- Services détectés : **{d['services_total']}** (dont {d['services_vulnerable']} vulnérable(s))")
+    lines.append(f"- Exploits détectés : **{d['exploits']}**")
+    lines.append(
+        f"- Anomalies : **{d['anomalies']}** ({d['anomalies_netcross']} Netcross, "
+        f"{d['anomalies_expert_info']} Expert Info)"
+    )
+    lines.append(f"- CVE confirmées : **{d['cves']}**")
+    lines.append("")
 
-    dashboard = sr.get("dashboard")
-    if dashboard:
-        lines.append("### Tableau de bord\n")
-        lines.append(f"- Score global : **{dashboard.get('global_score', '—')}**")
-        lines.append(f"- Vulnérabilités critiques : **{dashboard.get('critical_count', 0)}**")
-        lines.append(f"- Services analysés : **{dashboard.get('service_count', 0)}**")
+    if sr["services"]:
+        lines.append("### Services détectés\n")
+        lines.append("| Hôte | Port | Service | Version | Sévérité | CVE | Empreinte |")
+        lines.append("|------|------|---------|---------|----------|-----|-----------|")
+        for svc in sr["services"]:
+            cves = ", ".join(svc["cve_ids"])
+            fingerprint = svc["fingerprint_readable"] or svc["fingerprint"]
+            lines.append(
+                f"| {_cell(svc['host'])} | {_cell(svc['port'])} | {_cell(svc['service'])} | "
+                f"{_cell(svc['version'])} | {_cell(svc['severity'])} | {_cell(cves)} | {_cell(fingerprint)} |"
+            )
         lines.append("")
 
-    services = sr.get("services", [])
-    if services:
-        lines.append("### Services détectés\n")
-        lines.append("| Hôte | Port | Empreintes |")
-        lines.append("|------|------|------------|")
-        for svc in services:
-            host = svc.get("host", "—")
-            port = svc.get("port", "—")
-            fingerprints = ", ".join(
-                f"{fp.get('type', '?')}:{fp.get('hash', '?')}" for fp in svc.get("fingerprints", [])
-            )
-            lines.append(f"| {host} | {port} | {fingerprints or '—'} |")
-
-    items = sr.get("items", [])
+    items = [(label, item) for key, label in _SECURITY_ITEM_KINDS for item in sr[key]]
     if items:
-        lines.append("\n### Constats de sécurité\n")
-        lines.append("| Sévérité | Hôte:Port | Description |")
-        lines.append("|----------|-----------|-------------|")
-        for item in items:
-            sev = item.get("severity", "—")
-            target = f"{item.get('host', '—')}:{item.get('port', '—')}"
-            desc = item.get("description", "—")
-            lines.append(f"| {sev} | {target} | {desc} |")
+        lines.append("### Constats de sécurité\n")
+        lines.append("| Type | Sévérité | Hôte:Port | Point | Détail |")
+        lines.append("|------|----------|-----------|-------|--------|")
+        for label, item in items:
+            target = f"{item['host'] or '—'}:{item['port'] if item['port'] is not None else '—'}"
+            detail = f"{item['cve_id']} — {item['detail']}" if item["cve_id"] else item["detail"]
+            lines.append(
+                f"| {label} | {_cell(item['severity'])} | {_cell(target)} | {_cell(item['point'])} | {_cell(detail)} |"
+            )
 
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip("\n")
 
 
-def _session_objects_section(session_objects) -> str:
-    """Section objets enrichis (Session 0)."""
+def _session_objects_section(session_objects, top_n=20) -> str:
+    """Section objets enrichis (Session 0) : mêmes colonnes que le PDF
+    (``netcross_report.pdf._expert_event_table`` / ``_diagnosis_table`` /
+    ``_compliance_table``), lues sur les dataclasses de
+    ``netcross_core.expert_model``."""
     if session_objects is None:
         return ""
     lines = ["## Expertise — objets enrichis\n"]
 
-    if session_objects.expert_events:
+    events = session_objects.expert_events
+    if events:
         lines.append("### Événements d'expertise\n")
-        lines.append("| Source | Sévérité | Groupe | Message |")
-        lines.append("|--------|-----------|--------|---------|")
-        lines.extend(
-            f"| {getattr(ev, 'source', '—')} | {getattr(ev, 'severity', '—')} | "
-            f"{getattr(ev, 'group', '—')} | {getattr(ev, 'message', '—')} |"
-            for ev in session_objects.expert_events[:20]
-        )
-        if len(session_objects.expert_events) > 20:
-            lines.append(f"\n*…et {len(session_objects.expert_events) - 20} autre(s)*")
+        lines.append("| Gravité | Catégorie | Segment | Constat | Cause probable / impact | Source |")
+        lines.append("|---------|-----------|---------|---------|-------------------------|--------|")
+        for ev in events[:top_n]:
+            cause = " -- ".join(x for x in (ev.cause, ev.impact) if x)
+            lines.append(
+                f"| {_cell(ev.severity)} | {_cell(ev.category)} | {_cell(ev.segment)} | "
+                f"{_cell(ev.message)} | {_cell(cause)} | {_cell(ev.source)} |"
+            )
+        if len(events) > top_n:
+            lines.append(f"\n*…et {len(events) - top_n} autre(s)*")
 
     if session_objects.diagnoses:
         lines.append("\n### Diagnostics par segment\n")
-        lines.append("| Segment | Verdict |")
-        lines.append("|---------|---------|")
+        lines.append("| Segment | Événements | Cause probable | Impact |")
+        lines.append("|---------|------------|----------------|--------|")
         lines.extend(
-            f"| {getattr(d, 'segment', '—')} | {getattr(d, 'verdict', '—')} |" for d in session_objects.diagnoses[:20]
+            f"| {_cell(d.segment)} | {len(d.events)} | {_cell(d.cause)} | {_cell(d.impact)} |"
+            for d in session_objects.diagnoses[:top_n]
         )
 
     if session_objects.compliance:
         lines.append("\n### Conformité\n")
-        lines.append("| Référentiel | Statut |")
-        lines.append("|-------------|--------|")
-        lines.extend(
-            f"| {getattr(c, 'framework', '—')} | {getattr(c, 'status', '—')} |" for c in session_objects.compliance[:20]
-        )
+        lines.append("| Statut | Référentiel | Mesure | Source |")
+        lines.append("|--------|-------------|--------|--------|")
+        for res in session_objects.compliance[:top_n]:
+            ref = res.reference
+            observed = "non mesuré" if res.observed is None else f"{res.observed:g} {ref.unit}".strip()
+            mesure = f"{ref.metric} : {observed} (seuil {ref.operator} {ref.threshold:g} {ref.unit})".replace(" )", ")")
+            lines.append(f"| {_cell(res.status)} | {_cell(ref.id)} | {_cell(mesure)} | {_cell(ref.source)} |")
 
     return "\n".join(lines)
 

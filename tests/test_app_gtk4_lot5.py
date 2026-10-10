@@ -361,7 +361,9 @@ def test_join_live_and_analyze_transition_vers_les_resultats(window, monkeypatch
     assert len(calls) == 1
     args, kwargs = calls[0]
     assert kwargs == {}
-    mode, _report, flows, findings, text, tls_findings, quic_findings, _expert_events = args
+    mode, _report, flows, findings, text, tls_findings, quic_findings, _expert_events, security, index = args
+    assert security is None
+    assert index is None  # sans « Index de recherche forensic »
     assert mode == "single"
     assert len(flows) == 1  # un seul flux correle entre les points A et B
     assert findings is not None  # triage active : les Finding sont recalcules
@@ -386,6 +388,26 @@ def test_join_live_and_analyze_remonte_l_erreur_et_reinitialise_l_ui(window, mon
     assert window._live_capturing is False  # l'UI est quand meme reinitialisee (pas bloquee)
     assert window.stack.get_visible_child_name() != "results"
     assert "ERREUR : flux corrompu" in _text(window.log_view)
+
+
+def test_join_live_and_analyze_arrete_les_enregistreurs_de_rotation(window, monkeypatch):
+    """Issue #676 : les enregistreurs en ring buffer lances par
+    _begin_live_capture sont arretes une fois les threads de capture
+    termines, avant l'analyse ; leurs messages arrivent au journal."""
+    stopped = []
+    monkeypatch.setattr(app_module, "correlate", lambda *a, **k: (_ for _ in ()).throw(ValueError("stop")))
+    monkeypatch.setattr(
+        app_module,
+        "stop_ring_recorders",
+        lambda recorders: stopped.append(dict(recorders)) or ["[A] rotation de capture : 2 fichier(s) conserve(s)"],
+    )
+    _prepare_live_state(window, _live_ring_recorders={"A": ("proc", "/tmp/ring-A")})
+
+    window._join_live_and_analyze()
+
+    assert stopped == [{"A": ("proc", "/tmp/ring-A")}]
+    assert window._live_ring_recorders == {}
+    assert "[A] rotation de capture : 2 fichier(s) conserve(s)" in _text(window.log_view)
 
 
 # ================= _reset_live_ui =================

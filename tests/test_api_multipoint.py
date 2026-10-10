@@ -111,6 +111,75 @@ def test_un_seul_fichier_refuse():
     response = _post(labels="LAN", points_order=None, noms=("lan.pcap",))
     assert response.status_code == 400
     assert "Au moins 2 fichiers" in response.json()["detail"]
+    assert "split_interfaces=true" in response.json()["detail"]
+
+
+# -- Issue #474 lot 2 : un seul pcapng multi-interfaces avec split_interfaces --
+
+
+class _Tranche:
+    def __init__(self, name, path):
+        self.name = name
+        self.path = path
+
+
+@pytest.fixture
+def _pcapng_deux_interfaces(monkeypatch, tmp_path):
+    """Un fichier SW contenant eth0 et eth1 : split_by_interface simulé."""
+    import pcap_parser.capture as capture_module
+
+    def faux_split(path, output_dir):
+        tranches = []
+        for nom in ("eth0", "eth1"):
+            chemin = tmp_path / f"sw_{nom}.pcapng"
+            chemin.write_bytes(b"\x0a\x0d\x0d\x0a")
+            tranches.append(_Tranche(nom, str(chemin)))
+        return tranches
+
+    monkeypatch.setattr(capture_module, "split_by_interface", faux_split)
+    paquets = {
+        "SW:eth0": [make_pkt(point="SW:eth0", sport=1), make_pkt(point="SW:eth0", sport=2, ts=1000.0)],
+        "SW:eth1": [make_pkt(point="SW:eth1", sport=2, ts=1000.004)],
+    }
+    monkeypatch.setattr(api_module, "parse_capture", lambda label, path: list(paquets.get(label, [])))
+
+
+def _post_split(points_order=None):
+    files = [("files", ("sw.pcapng", b"\x0a\x0d\x0d\x0a" + b"\x00" * 20, "application/octet-stream"))]
+    data = {"labels": "SW", "split_interfaces": "true"}
+    if points_order is not None:
+        data["points_order"] = points_order
+    return client.post("/captures/multi?wait=true", files=files, data=data)
+
+
+@pytest.mark.usefixtures("_pcapng_deux_interfaces")
+def test_un_seul_pcapng_avec_split_interfaces_accepte():
+    response = _post_split()
+    assert response.status_code == 201, response.text
+    assert sorted(response.json()["points"]) == ["SW:eth0", "SW:eth1"]
+
+
+@pytest.mark.usefixtures("_pcapng_deux_interfaces")
+def test_split_interfaces_points_order_valide_apres_separation():
+    response = _post_split(points_order="SW:eth1,SW:eth0")
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["points"] == ["SW:eth1", "SW:eth0"]
+    assert body["order_source"] == "points_order"
+
+
+@pytest.mark.usefixtures("_pcapng_deux_interfaces")
+def test_split_interfaces_points_order_invalide_refuse():
+    response = _post_split(points_order="SW:eth0,SW:eth9")
+    assert response.status_code == 400, response.text
+    detail = response.json()["detail"]
+    assert "inconnue(s) : SW:eth9" in detail
+    assert "absente(s) : SW:eth1" in detail
+
+
+def test_split_interfaces_sans_fichier_refuse():
+    response = client.post("/captures/multi?wait=true", data={"labels": "", "split_interfaces": "true"})
+    assert response.status_code in (400, 422)
 
 
 def test_capture_vide_refusee(monkeypatch):

@@ -78,6 +78,22 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - `docs/fingerprints-ja4-hassh.md` (#259)
 
 ### Corrigé
+- Rapport Markdown (`--md-report`, #761) : la section « Rapport de
+  sécurité » lisait des clés que `security_report_to_dict()` ne produit pas
+  (`global_score`, `critical_count`, `service_count`, `items`,
+  `fingerprints`). Pour un Apache 2.4.49 porteur de 5 CVE, elle affichait
+  « Score global : — », « Vulnérabilités critiques : 0 » et « Services
+  analysés : 0 », sans lister aucune CVE. Elle reprend désormais le tableau
+  de bord du rapport texte (score et niveau, services vulnérables,
+  exploits, anomalies, CVE), un tableau des services (version, sévérité,
+  CVE, empreinte) et un tableau des exploits, CVE et anomalies. La section
+  « Expertise » lisait elle aussi des attributs inexistants (`group`,
+  `verdict`, `framework`) : ses colonnes sont maintenant celles du PDF
+  (cause probable, impact, référentiel, mesure et seuil). Les `|` et les
+  sauts de ligne sont échappés dans les cellules. `_fmt_num`, jamais
+  appelée, est supprimée. `tests/test_markdown_report_sections.py`
+  (9 tests) porte le module à 100 % (lignes et branches ; il était à
+  55,2 % sous GTK4).
 - Premier démarrage (#468) : l'absence de `~/.netcross/bpf_filters.json` et
   de catalogue de traduction n'est plus journalisée en `ERROR` avec trace ;
   une capture introuvable ou illisible est signalée avant tshark avec la

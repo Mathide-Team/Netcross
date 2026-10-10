@@ -2313,3 +2313,25 @@ def available_rule_ids() -> list[str]:
     aujourd'hui sans provoquer `NotImplementedError`."""
     logger.debug("available_rule_ids: {} regle(s) avec evaluateur", len(_EVALUATORS))
     return list(_EVALUATORS)
+
+
+def print_rule_engine(report: Report) -> dict[str, list[Finding]]:
+    """Section « MOTEUR DE REGLES DECLARATIF » de ``--rule-engine``, partagee
+    par la CLI et la GUI (issue #673) : evalue chaque regle disponible,
+    imprime ses Finding et le total ; renvoie les Finding par regle (cle
+    ``rule_engine`` du rapport JSON)."""
+    findings_by_rule: dict[str, list[Finding]] = {}
+    total = 0
+    print("\n" + "=" * 70)
+    print("MOTEUR DE REGLES DECLARATIF (rule_engine)")
+    print("=" * 70)
+    rule_ids = available_rule_ids()
+    for rule_id in rule_ids:
+        rule_findings = evaluate(rule_id, report)
+        findings_by_rule[rule_id] = rule_findings
+        total += len(rule_findings)
+        for f in rule_findings:
+            print(f"  [{f.severity}] {f.category} / {f.segment} -- {f.message}")
+    print(f"\n{len(rule_ids)} regles evaluees, {total} Finding produits.")
+    logger.debug("print_rule_engine: {} Finding", total)
+    return findings_by_rule

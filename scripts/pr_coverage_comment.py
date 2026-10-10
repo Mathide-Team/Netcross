@@ -27,6 +27,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 
 # Marqueur HTML invisible qui identifie le commentaire de couverture a
@@ -162,7 +163,26 @@ def main(argv: list[str]) -> int:
         _lire_totaux(arguments.base_json),
         lire_seuil(),
     )
-    print(_publier(repo, arguments.pr_number, corps, token))
+    resume = os.environ.get("GITHUB_STEP_SUMMARY")
+    if resume:
+        # Le rapport est toujours lisible dans le resume du job, meme quand
+        # le commentaire ne peut pas etre publie.
+        with open(resume, "a", encoding="utf-8") as sortie:
+            sortie.write(corps + "\n")
+    try:
+        print(_publier(repo, arguments.pr_number, corps, token))
+    except urllib.error.HTTPError as erreur:
+        if erreur.code != 403:
+            raise
+        # PR ouverte depuis un fork : GitHub fournit un GITHUB_TOKEN en
+        # lecture seule, l'API refuse le commentaire. Ce n'est pas un echec
+        # de couverture : avertissement, rapport dans le resume du job.
+        print(
+            "::warning::commentaire de couverture non publie (HTTP 403, jeton en lecture seule : "
+            "PR ouverte depuis un fork) -- rapport dans le resume du job",
+            file=sys.stderr,
+        )
+        print(corps)
     return 0
 
 

@@ -240,6 +240,21 @@ def redact_packets(packets) -> AddressRedactor:
     return redactor
 
 
+def redaction_map_csv(entries) -> str:
+    """Texte CSV (adresse_reelle, pseudonyme, type) de ``entries`` (voir
+    ``AddressRedactor.entries``) -- meme format que --redact-map, pour la
+    GUI et l'API (issue #876)."""
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["adresse_reelle", "pseudonyme", "type"])
+    for addr, pseudo, kind in entries:
+        writer.writerow([addr, pseudo, kind])
+    logger.debug("redaction_map_csv: {} ligne(s)", len(entries))
+    return buf.getvalue()
+
+
 def write_redaction_map_csv(redactor: AddressRedactor, path: str) -> None:
     """Ecrit le mapping adresse reelle -> pseudonyme dans un CSV LOCAL
     (adresse_reelle, pseudonyme, type) -- a conserver uniquement par
@@ -253,8 +268,5 @@ def write_redaction_map_csv(redactor: AddressRedactor, path: str) -> None:
         summarize(path, "path"),
     )
     with open(path, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(["adresse_reelle", "pseudonyme", "type"])
-        for addr, pseudo, kind in redactor.entries():
-            writer.writerow([addr, pseudo, kind])
+        fh.write(redaction_map_csv(redactor.entries()))
     logger.debug("write_redaction_map_csv: fin")

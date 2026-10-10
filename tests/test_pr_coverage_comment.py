@@ -143,3 +143,63 @@ def test_les_workflows_de_couverture_restent_coherents():
     assert len(lancements) == 3
     # Les lancements PR et base ont --cov-fail-under=0 ; le run AI extra
     # collecte juste la couverture sans seuil bloquant.
+
+
+def _arguments_main(tmp_path):
+    pr = _ecrire_rapport(tmp_path, TOTAUX_REFERENCE, "pr.json")
+    base = _ecrire_rapport(tmp_path, TOTAUX_REFERENCE, "base.json")
+    return ["--pr-json", str(pr), "--base-json", str(base), "--pr-number", "7"]
+
+
+def _environnement(monkeypatch, tmp_path):
+    resume = tmp_path / "resume.md"
+    monkeypatch.setenv("GITHUB_TOKEN", "jeton")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(resume))
+    return resume
+
+
+def _http_error(pcc, code):
+    return pcc.urllib.error.HTTPError("https://api.github.com/x", code, "refus", {}, None)
+
+
+def test_main_pr_de_fork_403_avertit_sans_echouer(pcc, tmp_path, monkeypatch, capsys):
+    """PR depuis un fork : GITHUB_TOKEN en lecture seule, l'API repond 403.
+    Le job ne doit pas echouer ; le rapport reste dans le resume du job."""
+    resume = _environnement(monkeypatch, tmp_path)
+
+    def refuse(*_a, **_k):
+        raise _http_error(pcc, 403)
+
+    monkeypatch.setattr(pcc, "_publier", refuse)
+    assert pcc.main(_arguments_main(tmp_path)) == 0
+    sortie = capsys.readouterr()
+    assert "HTTP 403" in sortie.err
+    assert pcc.MARQUEUR in sortie.out
+    assert pcc.MARQUEUR in resume.read_text(encoding="utf-8")
+
+
+def test_main_autre_erreur_http_propagee(pcc, tmp_path, monkeypatch):
+    _environnement(monkeypatch, tmp_path)
+
+    def panne(*_a, **_k):
+        raise _http_error(pcc, 500)
+
+    monkeypatch.setattr(pcc, "_publier", panne)
+    with pytest.raises(pcc.urllib.error.HTTPError):
+        pcc.main(_arguments_main(tmp_path))
+
+
+def test_main_publie_et_ecrit_le_resume(pcc, tmp_path, monkeypatch, capsys):
+    resume = _environnement(monkeypatch, tmp_path)
+    monkeypatch.setattr(pcc, "_publier", lambda *a: "commentaire cree (url)")
+    assert pcc.main(_arguments_main(tmp_path)) == 0
+    assert "commentaire cree" in capsys.readouterr().out
+    assert pcc.MARQUEUR in resume.read_text(encoding="utf-8")
+
+
+def test_main_sans_resume_de_job(pcc, tmp_path, monkeypatch, capsys):
+    _environnement(monkeypatch, tmp_path)
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY")
+    monkeypatch.setattr(pcc, "_publier", lambda *a: "ok")
+    assert pcc.main(_arguments_main(tmp_path)) == 0

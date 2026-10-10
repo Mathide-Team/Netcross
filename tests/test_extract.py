@@ -413,3 +413,18 @@ def test_smb_sans_banniere_smb_ignore():
     from netcross_core.extract.carver import _extract_smb
 
     assert _extract_smb([make_pkt(proto="TCP", sport=50000, dport=445)]) == []
+
+
+def test_smb_banniere_non_smb_sautee_avant_la_banniere_smb():
+    """Branche 283->282 (issue #708) : une banniere d'un autre protocole est
+    sautee, la boucle continue et trouve la banniere SMB suivante."""
+    from netcross_core.extract.carver import _extract_smb
+
+    http = Banner(protocol="http", service="nginx", version="1.25", raw="", role="server")
+    smb = Banner(protocol="smb", service="Samba", version="4.13", raw="", role="server")
+    pkt = make_pkt(proto="TCP", sport=50000, dport=445, service_banners=(http, smb))
+    (fichier,) = _extract_smb([pkt])
+    assert fichier.proto_source == "smb"
+    assert fichier.type_detected == "smb-transfer"
+    # Seulement des bannieres non SMB : la boucle s'epuise -> ignore.
+    assert _extract_smb([make_pkt(proto="TCP", sport=50000, dport=445, service_banners=(http,))]) == []

@@ -28,12 +28,18 @@ permissions:
 jobs:
   verification:
     name: "Protection de dev conforme a la règle versionnée"
-    runs-on: ubuntu-latest
+    # Runners maison (groupe maison, Ubuntu 20.04, root) ; repli GitHub :
+    # variable NETCROSS_RUNS_ON_LEGER = '"ubuntu-latest"'.
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON_LEGER || '{"group":"maison","labels":["self-hosted","linux"]}') }}
     steps:
       - name: Checkout du depot
         uses: actions/checkout@v7
 
+      # Python du systeme trop ancien sur les runners maison (3.8) : uv.
+      - name: Installation de uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
       - name: Comparaison avec .github/branch-protection/dev.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 scripts/check_branch_protection.py --branche dev
+        run: uv run --no-project --python 3.14 scripts/check_branch_protection.py --branche dev

@@ -1235,3 +1235,29 @@ def test_print_report_sans_checksum_errors_message_par_defaut(capsys):
     print_report(r)
     out = capsys.readouterr().out
     assert "aucun checksum IP/TCP/UDP invalide detecte" in out
+
+
+def test_print_report_capture_unique_omet_les_sections_multi_points(capsys):
+    # Issue #474 lot 2 : une seule capture, pas de topologie ni de pertes.
+    pkts = [make_pkt(point="A", sport=1, ts=0.0, flags="S", seq=1)]
+    r = analyse(correlate(pkts), points_order=["A"], all_packets=pkts)
+    print_report(r)
+    out = capsys.readouterr().out
+    assert "Capture unique : sections multi-points omises" in out
+    assert "Topologie deduite" not in out
+    assert "Points sans relation directionnelle" not in out
+    assert "Pertes" not in out
+    assert "Latence / gigue entre points" not in out
+
+
+def test_print_report_deux_points_garde_les_sections_multi_points(capsys):
+    pkts = [
+        make_pkt(point="A", sport=1, ts=0.0, flags="S", seq=1),
+        make_pkt(point="B", sport=1, ts=0.001, flags="S", seq=1),
+    ]
+    r = analyse(correlate(pkts), points_order=["A", "B"], all_packets=pkts)
+    print_report(r)
+    out = capsys.readouterr().out
+    assert "Capture unique" not in out
+    assert "Topologie deduite" in out
+    assert "Latence / gigue entre points" in out

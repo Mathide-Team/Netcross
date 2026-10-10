@@ -268,3 +268,57 @@ def test_begin_live_capture_multi_interface_eclate_les_points(window, recorded_t
         (window._live_capture_worker, ("GW:eth0", "eth0", None)),
         (window._live_capture_worker, ("GW:eth1", "eth1", None)),
     }
+
+
+# --------------- _begin_live_capture : rotation de capture (#676) ---------------
+
+
+def test_begin_live_capture_rotation_lance_les_enregistreurs(window, recorded_threads, monkeypatch):
+    calls = []
+
+    def fake_start(points, max_files, max_duration):
+        calls.append((list(points), max_files, max_duration))
+        return {"P1": ("proc", "/tmp/ring-P1")}, ["[P1] rotation de capture : message"]
+
+    monkeypatch.setattr(app_module, "start_ring_recorders", fake_start)
+    window.live_panel.add_row("P1", "eth0")
+    window.ring_buffer_box.set_visible(True)
+    window.ring_buffer_check.set_active(True)
+    window.ring_max_files_spin.set_value(4)
+    window.ring_max_duration_spin.set_value(20)
+
+    window._begin_live_capture()
+
+    assert calls == [([("P1", "eth0", None)], 4, 20.0)]
+    assert window._live_ring_recorders == {"P1": ("proc", "/tmp/ring-P1")}
+    assert "[P1] rotation de capture : message" in _log_text(window)
+    assert window._live_capturing
+    assert len(recorded_threads) == 1
+
+
+def test_begin_live_capture_rotation_refusee_annule_la_capture(window, recorded_threads, monkeypatch):
+    def fake_start(points, max_files, max_duration):
+        raise app_module.RingRecorderError("[P1] pipe:// refuse")
+
+    monkeypatch.setattr(app_module, "start_ring_recorders", fake_start)
+    window.live_panel.add_row("P1", "eth0")
+    window.ring_buffer_box.set_visible(True)
+    window.ring_buffer_check.set_active(True)
+
+    window._begin_live_capture()
+
+    assert recorded_threads == []
+    assert not window._live_capturing
+    assert "Rotation de capture impossible -- capture annulee : [P1] pipe:// refuse" in _log_text(window)
+
+
+def test_begin_live_capture_rotation_cochee_mais_masquee_n_enregistre_pas(window, recorded_threads, monkeypatch):
+    monkeypatch.setattr(app_module, "start_ring_recorders", lambda *a: pytest.fail("ne doit pas etre appele"))
+    window.live_panel.add_row("P1", "eth0")
+    window.ring_buffer_check.set_active(True)
+    window.ring_buffer_box.set_visible(False)
+
+    window._begin_live_capture()
+
+    assert window._live_ring_recorders == {}
+    assert len(recorded_threads) == 1

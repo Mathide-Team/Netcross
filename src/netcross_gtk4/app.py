@@ -68,6 +68,17 @@ from netcross_core.bpf_filters import PREDEFINED_BPF_FILTERS, available_bpf_filt
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates  # noqa: E402
 from netcross_core.logging_config import DEBUG_FLAG, enable_debug, get_logger, is_debug_enabled, summarize  # noqa: E402
 from netcross_gtk4 import capture_list, row_labels  # noqa: E402
+from netcross_gtk4.advanced_options import (  # noqa: E402
+    MAX_PACKETS_MAX,
+    SAMPLE_MAX,
+    WORKERS_MAX,
+    AdvancedSettings,
+    settings_from_values,
+)
+from netcross_gtk4.advanced_options import validate as validate_advanced  # noqa: E402
+from netcross_gtk4.ai_settings import AISettings  # noqa: E402
+from netcross_gtk4.ai_settings import settings_from_widgets as ai_settings_from_widgets  # noqa: E402
+from netcross_gtk4.ai_settings import validate_settings as validate_ai_settings  # noqa: E402
 from netcross_gtk4.annotations_panel import AnnotationsPanel  # noqa: E402
 from netcross_gtk4.bpf_panel import (  # noqa: E402
     doit_desolidariser_le_menu,
@@ -77,11 +88,34 @@ from netcross_gtk4.bpf_panel import (  # noqa: E402
     selection_apres_choix,
     valider_sauvegarde,
 )
+from netcross_gtk4.client_compare_panel import ClientComparisonPanel  # noqa: E402
+from netcross_gtk4.client_compare_view import (  # noqa: E402
+    ClientGroupError,
+    parse_client_groups,
+    validate_client_settings,
+)
 from netcross_gtk4.dashboard_context import (  # noqa: E402
     DashboardSelection,
     build_dashboard_snapshot,
 )
+from netcross_gtk4.expertise_panel import ExpertisePanel  # noqa: E402
+from netcross_gtk4.expertise_view import (  # noqa: E402
+    FLOW_TIMELINE_WINDOW_MAX,
+    FLOW_TIMELINE_WINDOW_MIN,
+    ExpertiseSettings,
+)
+from netcross_gtk4.extraction_panel import ExtractionPanel  # noqa: E402
+from netcross_gtk4.file_option import FileOption  # noqa: E402
+from netcross_gtk4.forensic_panel import ForensicSearchPanel  # noqa: E402
 from netcross_gtk4.live_capture_points import duplicate_labels, expand_live_points, invalid_sources  # noqa: E402
+from netcross_gtk4.live_report_session import LiveReportError, start_live_report  # noqa: E402
+from netcross_gtk4.netflow_panel import NetflowPanel  # noqa: E402
+from netcross_gtk4.notifications import (  # noqa: E402
+    THRESHOLD_CHOICES,
+    NotifySettings,
+    settings_from_widgets,
+    validate_settings,
+)
 from netcross_gtk4.panel_state import (  # noqa: E402
     apply_dashboard_selection,
     comm_map_filters,
@@ -89,6 +123,16 @@ from netcross_gtk4.panel_state import (  # noqa: E402
     run_button_state,
     selected_protocol,
 )
+from netcross_gtk4.plugin_settings import (  # noqa: E402
+    PluginSettings,
+    PluginSettingsError,
+    format_plugin_list,
+    prepare_plugins,
+)
+from netcross_gtk4.plugin_settings import settings_from_widgets as plugin_settings_from_widgets  # noqa: E402
+from netcross_gtk4.report_exports import SEQUENCE_FLOWS_MAX, HistorySettings, sequence_views  # noqa: E402
+from netcross_gtk4.report_exports_panel import ReportExportsPanel  # noqa: E402
+from netcross_gtk4.ring_recorders import RingRecorderError, start_ring_recorders, stop_ring_recorders  # noqa: E402
 from netcross_gtk4.run_outcome import analysis_outcome, diff_outcome  # noqa: E402
 from netcross_gtk4.security_view import export_security_report, security_view_text  # noqa: E402
 from netcross_gtk4.stats_view import (  # noqa: E402
@@ -469,6 +513,12 @@ class CaptureListPanel(Gtk.Box):
             )
         )
         add_btn = Gtk.Button(label="Ajouter une capture")
+        # Issue #671 : rotation, comme --capture NOM=a,b de la CLI.
+        add_btn.set_tooltip_text(
+            "Sélection multiple possible. Deux lignes portant le même nom forment un seul point : "
+            "les segments successifs d'une capture en rotation, lus dans l'ordre de la liste "
+            "(équivalent de --capture NOM=a,b)."
+        )
         add_btn.connect("clicked", self._on_add_clicked)
         header.append(add_btn)
         self.append(header)
@@ -662,6 +712,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.last_wireshark_expert_events = None
         # Issue #357 : SecurityReport du dernier run simple (None sinon)
         self.last_security_report = None
+        self.last_rule_engine = None  # issue #864 : constats --rule-engine
         self.last_diff_findings = None  # mode diff : DiffFinding
         self.last_baseline_report = None
         self.last_current_report = None
@@ -693,6 +744,35 @@ class MainWindow(Gtk.ApplicationWindow):
 
         header = Gtk.HeaderBar()
         self.set_titlebar(header)
+        # Issue #874 : consultation de l'historique (analyses et comparaisons)
+        self.history_btn = Gtk.Button(label="Historique des runs")
+        self.history_btn.set_tooltip_text("Consulter une base --history-db (filtres type, etiquette, nombre)")
+        self.history_btn.connect("clicked", lambda _b: self.open_history())
+        header.pack_start(self.history_btn)
+        self.history_window = None
+
+        # Issues #868-#870, #886, #887 : fusion, decoupage, conversion...
+        self.capture_tools_btn = Gtk.Button(label="Outils de capture")
+        self.capture_tools_btn.set_tooltip_text(
+            "Fusion, decoupage, conversion, export filtre, recalage temporel (sans analyse)"
+        )
+        self.capture_tools_btn.connect("clicked", lambda _b: self.open_capture_tools())
+        header.pack_start(self.capture_tools_btn)
+        self.capture_tools_window = None
+
+        # Issue #872 : dossier entier de captures (cross_capture_batch_cli)
+        self.batch_btn = Gtk.Button(label="Analyse d'un dossier")
+        self.batch_btn.set_tooltip_text("Lot de captures : regroupement, rapports, index (cross_capture_batch_cli)")
+        self.batch_btn.connect("clicked", lambda _b: self.open_batch())
+        header.pack_start(self.batch_btn)
+        self.batch_window = None
+
+        # Issue #873 : documentation Lua hors ligne (netcross-lua-doc)
+        self.lua_doc_btn = Gtk.Button(label="Documentation Lua")
+        self.lua_doc_btn.set_tooltip_text("API Lua de Wireshark, hors ligne (equivalent de netcross-lua-doc)")
+        self.lua_doc_btn.connect("clicked", lambda _b: self.open_lua_doc())
+        header.pack_end(self.lua_doc_btn)
+        self.lua_doc_window = None
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.NONE)
@@ -708,6 +788,61 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.stack.set_visible_child_name("config")
         logger.debug("MainWindow: fenêtre prête (3 pages construites)")
+
+    def open_history(self):
+        """Fenetre « Historique des runs » (base et etiquette de la configuration)."""
+        from netcross_gtk4.history_window import HistoryWindow
+
+        if self.history_window is None:
+            settings = self.history_settings()
+            self.history_window = HistoryWindow(parent=self, db_path=settings.db_path, label=settings.label)
+            self.history_window.connect("close-request", self._on_history_closed)
+        self.history_window.present()
+        return self.history_window
+
+    def _on_history_closed(self, _win):
+        self.history_window = None
+        return False
+
+    def open_capture_tools(self):
+        """Fenetre « Outils de capture », une seule a la fois."""
+        from netcross_gtk4.capture_tools_window import CaptureToolsWindow
+
+        if self.capture_tools_window is None:
+            self.capture_tools_window = CaptureToolsWindow(parent=self)
+            self.capture_tools_window.connect("close-request", self._on_capture_tools_closed)
+        self.capture_tools_window.present()
+        return self.capture_tools_window
+
+    def _on_capture_tools_closed(self, _win):
+        self.capture_tools_window = None
+        return False
+
+    def open_batch(self):
+        """Fenetre « Analyse d'un dossier » (issue #872), une seule a la fois."""
+        from netcross_gtk4.batch_window import BatchWindow
+
+        if self.batch_window is None:
+            self.batch_window = BatchWindow(parent=self)
+            self.batch_window.connect("close-request", self._on_batch_closed)
+        self.batch_window.present()
+        return self.batch_window
+
+    def _on_batch_closed(self, _win):
+        self.batch_window = None
+        return False
+
+    def open_lua_doc(self):
+        """Fenetre « Documentation Lua » (issue #873), une seule a la fois."""
+        from netcross_gtk4.lua_doc_window import LuaDocWindow
+
+        if self.lua_doc_window is not None and self.lua_doc_window.browser is not None:
+            self.lua_doc_window.present()
+            return self.lua_doc_window
+        self.lua_doc_window = LuaDocWindow(parent=self)
+        self.lua_doc_window.present()
+        logger.debug("open_lua_doc: fenetre ouverte")
+        return self.lua_doc_window
 
     # ================= PAGE 1 : CONFIGURATION =================
 
@@ -778,8 +913,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.ring_buffer_check.set_tooltip_text(
             "Active la rotation des fichiers de capture : ecrit dans des "
             "fichiers de duree fixe et supprime automatiquement le plus "
-            "ancien au-dela du nombre maximal. Option preparatoire : "
-            "non cablee au moteur de capture pour l'instant."
+            "ancien au-dela du nombre maximal. Enregistre la capture brute "
+            "de chaque point (pcapng, tshark) en parallele de l'analyse ; "
+            "incompatible avec une source pipe:// (issue #676)."
         )
         self.ring_buffer_check.connect("toggled", self._on_ring_buffer_toggled)
         self.ring_buffer_box.append(self.ring_buffer_check)
@@ -801,6 +937,40 @@ class MainWindow(Gtk.ApplicationWindow):
         self.ring_buffer_box.append(self.ring_max_duration_spin)
         self.ring_buffer_box.set_visible(False)
         page.append(self.ring_buffer_box)
+
+        # -- rapport HTML rafraichi en continu (issue #676) --
+        # Equivalent de --live-report / --live-report-interval /
+        # --live-report-serve : meme moteur que la CLI. Visible en mode
+        # capture live uniquement, comme ring_buffer_box.
+        self.live_report_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.live_report_check = Gtk.CheckButton(label="Rapport HTML en continu (--live-report)")
+        self.live_report_check.set_tooltip_text(
+            "Publie pendant la capture une page index.html (et live.json, live.jsonl) "
+            "rafraichie a intervalle regulier : debit, protocoles, hotes, etat de chaque point."
+        )
+        self.live_report_check.connect("toggled", self._on_live_report_toggled)
+        self.live_report_box.append(self.live_report_check)
+        self.live_report_dir_entry = Gtk.Entry()
+        self.live_report_dir_entry.set_placeholder_text("Repertoire (temporaire si vide)")
+        self.live_report_dir_entry.set_hexpand(True)
+        self.live_report_box.append(self.live_report_dir_entry)
+        self.live_report_box.append(Gtk.Label(label="Intervalle (s) :", halign=Gtk.Align.START))
+        self.live_report_interval_spin = Gtk.SpinButton.new_with_range(1, 3600, 1)
+        self.live_report_interval_spin.set_value(5)
+        self.live_report_box.append(self.live_report_interval_spin)
+        self.live_report_serve_check = Gtk.CheckButton(label="Servir la page (--live-report-serve)")
+        self.live_report_serve_check.set_tooltip_text(
+            "Sert la page sur http://127.0.0.1:PORT/ pendant la capture (0 = port libre choisi par le systeme)."
+        )
+        self.live_report_serve_check.connect("toggled", self._on_live_report_toggled)
+        self.live_report_box.append(self.live_report_serve_check)
+        self.live_report_port_spin = Gtk.SpinButton.new_with_range(0, 65535, 1)
+        self.live_report_port_spin.set_value(0)
+        self.live_report_box.append(self.live_report_port_spin)
+        self.live_report_box.set_visible(False)
+        page.append(self.live_report_box)
+        self._live_report_session = None
+        self._on_live_report_toggled(None)
 
         # -- panneaux mode comparaison (caches par defaut) --
         self.diff_panels_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
@@ -932,6 +1102,15 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         options.attach(self.auto_topology_check, 0, 4, 4, 1)
 
+        # Issue #474 lot 2 : equivalent GUI de --split-interfaces.
+        self.split_interfaces_check = Gtk.CheckButton(label="Séparer les interfaces d'un pcapng (--split-interfaces)")
+        self.split_interfaces_check.set_tooltip_text(
+            "Un fichier pcapng qui contient plusieurs interfaces ou sections devient un "
+            "point par interface, nommé NOM:INTERFACE. Un fichier à une seule capture est "
+            "lu tel quel. Une seule capture suffit alors pour une analyse croisée."
+        )
+        options.attach(self.split_interfaces_check, 0, 8, 4, 1)
+
         # -- options specifiques a l'analyse simple (masquees en mode diff) --
         self.single_options_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         single_checks = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
@@ -971,8 +1150,246 @@ class MainWindow(Gtk.ApplicationWindow):
         single_checks.append(self.tls_check)
         single_checks.append(self.quic_check)
         single_checks.append(self.security_check)
+        # Issue #675 : index pour le panneau « Recherche forensic » (Resultats)
+        self.forensic_index_check = Gtk.CheckButton(label="Index de recherche forensic (--forensic-search)")
+        self.forensic_index_check.set_tooltip_text(
+            "Indexe paquets et flux pendant l'analyse pour la recherche par texte, adresse, point, "
+            "protocole, port ou champ decode (SNI, URI, DNS...) sur la page Resultats. L'index reste "
+            "en memoire jusqu'a l'analyse suivante."
+        )
+        single_checks.append(self.forensic_index_check)
         single_checks.append(topn_box)
         self.single_options_box.append(single_checks)
+
+        # Issue #676 : notifications (webhook, Slack, courriel), equivalent de
+        # --notify-on/--notify-webhook/--notify-slack/--notify-email/
+        # --notify-detail. Portent sur le rapport de securite, comme la CLI.
+        notify_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        notify_box.append(Gtk.Label(label="Notifier si (--notify-on) :", halign=Gtk.Align.START))
+        self.notify_threshold_drop = Gtk.DropDown.new_from_strings([label for _val, label in THRESHOLD_CHOICES])
+        self.notify_threshold_drop.set_tooltip_text(
+            "Envoie un resume (jamais un message par constat) quand le pire constat du rapport de "
+            "securite atteint ce niveau. Necessite « Rapport de securite ». Serveur SMTP et URL par "
+            "defaut : .netcross.toml [notify] ou NETCROSS_SLACK_WEBHOOK / NETCROSS_SMTP_*."
+        )
+        self.notify_threshold_drop.connect("notify::selected", self._on_notify_threshold_changed)
+        notify_box.append(self.notify_threshold_drop)
+        self.notify_webhook_entry = Gtk.Entry(placeholder_text="URL webhook (--notify-webhook)")
+        self.notify_slack_entry = Gtk.Entry(placeholder_text="Webhook Slack (--notify-slack)")
+        self.notify_email_entry = Gtk.Entry(placeholder_text="Courriel(s) (--notify-email)")
+        for entry in (self.notify_webhook_entry, self.notify_slack_entry, self.notify_email_entry):
+            entry.set_hexpand(True)
+            notify_box.append(entry)
+        self.notify_complete_check = Gtk.CheckButton(label="Detail complet (--notify-detail complet)")
+        self.notify_complete_check.set_tooltip_text(
+            "Par defaut, adresses, noms d'hote et chemins sont anonymises dans le message. "
+            "Detail complet : texte brut des constats, a reserver a un canal de confiance."
+        )
+        notify_box.append(self.notify_complete_check)
+        self.single_options_box.append(notify_box)
+
+        # Issue #867 : plugins tiers, equivalent de --plugins / --plugin-path /
+        # --plugin-export / --list-plugins. Chargement explicite : seul un
+        # plugin nomme ici s'execute ; detecteurs => rapport de securite.
+        plugins_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        plugins_box.append(Gtk.Label(label="Plugins (--plugins) :", halign=Gtk.Align.START))
+        self.plugins_entry = Gtk.Entry(placeholder_text="noms autorises, separes par des virgules")
+        self.plugins_entry.set_tooltip_text(
+            "Detecteurs et exporteurs tiers a executer (entry points installes ou fichiers ci-contre). "
+            "Code tiers execute dans le processus : voir docs/plugins.md. "
+            "Les detecteurs necessitent « Rapport de securite »."
+        )
+        self.plugin_path_entry = Gtk.Entry(placeholder_text="Fichiers plugins (--plugin-path), separes par ;")
+        self.plugin_export_entry = Gtk.Entry(placeholder_text="Exports NOM=FICHIER (--plugin-export), separes par ;")
+        for entry in (self.plugins_entry, self.plugin_path_entry, self.plugin_export_entry):
+            entry.set_hexpand(True)
+            plugins_box.append(entry)
+        list_plugins_btn = Gtk.Button(label="Lister (--list-plugins)")
+        list_plugins_btn.set_tooltip_text("Plugins installes et locaux, autorises ou non, dans le journal.")
+        list_plugins_btn.connect("clicked", self._on_list_plugins)
+        plugins_box.append(list_plugins_btn)
+        self.single_options_box.append(plugins_box)
+
+        # Issue #675 : comparaison de postes (--client-group, --client-reference)
+        clients_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        clients_box.append(Gtk.Label(label="Postes a comparer (--client-group) :", halign=Gtk.Align.START))
+        self.client_groups_entry = Gtk.Entry(placeholder_text="PosteA=10.0.0.5; PosteB=10.0.0.12,10.0.0.13")
+        self.client_groups_entry.set_hexpand(True)
+        self.client_groups_entry.set_tooltip_text(
+            "Un groupe par poste, NOM=IP1[,IP2...], separes par « ; » ; au moins deux postes. "
+            "Compare chaque poste a la reference (pertes, latence, retransmissions...) ; resultat "
+            "dans le rapport et export CSV sur la page Resultats."
+        )
+        clients_box.append(self.client_groups_entry)
+        clients_box.append(Gtk.Label(label="Reference (--client-reference) :", halign=Gtk.Align.START))
+        self.client_reference_entry = Gtk.Entry(placeholder_text="(premier poste)")
+        clients_box.append(self.client_reference_entry)
+        self.single_options_box.append(clients_box)
+
+        # Issue #673 : sections d'expertise, equivalents des options CLI
+        expertise_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=8)
+        self.rule_engine_check = Gtk.CheckButton(label="Moteur de regles (--rule-engine)")
+        self.rule_engine_check.set_tooltip_text("Evalue chaque regle du catalogue declaratif ; section du rapport.")
+        self.expert_section_check = Gtk.CheckButton(label="Section expertise (--expert-section)")
+        self.expert_section_check.set_tooltip_text(
+            "Objets de session detailles (flux, segments, diagnostics, preuves) ; section du rapport."
+        )
+        self.media_quality_check = Gtk.CheckButton(label="Qualite media (--media-quality)")
+        self.media_quality_check.set_tooltip_text(
+            "Relit les fichiers : voix et video RTP, documents ; analyse sans rien ecrire (l'extraction "
+            "vers un dossier est sur la page Resultats)."
+        )
+        self.tshark_stats_check = Gtk.CheckButton(label="Statistiques tshark (--tshark-stats)")
+        self.tshark_stats_check.set_tooltip_text(
+            "tshark -z sur chaque fichier : conversations, endpoints, hierarchie de protocoles, IO ; "
+            "export JSON sur la page Resultats."
+        )
+        self.flow_timeline_check = Gtk.CheckButton(label="Chronologie des flux (--flow-timeline)")
+        self.flow_timeline_check.set_tooltip_text(
+            "Chronologie de chaque conversation, point par point ; export JSON sur la page Resultats."
+        )
+        window_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        window_box.append(Gtk.Label(label="Fenetre (s)"))
+        self.flow_timeline_window_spin = Gtk.SpinButton.new_with_range(
+            FLOW_TIMELINE_WINDOW_MIN, FLOW_TIMELINE_WINDOW_MAX, 0.1
+        )
+        self.flow_timeline_window_spin.set_value(1.0)
+        self.flow_timeline_window_spin.set_tooltip_text(
+            "Largeur des fenetres de la chronologie (--flow-timeline-window)."
+        )
+        window_box.append(self.flow_timeline_window_spin)
+        for widget in (
+            self.rule_engine_check,
+            self.expert_section_check,
+            self.media_quality_check,
+            self.tshark_stats_check,
+            self.flow_timeline_check,
+            window_box,
+        ):
+            expertise_box.append(widget)
+        self.single_options_box.append(expertise_box)
+
+        # Issue #672 : limites de lecture (--max-packets, --sample,
+        # --parallel-workers) ; 0 (ou 1/1) = pas de limite, automatique
+        limits_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        limits_box.append(Gtk.Label(label="Paquets max. (--max-packets, 0 = tous) :"))
+        self.max_packets_spin = Gtk.SpinButton.new_with_range(0, MAX_PACKETS_MAX, 1000)
+        self.max_packets_spin.set_tooltip_text(
+            "Analyse les N premiers paquets (apres echantillonnage) ; le rapport l'annonce toujours."
+        )
+        limits_box.append(self.max_packets_spin)
+        limits_box.append(Gtk.Label(label="Echantillonnage 1/N (--sample) :"))
+        self.sample_spin = Gtk.SpinButton.new_with_range(1, SAMPLE_MAX, 1)
+        self.sample_spin.set_tooltip_text("Garde 1 paquet sur N (1 = tous) ; le rapport l'annonce toujours.")
+        limits_box.append(self.sample_spin)
+        limits_box.append(Gtk.Label(label="Lecteurs paralleles (--parallel-workers, 0 = auto) :"))
+        self.parallel_workers_spin = Gtk.SpinButton.new_with_range(0, WORKERS_MAX, 1)
+        self.parallel_workers_spin.set_tooltip_text(
+            "Nombre de processus tshark avec « Lecture parallele des captures » (0 = un par coeur)."
+        )
+        limits_box.append(self.parallel_workers_spin)
+        self.single_options_box.append(limits_box)
+
+        # Issue #672 : contexte du rapport de securite (--test-net-external,
+        # --known-destinations, --known-hosts, --cve-db)
+        security_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
+        self.test_net_external_check = Gtk.CheckButton(label="Plages TEST-NET externes (--test-net-external)")
+        self.test_net_external_check.set_tooltip_text(
+            "Traite 192.0.2.0/24, 198.51.100.0/24 et 203.0.113.0/24 comme des adresses externes "
+            "(laboratoires, captures de demonstration). Necessite « Rapport de securite »."
+        )
+        json_patterns = ("*.json",)
+        self.known_destinations_option = FileOption(
+            "Destinations connues...",
+            "Liste JSON d'IP de destinations habituelles (--known-destinations) : les autres sont signalees.",
+            json_patterns,
+            "Liste d'IP (*.json)",
+        )
+        self.known_hosts_option = FileOption(
+            "Hotes connus...",
+            "Liste JSON d'hotes deja vus (--known-hosts) : un hote absent est signale comme nouveau.",
+            json_patterns,
+            "Liste d'IP (*.json)",
+        )
+        self.cve_db_option = FileOption(
+            "Base CVE...",
+            "Base CVE complete (--cve-db, SQLite construite par netcross) a la place de la base minimale embarquee.",
+            ("*.db", "*.sqlite", "*.sqlite3"),
+            "Base CVE (*.db, *.sqlite)",
+        )
+        for widget in (
+            self.test_net_external_check,
+            self.known_destinations_option,
+            self.known_hosts_option,
+            self.cve_db_option,
+        ):
+            security_box.append(widget)
+        self.single_options_box.append(security_box)
+
+        # Issue #674 : diagramme de sequence (export PDF) et historique SQLite
+        report_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        report_box.append(Gtk.Label(label="Diagramme de sequence (--sequence-diagram, flux, 0 = aucun) :"))
+        self.sequence_diagram_spin = Gtk.SpinButton.new_with_range(0, SEQUENCE_FLOWS_MAX, 1)
+        self.sequence_diagram_spin.set_tooltip_text(
+            "Ajoute a l'export PDF le diagramme de sequence des N flux les plus volumineux."
+        )
+        report_box.append(self.sequence_diagram_spin)
+        self.history_option = FileOption(
+            "Historique...",
+            "Base SQLite (--history-db, creee si absente) : chaque analyse y ajoute son resume.",
+            ("*.db", "*.sqlite", "*.sqlite3"),
+            "Historique (*.db, *.sqlite)",
+        )
+        report_box.append(self.history_option)
+        report_box.append(Gtk.Label(label="Etiquette (--history-label) :"))
+        self.history_label_entry = Gtk.Entry(placeholder_text="site, scenario...")
+        report_box.append(self.history_label_entry)
+        self.single_options_box.append(report_box)
+
+        # Issue #866 : module IA local, equivalent des options --ai-* (voir
+        # docs/module-ia.md). Tout tourne sur ce poste.
+        ai_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
+        ai_box.append(Gtk.Label(label="Module IA local :", halign=Gtk.Align.START))
+        self.ai_baseline_save_entry = Gtk.Entry(placeholder_text="Enregistrer la baseline (--ai-baseline-save)")
+        self.ai_baseline_save_entry.set_tooltip_text(
+            "Ajoute les flux de cette capture (supposee NORMALE) a la baseline FICHIER.json (creee si absente)."
+        )
+        self.ai_baseline_label_entry = Gtk.Entry(placeholder_text="Libelle de baseline (--ai-baseline-label)")
+        self.ai_anomalies_option = FileOption(
+            "Baseline (anomalies)...",
+            "Detection d'anomalies de flux (Isolation Forest) par rapport a cette baseline (--ai-anomalies). "
+            "Necessite scikit-learn.",
+            ("*.json",),
+            "Baseline (*.json)",
+        )
+        self.ai_training_export_entry = Gtk.Entry(placeholder_text="Exporter l'entrainement (--ai-training-export)")
+        self.ai_training_export_entry.set_tooltip_text(
+            "Exporte les flux pre-etiquetes par les regles FLOW-4, a corriger pour la classification."
+        )
+        self.ai_classify_option = FileOption(
+            "Jeu d'entrainement...",
+            "Classe les flux (foret aleatoire entrainee sur ce jeu etiquete) avec un score de confiance "
+            "(--ai-classify). Necessite scikit-learn.",
+            ("*.json",),
+            "Jeu d'entrainement (*.json)",
+        )
+        self.ai_summary_entry = Gtk.Entry(placeholder_text="Resume (--ai-summary) : template, ollama:MODELE, llamacpp")
+        self.ai_endpoint_entry = Gtk.Entry(placeholder_text="Point d'acces local (--ai-endpoint)")
+        self.ai_endpoint_entry.set_tooltip_text("Toute adresse hors boucle locale est refusee.")
+        self.ai_report_entry = Gtk.Entry(placeholder_text="Resultats JSON (--ai-report)")
+        for widget in (
+            self.ai_baseline_save_entry,
+            self.ai_baseline_label_entry,
+            self.ai_anomalies_option,
+            self.ai_training_export_entry,
+            self.ai_classify_option,
+            self.ai_summary_entry,
+            self.ai_endpoint_entry,
+            self.ai_report_entry,
+        ):
+            ai_box.append(widget)
+        self.single_options_box.append(ai_box)
+        self._on_notify_threshold_changed(None)
         page.append(self.single_options_box)
 
         # -- options specifiques au mode comparaison (masquees par defaut) --
@@ -1035,9 +1452,8 @@ class MainWindow(Gtk.ApplicationWindow):
         logger.debug("MainWindow._build_config_page: fin")
 
     def _on_diff_toggled(self, _btn):
-        if self.diff_check.get_active() and self.live_check.get_active():
-            self.live_check.set_active(False)  # declenche _on_live_toggled -> resynchronise tout
-        self.live_check.set_sensitive(not self.diff_check.get_active())
+        # Issue #676 : comparaison et capture en direct se combinent (courant
+        # capture en direct, --live-current) -- plus d'exclusion mutuelle.
         logger.debug("_on_diff_toggled: diff={}", self.diff_check.get_active())
         self._sync_panel_visibility()
         self._update_run_sensitivity()
@@ -1062,9 +1478,6 @@ class MainWindow(Gtk.ApplicationWindow):
         )
 
     def _on_live_toggled(self, _btn):
-        if self.live_check.get_active() and self.diff_check.get_active():
-            self.diff_check.set_active(False)  # declenche _on_diff_toggled -> resynchronise tout
-        self.diff_check.set_sensitive(not self.live_check.get_active())
         logger.debug("_on_live_toggled: live={}", self.live_check.get_active())
         self._sync_panel_visibility()
         self._update_run_sensitivity()
@@ -1167,6 +1580,59 @@ class MainWindow(Gtk.ApplicationWindow):
         self.ring_max_duration_spin.set_sensitive(active)
         logger.debug("MainWindow._on_ring_buffer_toggled: fin")
 
+    def _on_notify_threshold_changed(self, *_args):
+        """Canaux et niveau de detail reglables seulement avec un seuil."""
+        active = self.notify_threshold_drop.get_selected() > 0
+        for widget in (
+            self.notify_webhook_entry,
+            self.notify_slack_entry,
+            self.notify_email_entry,
+            self.notify_complete_check,
+        ):
+            widget.set_sensitive(active)
+        logger.debug("MainWindow._on_notify_threshold_changed: actif={}", active)
+
+    def plugin_settings(self) -> PluginSettings:
+        """Issue #867 : reglages des plugins lus sur les champs (leve
+        PluginSettingsError sur un export mal forme)."""
+        logger.debug("MainWindow.plugin_settings()")
+        return plugin_settings_from_widgets(
+            self.plugins_entry.get_text(),
+            self.plugin_path_entry.get_text(),
+            self.plugin_export_entry.get_text(),
+        )
+
+    def _on_list_plugins(self, *_args):
+        """Issue #867 : equivalent de --list-plugins, dans le journal."""
+        logger.debug("MainWindow._on_list_plugins()")
+        try:
+            text = format_plugin_list(self.plugin_settings())
+        except PluginSettingsError as exc:
+            logger.debug("MainWindow._on_list_plugins: reglage invalide ({})", exc)
+            text = str(exc)
+        self.stack.set_visible_child_name("log")
+        self._log(text)
+        logger.debug("MainWindow._on_list_plugins: fin")
+
+    def _notify_settings(self) -> NotifySettings:
+        """Reglages de notification, lus sur le thread principal."""
+        return settings_from_widgets(
+            self.notify_threshold_drop.get_selected(),
+            self.notify_webhook_entry.get_text(),
+            self.notify_slack_entry.get_text(),
+            self.notify_email_entry.get_text(),
+            self.notify_complete_check.get_active(),
+        )
+
+    def _on_live_report_toggled(self, _btn):
+        """Reglages du rapport en continu actifs seulement si la case l'est."""
+        active = self.live_report_check.get_active()
+        self.live_report_dir_entry.set_sensitive(active)
+        self.live_report_interval_spin.set_sensitive(active)
+        self.live_report_serve_check.set_sensitive(active)
+        self.live_report_port_spin.set_sensitive(active and self.live_report_serve_check.get_active())
+        logger.debug("MainWindow._on_live_report_toggled: live_report={}", active)
+
     def _sync_panel_visibility(self):
         """Point unique qui decide, a partir des deux cases a cocher, quels
         panneaux/options sont visibles -- appele apres tout changement de
@@ -1183,8 +1649,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.single_panel.set_visible(vue.single_panel)
         self.live_panel.set_visible(vue.live_panel)
         self.live_extra_box.set_visible(vue.live_extra)
-        self.ring_buffer_box.set_visible(vue.live_extra)
+        # tampon circulaire et rapport en continu : capture en direct simple
+        # seulement (pas d'equivalent avec --live-current)
+        self.ring_buffer_box.set_visible(vue.ring_buffer)
+        self.live_report_box.set_visible(vue.ring_buffer)
         self.diff_panels_box.set_visible(vue.diff_panels)
+        self.current_panel.set_visible(vue.current_panel)
         self.single_options_box.set_visible(vue.single_options)
         self.diff_options_box.set_visible(vue.diff_options)
         logger.debug(
@@ -1195,14 +1665,20 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         self.tls_check.set_sensitive(vue.tls_sensitive)
         self.quic_check.set_sensitive(vue.quic_sensitive)
+        # memes regles pour les diagnostics du mode comparaison : un courant
+        # capture en direct ne produit pas de fichier a relire
+        self.diff_tls_check.set_sensitive(vue.tls_sensitive)
+        self.diff_quic_check.set_sensitive(vue.quic_sensitive)
         self.parallel_check.set_sensitive(vue.parallel_sensitive)
         self.detect_duplicates_check.set_sensitive(vue.duplicate_detect_sensitive)
         self.duplicate_threshold_spin.set_sensitive(vue.duplicate_threshold_sensitive)
         self.exclude_duplicates_check.set_sensitive(vue.duplicate_exclude_sensitive)
         if vue.force_tls_off:
             self.tls_check.set_active(False)
+            self.diff_tls_check.set_active(False)
         if vue.force_quic_off:
             self.quic_check.set_active(False)
+            self.diff_quic_check.set_active(False)
         if vue.force_duplicate_detect_off:
             self.detect_duplicates_check.set_active(False)
         if vue.force_duplicate_exclude_off:
@@ -1475,6 +1951,42 @@ class MainWindow(Gtk.ApplicationWindow):
         page.append(self.stats_expander)
 
         # Issue #357 : section securite dans la page resultats
+        # Issue #675 : recherche forensic (--forensic-search, --search-*)
+        self.forensic_expander = Gtk.Expander(label="Recherche forensic")
+        self.forensic_panel = ForensicSearchPanel(on_annotate=self._annotate_from_search)
+        self.forensic_expander.set_child(self.forensic_panel)
+        page.append(self.forensic_expander)
+
+        # Issue #675 : extraction des contenus (--extract-contents, --extract-kinds)
+        self.extraction_expander = Gtk.Expander(label="Contenus (extraction)")
+        self.extraction_panel = ExtractionPanel()
+        self.extraction_expander.set_child(self.extraction_panel)
+        page.append(self.extraction_expander)
+
+        # Issue #675 : comparaison de postes (--client-group, --client-diff-csv)
+        self.client_compare_expander = Gtk.Expander(label="Comparaison de postes")
+        self.client_compare_panel = ClientComparisonPanel()
+        self.client_compare_expander.set_child(self.client_compare_panel)
+        page.append(self.client_compare_expander)
+
+        # Issue #673 : chronologie des flux et statistiques tshark (JSON)
+        self.expertise_expander = Gtk.Expander(label="Expertise (exports JSON)")
+        self.expertise_panel = ExpertisePanel()
+        self.expertise_expander.set_child(self.expertise_panel)
+        page.append(self.expertise_expander)
+
+        # Issue #674 : export SIEM, ticket de support, historique SQLite
+        self.report_exports_expander = Gtk.Expander(label="SIEM, ticket de support, historique")
+        self.report_exports_panel = ReportExportsPanel()
+        self.report_exports_expander.set_child(self.report_exports_panel)
+        page.append(self.report_exports_expander)
+
+        # Issue #675 : resume NetFlow v5 (--netflow, --netflow-top), autonome
+        self.netflow_expander = Gtk.Expander(label="NetFlow v5 (resume d'exports)")
+        self.netflow_panel = NetflowPanel()
+        self.netflow_expander.set_child(self.netflow_panel)
+        page.append(self.netflow_expander)
+
         self.security_expander = Gtk.Expander(label="Securite")
         self.security_expander.set_sensitive(False)
         sec_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -1532,6 +2044,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.json_btn.set_sensitive(False)
         self.json_btn.connect("clicked", self.on_export_json)
         bottom.append(self.json_btn)
+
+        # Issue #864 : --md-report (analyse simple, comme la CLI)
+        self.md_btn = Gtk.Button(label="Exporter en Markdown")
+        self.md_btn.set_sensitive(False)
+        self.md_btn.connect("clicked", self.on_export_markdown)
+        bottom.append(self.md_btn)
         page.append(bottom)
 
         self.stack.add_titled(page, "results", "Resultats")
@@ -1577,10 +2095,66 @@ class MainWindow(Gtk.ApplicationWindow):
             )
             return
 
+        notify = None
+        ai = None
+
+        plugins = None
+        client_groups: dict = {}
+        client_reference = None
+        advanced = None
+        if not diff_mode:
+            notify = self._notify_settings()
+            notify_errors = validate_settings(notify, self.security_check.get_active())
+            if notify_errors:
+                # Echec immediat plutot qu'apres l'analyse, comme la CLI.
+                self.stack.set_visible_child_name("log")
+                self._log(f"Notifications : {'; '.join(notify_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si notify_errors -> retour")
+                return
+            ai = self.ai_settings()
+            ai_errors = validate_ai_settings(ai)
+            if ai_errors:
+                # Echec immediat plutot qu'apres l'analyse, comme la CLI (issue #866).
+                self.stack.set_visible_child_name("log")
+                self._log(f"Module IA : {'; '.join(ai_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si ai_errors -> retour")
+                return
+            try:
+                plugins, plugin_errors = prepare_plugins(self.plugin_settings(), self.security_check.get_active())
+            except PluginSettingsError as exc:
+                logger.debug("MainWindow.on_run_analysis: reglage de plugin invalide ({})", exc)
+                plugins, plugin_errors = None, [str(exc)]
+            if plugin_errors:
+                # Echec immediat, comme la CLI (issue #867).
+                self.stack.set_visible_child_name("log")
+                self._log(f"Plugins : {'; '.join(plugin_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si plugin_errors -> retour")
+                return
+            try:
+                client_groups = parse_client_groups(self.client_groups_entry.get_text())
+                client_reference = self.client_reference_entry.get_text().strip() or None
+                client_errors = validate_client_settings(client_groups, client_reference, redact)
+            except ClientGroupError as exc:
+                logger.debug("MainWindow.on_run_analysis: groupes de postes invalides ({})", exc)
+                client_errors = [str(exc)]
+            if client_errors:
+                self.stack.set_visible_child_name("log")
+                self._log(f"Comparaison de postes : {'; '.join(client_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si client_errors -> retour")
+                return
+            advanced = self.advanced_settings()  # issue #672
+            advanced_errors = validate_advanced(advanced, security=self.security_check.get_active())
+            if advanced_errors:
+                self.stack.set_visible_child_name("log")
+                self._log(f"Options avancees : {'; '.join(advanced_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si advanced_errors -> retour")
+                return
+
         self.run_btn.set_sensitive(False)
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
         self.json_btn.set_sensitive(False)
+        self.md_btn.set_sensitive(False)
         self.log_view.get_buffer().set_text("")
         self.work_status_label.set_text("Analyse en cours...")
         self.spinner.start()
@@ -1618,6 +2192,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "nat_window_ms": nat_window_ms,
                     "idle_timeout_seconds": idle_timeout_seconds,
                     "triage": self.diff_triage_check.get_active(),
+                    "history": self.history_settings(),
                     "triage_topn": int(self.diff_triage_topn_spin.get_value()),
                 },
                 daemon=True,
@@ -1625,6 +2200,7 @@ class MainWindow(Gtk.ApplicationWindow):
         else:
             captures = self.single_panel.captures()
             self._annotation_captures = list(captures)
+            self._extraction_redacted = redact  # issue #675 : extraction refusee si anonymise
             triage = self.triage_check.get_active()
             triage_topn = int(self.triage_topn_spin.get_value())
             tls = self.tls_check.get_active()
@@ -1655,7 +2231,20 @@ class MainWindow(Gtk.ApplicationWindow):
                     exclude_duplicates,
                     duplicate_threshold_ms,
                 ),
-                kwargs={"nat_window_ms": nat_window_ms, "idle_timeout_seconds": idle_timeout_seconds},
+                kwargs={
+                    "nat_window_ms": nat_window_ms,
+                    "idle_timeout_seconds": idle_timeout_seconds,
+                    "split_interfaces": self.split_interfaces_check.get_active(),
+                    "forensic_index": self.forensic_index_check.get_active(),
+                    "client_groups": client_groups or None,
+                    "client_reference": client_reference,
+                    "notify": notify,
+                    "expertise": self.expertise_settings(),
+                    "advanced": advanced,
+                    "history": self.history_settings(),
+                    "ai": ai,
+                    "plugins": plugins,
+                },
                 daemon=True,
             ).start()
         logger.debug("MainWindow.on_run_analysis: fin")
@@ -1714,6 +2303,80 @@ class MainWindow(Gtk.ApplicationWindow):
         self._live_exclude_duplicates = self.exclude_duplicates_check.get_active()
         self._live_nat_window_ms, self._live_idle_timeout_seconds = self._fine_settings()
         self._live_duplicate_threshold_ms = self.duplicate_threshold_spin.get_value()
+        self._live_forensic_index = self.forensic_index_check.get_active()  # issue #675
+        if self.expertise_settings().active:  # issue #673 : sections relues sur les fichiers
+            self._log("Sections d'expertise : analyse de fichiers uniquement, ignorees en capture en direct.")
+
+        # Issue #676 : comparaison avec un courant capture en direct
+        # (--live-current) -- baseline et reglages releves ici, thread
+        # principal ; None = capture en direct simple.
+        self._live_diff = None
+        self._live_diff_history = self.history_settings()  # issue #874 : releve ici, thread principal
+        if self.diff_check.get_active():
+            baseline_captures = self.baseline_panel.captures()
+            if len(baseline_captures) < 2:
+                self.stack.set_visible_child_name("log")
+                self._log("Comparaison : 2 captures de reference minimum -- capture annulee.")
+                logger.debug("MainWindow._begin_live_capture: baseline insuffisant -> retour")
+                return
+            from netcross_gtk4.diff_pipeline import DiffOptions
+
+            self._live_diff = (
+                baseline_captures,
+                [label for label, _, _ in rows_data],
+                DiffOptions(
+                    bucket_ms=self._live_bucket_ms,
+                    rtp_rate=self._live_rtp_rate,
+                    nat_tolerant=self._live_nat_tolerant,
+                    nat_window_ms=self._live_nat_window_ms,
+                    idle_timeout_seconds=self._live_idle_timeout_seconds,
+                    parallel=self.parallel_check.get_active(),
+                    auto_topology=auto_topology,
+                    loss_min_pp=self.loss_threshold_spin.get_value(),
+                    latency_min_ms=self.latency_threshold_spin.get_value(),
+                    redact=self.redact_check.get_active(),
+                    triage=self.diff_triage_check.get_active(),
+                    triage_topn=int(self.diff_triage_topn_spin.get_value()),
+                ),
+            )
+
+        # Issue #676 : rotation de capture -- un enregistreur tshark par point,
+        # lance AVANT les threads d'analyse ; refus d'un point -> rien ne demarre.
+        self._live_ring_recorders = {}
+        ring_messages = []
+        if self.ring_buffer_box.get_visible() and self.ring_buffer_check.get_active():
+            try:
+                self._live_ring_recorders, ring_messages = start_ring_recorders(
+                    rows_data,
+                    int(self.ring_max_files_spin.get_value()),
+                    self.ring_max_duration_spin.get_value(),
+                )
+            except RingRecorderError as e:
+                logger.warning("MainWindow._begin_live_capture: rotation de capture refusee ({})", e)
+                self.stack.set_visible_child_name("log")
+                self._log(f"Rotation de capture impossible -- capture annulee : {e}")
+                return
+
+        # Issue #676 : rapport HTML en continu, demarre avant les threads de
+        # capture ; un refus (port pris, repertoire) annule toute la capture.
+        self._live_report_session = None
+        if self.live_report_box.get_visible() and self.live_report_check.get_active():
+            try:
+                self._live_report_session, report_messages = start_live_report(
+                    [label for label, _iface, _bpf in rows_data],
+                    self.live_report_dir_entry.get_text().strip() or None,
+                    self.live_report_interval_spin.get_value(),
+                    int(self.live_report_port_spin.get_value()) if self.live_report_serve_check.get_active() else None,
+                )
+            except LiveReportError as e:
+                logger.warning("MainWindow._begin_live_capture: rapport en continu refuse ({})", e)
+                if self._live_ring_recorders:
+                    stop_ring_recorders(self._live_ring_recorders)
+                    self._live_ring_recorders = {}
+                self.stack.set_visible_child_name("log")
+                self._log(f"Rapport en continu impossible -- capture annulee : {e}")
+                return
+            ring_messages = [*ring_messages, *report_messages]
 
         self._live_capturing = True
         self._live_stop_event = threading.Event()
@@ -1724,10 +2387,15 @@ class MainWindow(Gtk.ApplicationWindow):
         self.live_panel.set_sensitive(False)
         self.live_extra_box.set_sensitive(False)
         self.ring_buffer_box.set_sensitive(False)
+        self.live_report_box.set_sensitive(False)
         self.run_btn.set_label("Arreter et analyser")
         self.pdf_btn.set_sensitive(False)
         self.csv_btn.set_sensitive(False)
+        self.md_btn.set_sensitive(False)
         self.log_view.get_buffer().set_text("")
+        # Apres la remise a zero du journal, sinon ces messages seraient effaces.
+        for message in ring_messages:
+            self._log(message)
         self.work_status_label.set_text(
             'Capture en direct en cours -- cliquez sur "Arreter et analyser" quand vous avez assez de trafic capture.'
         )
@@ -1768,6 +2436,8 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         count = 0
         last_log = time.time()
+        report_session = self._live_report_session
+        error = None
         try:
             for pkt in parse_live(
                 label,
@@ -1777,6 +2447,8 @@ class MainWindow(Gtk.ApplicationWindow):
             ):
                 with self._live_lock:
                     self._live_packets.append(pkt)
+                if report_session is not None:
+                    report_session.add(pkt)
                 count += 1
                 now = time.time()
                 if now - last_log >= 1.0:
@@ -1787,6 +2459,9 @@ class MainWindow(Gtk.ApplicationWindow):
             # plutot que de tuer le thread silencieusement.
             logger.exception(f"échec dans _live_capture_worker: {e}")
             GLib.idle_add(self._log, f"[{label}] ERREUR : {e}")
+            error = str(e)
+        if report_session is not None:
+            report_session.point_stopped(label, error)
         GLib.idle_add(self._log, f"[{label}] capture arretee -- {count} paquet(s) au total.")
         logger.debug("MainWindow._live_capture_worker: fin")
 
@@ -1810,9 +2485,26 @@ class MainWindow(Gtk.ApplicationWindow):
     def _join_live_and_analyze(self):
         for t in self._live_threads:
             t.join()
+        # Issue #676 : arret des enregistreurs en ring buffer (fichiers conserves).
+        recorders = getattr(self, "_live_ring_recorders", None)
+        if recorders:
+            for message in stop_ring_recorders(recorders):
+                GLib.idle_add(self._log, message)
+            self._live_ring_recorders = {}
+        # Issue #676 : derniere publication du rapport en continu.
+        report_session = getattr(self, "_live_report_session", None)
+        if report_session is not None:
+            for message in report_session.stop():
+                GLib.idle_add(self._log, message)
+            self._live_report_session = None
         with self._live_lock:
             all_packets = list(self._live_packets)
         logger.debug("_join_live_and_analyze: {} paquet(s) capturé(s)", len(all_packets))
+        if getattr(self, "_live_diff", None) is not None:
+            GLib.idle_add(self._log, f"Capture terminee -- {len(all_packets)} paquet(s). Comparaison...")
+            self._analyze_live_diff(all_packets)
+            logger.debug("MainWindow._join_live_and_analyze: comparaison avec le courant en direct -> retour")
+            return
         GLib.idle_add(
             self._log,
             f"Capture terminee -- {len(all_packets)} paquet(s) au total. Analyse...",
@@ -1878,6 +2570,15 @@ class MainWindow(Gtk.ApplicationWindow):
                     print(format_health_line(health_score(ranked)))
 
             text = buf.getvalue()
+
+            search_index = None
+            if getattr(self, "_live_forensic_index", False):
+                # Issue #675 : meme index que l'analyse de fichiers
+                from netcross_core.forensic_search import ForensicSearchIndex
+
+                GLib.idle_add(self._log, "Index de recherche forensic...")
+                search_index = ForensicSearchIndex(all_packets, flows=flows)
+                GLib.idle_add(self._log, f"  -> {len(search_index)} element(s) indexe(s)")
         except Exception as e:  # noqa: BLE001 -- thread de fond (analyse live) : toute erreur doit remonter au journal GUI.
             logger.exception(f"échec dans _join_live_and_analyze: {e}")
             GLib.idle_add(self._log, f"ERREUR : {e}")
@@ -1896,9 +2597,57 @@ class MainWindow(Gtk.ApplicationWindow):
             None,
             None,
             build_wireshark_expert_events(all_packets),
+            None,  # pas de rapport de securite en capture en direct
+            search_index,  # positionnel : GLib.idle_add ne transmet pas d'argument nomme
         )
         GLib.idle_add(self._reset_live_ui)
         logger.debug("MainWindow._join_live_and_analyze: fin")
+
+    def _analyze_live_diff(self, current_packets):
+        """Issue #676 : comparaison du baseline enregistre avec le courant
+        capture en direct (thread d'arriere-plan), meme fin que
+        `_run_diff_thread`."""
+        from netcross_gtk4.diff_pipeline import run_diff_pipeline
+
+        baseline_captures, current_points, options = self._live_diff
+        logger.debug(
+            "_analyze_live_diff: {} capture(s) de reference, {} paquet(s) courant",
+            len(baseline_captures),
+            len(current_packets),
+        )
+        try:
+            result = run_diff_pipeline(
+                baseline_captures,
+                [],
+                options,
+                on_progress=lambda msg: GLib.idle_add(self._log, msg),
+                current_packets=current_packets,
+                current_points=current_points,
+            )
+        except Exception as e:  # noqa: BLE001 -- thread de fond : toute erreur remonte au journal GUI
+            logger.exception(f"échec dans _analyze_live_diff: {e}")
+            GLib.idle_add(self._log, f"ERREUR : {e}")
+            GLib.idle_add(self._on_analysis_error, str(e))
+            GLib.idle_add(self._reset_live_ui)
+            logger.debug("MainWindow._analyze_live_diff: except Exception -> retour")
+            return
+        history = getattr(self, "_live_diff_history", None)
+        if history is not None and history.db_path:
+            self._record_diff_history(result, history, options.redact)
+        GLib.idle_add(
+            self._on_diff_done,
+            result.findings,
+            result.baseline_report,
+            result.current_report,
+            result.text,
+            None,
+            None,
+            None,
+            None,
+            result.redaction_map,
+        )
+        GLib.idle_add(self._reset_live_ui)
+        logger.debug("MainWindow._analyze_live_diff: fin")
 
     def _reset_live_ui(self):
         logger.debug("_reset_live_ui: réinitialisation de l'interface de capture en direct")
@@ -1906,6 +2655,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.live_panel.set_sensitive(True)
         self.live_extra_box.set_sensitive(True)
         self.ring_buffer_box.set_sensitive(True)
+        self.live_report_box.set_sensitive(True)
         self.work_stop_btn.set_visible(False)
         self.work_stop_btn.set_sensitive(True)
         self._update_run_button_label()
@@ -1960,6 +2710,16 @@ class MainWindow(Gtk.ApplicationWindow):
         duplicate_threshold_ms,
         nat_window_ms=200.0,
         idle_timeout_seconds=None,
+        split_interfaces=False,
+        forensic_index=False,
+        client_groups=None,
+        client_reference=None,
+        notify=None,
+        expertise=None,
+        advanced=None,
+        history=None,
+        ai=None,
+        plugins=None,
     ):
         logger.debug(
             "_run_analysis_thread: {} capture(s), triage={} tls={} quic={} security={}",
@@ -1989,6 +2749,16 @@ class MainWindow(Gtk.ApplicationWindow):
             duplicate_threshold_ms=duplicate_threshold_ms,
             nat_window_ms=nat_window_ms,
             idle_timeout_seconds=idle_timeout_seconds,
+            split_interfaces=split_interfaces,
+            forensic_index=forensic_index,
+            client_groups=client_groups,
+            client_reference=client_reference,
+            notify=notify,
+            expertise=expertise,
+            advanced=advanced,
+            history=history,
+            ai=ai,
+            plugins=plugins,
         )
 
         def _on_progress(msg):
@@ -2015,6 +2785,11 @@ class MainWindow(Gtk.ApplicationWindow):
             result.quic_findings,
             result.wireshark_expert_events,
             result.security_report,
+            # positionnel : GLib.idle_add ne transmet pas d'argument nomme
+            result.search_index,
+            result.client_comparison,
+            result.expertise,
+            result.report_context,
         )
         logger.debug("MainWindow._run_analysis_thread: fin")
 
@@ -2036,6 +2811,7 @@ class MainWindow(Gtk.ApplicationWindow):
         idle_timeout_seconds=None,
         triage=False,
         triage_topn=5,
+        history=None,
     ):
         logger.debug(
             "_run_diff_thread: {} capture(s) baseline, {} capture(s) courant",
@@ -2074,6 +2850,8 @@ class MainWindow(Gtk.ApplicationWindow):
             logger.debug("MainWindow._run_diff_thread: except Exception -> retour")
             return
 
+        if history is not None and history.db_path:
+            self._record_diff_history(result, history, redact)
         GLib.idle_add(
             self._on_diff_done,
             result.findings,
@@ -2084,8 +2862,25 @@ class MainWindow(Gtk.ApplicationWindow):
             result.tls_findings_current,
             result.quic_findings_baseline,
             result.quic_findings_current,
+            result.redaction_map,
         )
         logger.debug("MainWindow._run_diff_thread: fin")
+
+    def _record_diff_history(self, result, history, redact):
+        """Issue #874 : ``--history-db`` de la comparaison ; une base
+        illisible n'annule pas la comparaison (message dans le journal)."""
+        from netcross_gtk4.report_exports import record_diff_history
+        from netcross_report import HistoryDatabaseError
+
+        try:
+            message = record_diff_history(
+                result.findings, result.baseline_report, result.current_report, history, redact=redact
+            )
+        except HistoryDatabaseError as exc:
+            logger.warning("_record_diff_history: {}", exc)
+            message = f"Historique non enregistre : {exc}"
+        GLib.idle_add(self._log, message)
+        return message
 
     def _on_analysis_error(self, message):
         logger.debug("_on_analysis_error: {}", message)
@@ -2126,7 +2921,17 @@ class MainWindow(Gtk.ApplicationWindow):
         quic_findings=None,
         wireshark_expert_events=None,
         security_report=None,
+        search_index=None,
+        client_comparison=None,
+        expertise=None,
+        report_context=None,
     ):
+        self.expertise_panel.set_exports(expertise)  # issue #673
+        # Issue #674 : None en capture en direct (ni fichiers ni historique)
+        self.report_exports_panel.set_context(report, security_report, report_context)
+        # Issue #675 : nouvel index (ou None : analyse sans index, capture en direct)
+        self.forensic_panel.set_index(search_index, self._annotation_captures)
+        self.client_compare_panel.set_comparison(client_comparison)
         logger.debug(
             "_on_analysis_done: mode={} flux={} findings={} tls={} quic={} tshark={} securite={}",
             mode,
@@ -2153,12 +2958,14 @@ class MainWindow(Gtk.ApplicationWindow):
                 quic_findings=quic_findings,
                 wireshark_expert_events=wireshark_expert_events,
                 security_report=security_report,
+                rule_engine=getattr(expertise, "rule_engine", None),  # issue #864
             )
         )
         self.run_btn.set_sensitive(True)
         self.pdf_btn.set_sensitive(True)
         self.csv_btn.set_sensitive(True)
         self.json_btn.set_sensitive(True)
+        self.md_btn.set_sensitive(mode == "single")
         self._reset_comm_map_filters()
         # dashboard analytique (issue #18) : reinitialise le contexte de
         # selection partage et peuple les six vues depuis le meme run
@@ -2173,11 +2980,62 @@ class MainWindow(Gtk.ApplicationWindow):
             self.annotations_panel.load(self._annotation_captures)
         else:
             self.annotations_panel.clear()
+        # Issue #675 : extraction des contenus -- fichiers de l'analyse simple
+        self.extraction_panel.set_source(self._annotation_captures, getattr(self, "_extraction_redacted", False))
         # Issue #357 : section Securite -- meme rendu que --security-report
         self._show_security_report()
         self.stack.set_visible_child_name("results")
         logger.debug("MainWindow._on_analysis_done: retour False")
         return False
+
+    def ai_settings(self) -> AISettings:
+        """Module IA local de la configuration (issue #866)."""
+        logger.debug("MainWindow.ai_settings()")
+        return ai_settings_from_widgets(
+            self.ai_baseline_save_entry.get_text(),
+            self.ai_baseline_label_entry.get_text(),
+            self.ai_anomalies_option.path,
+            self.ai_training_export_entry.get_text(),
+            self.ai_classify_option.path,
+            self.ai_summary_entry.get_text(),
+            self.ai_endpoint_entry.get_text(),
+            self.ai_report_entry.get_text(),
+        )
+
+    def history_settings(self) -> HistorySettings:
+        """Historique SQLite de la configuration (issue #674)."""
+        label = self.history_label_entry.get_text().strip()
+        return HistorySettings(db_path=self.history_option.path, label=label or None)
+
+    def advanced_settings(self) -> AdvancedSettings:
+        """Options avancees de la configuration (issue #672)."""
+        return settings_from_values(
+            self.max_packets_spin.get_value(),
+            self.sample_spin.get_value(),
+            self.parallel_workers_spin.get_value(),
+            test_net_external=self.test_net_external_check.get_active(),
+            known_destinations=self.known_destinations_option.path,
+            known_hosts=self.known_hosts_option.path,
+            cve_db=self.cve_db_option.path,
+        )
+
+    def expertise_settings(self) -> ExpertiseSettings:
+        """Cases « Expertise » de la configuration (issue #673)."""
+        return ExpertiseSettings(
+            rule_engine=self.rule_engine_check.get_active(),
+            expert_section=self.expert_section_check.get_active(),
+            media_quality=self.media_quality_check.get_active(),
+            tshark_stats=self.tshark_stats_check.get_active(),
+            flow_timeline=self.flow_timeline_check.get_active(),
+            flow_timeline_window=self.flow_timeline_window_spin.get_value(),
+        )
+
+    def _annotate_from_search(self, point, frame_number) -> None:
+        """Issue #675 : « Annoter la trame » d'un resultat de recherche --
+        pre-remplit et deplie le panneau d'annotations."""
+        logger.debug("MainWindow._annotate_from_search: point={} trame={}", point, frame_number)
+        self.annotations_expander.set_expanded(True)
+        self.annotations_panel.prefill(point, frame_number)
 
     def _on_diff_done(
         self,
@@ -2189,6 +3047,7 @@ class MainWindow(Gtk.ApplicationWindow):
         tls_findings_current=None,
         quic_findings_baseline=None,
         quic_findings_current=None,
+        redaction_map=(),
     ):
         logger.debug(
             "_on_diff_done: findings={} tls_base={} tls_courant={} quic_base={} quic_courant={}",
@@ -2198,6 +3057,12 @@ class MainWindow(Gtk.ApplicationWindow):
             len(quic_findings_baseline or []),
             len(quic_findings_current or []),
         )
+        self.forensic_panel.set_index(None)  # issue #675 : pas d'index en comparaison
+        self.extraction_panel.set_source(None, False)  # ni d'extraction
+        self.client_compare_panel.set_comparison(None)  # ni de comparaison de postes
+        self.expertise_panel.set_exports(None)  # ni d'exports d'expertise (issue #673)
+        self.report_exports_panel.set_context(None, None, None)  # ni SIEM/ticket/historique (issue #674)
+        self.report_exports_panel.set_redaction_map(redaction_map)  # sauf la table d'anonymisation (#876)
         self._appliquer_outcome(
             diff_outcome(
                 findings,
@@ -2214,6 +3079,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.pdf_btn.set_sensitive(True)
         self.csv_btn.set_sensitive(True)
         self.json_btn.set_sensitive(True)
+        self.md_btn.set_sensitive(False)  # pas de Markdown en comparaison (CLI : idem)
         self._reset_comm_map_filters()
         # dashboard analytique (issue #18) : reinitialise le contexte de
         # selection partage et peuple les six vues depuis le meme run
@@ -2751,14 +3617,21 @@ class MainWindow(Gtk.ApplicationWindow):
                 if generate_pdf is None:
                     logger.debug("MainWindow._generate_pdf_thread: si generate_pdf is None -> levée ImportError")
                     raise ImportError("reportlab/matplotlib/networkx requis pour l'export PDF")
+                session_objects = self._session_objects()
                 generate_pdf(
                     self.last_report,
                     path,
                     findings=self.last_findings,
                     tls_findings=self.last_tls_findings,
                     quic_findings=self.last_quic_findings,
-                    session_objects=self._session_objects(),
+                    session_objects=session_objects,
                     security_report=self.last_security_report,
+                    # Issue #674 : --sequence-diagram N
+                    sequence_views=sequence_views(
+                        self.last_flows,
+                        int(self.sequence_diagram_spin.get_value()),
+                        flow_objects=getattr(session_objects, "flows", None),
+                    ),
                 )
             else:
                 from netcross_report import generate_diff_pdf
@@ -2823,6 +3696,47 @@ class MainWindow(Gtk.ApplicationWindow):
         logger.debug("_on_json_path_chosen: chemin choisi {}", path)
         self.export_json_to(path)
         logger.debug("MainWindow._on_json_path_chosen: fin")
+
+    def on_export_markdown(self, _btn):
+        if self.last_mode != "single":
+            logger.debug("MainWindow.on_export_markdown: pas d'analyse simple -> retour")
+            return
+        dialog = Gtk.FileDialog()
+        dialog.set_initial_name("rapport_analyse.md")
+        dialog.save(self, None, self._on_markdown_path_chosen)
+
+    def _on_markdown_path_chosen(self, dialog, result):
+        try:
+            gfile = dialog.save_finish(result)
+        except GLib.Error:
+            logger.exception("échec dans _on_markdown_path_chosen")
+            return
+        self.export_markdown_to(gfile.get_path())
+
+    def export_markdown_to(self, path):
+        """Issue #864 : meme document que --md-report (rapport, constats,
+        TLS/QUIC, securite, objets de session, moteur de regles, noms)."""
+        from netcross_report import generate_markdown_report
+
+        logger.debug("export_markdown_to: {}", path)
+        try:
+            generate_markdown_report(
+                self.last_report,
+                path,
+                findings=self.last_findings,
+                tls_findings=self.last_tls_findings,
+                quic_findings=self.last_quic_findings,
+                session_objects=self._session_objects(),
+                security_report=self.last_security_report,
+                rule_engine_findings=self.last_rule_engine,
+                names=self.names_table,
+            )
+        except OSError as e:
+            logger.exception(f"échec dans export_markdown_to: {e}")
+            self.status_label.set_text(f"Erreur Markdown : {e}")
+            return None
+        self.status_label.set_text(f"Rapport Markdown ecrit dans {path}")
+        return path
 
     def export_json_to(self, path):
         """Separe de la callback du dialogue pour pouvoir etre pilote directement (tests)."""

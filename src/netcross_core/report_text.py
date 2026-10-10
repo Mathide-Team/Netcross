@@ -66,115 +66,11 @@ def _linktype_lisible(code) -> str:
     return f"{code} ({nom})" if nom else str(code)
 
 
-def print_report(r: Report):
-    logger.debug("print_report: r={}", summarize(r, "r"))
-    print("=" * 70)
-    print("ANALYSE CROISEE DE CAPTURES")
-    print("=" * 70)
-
-    print("\n-- Paquets/flux identifies par point --")
-    for p in r.points:
-        print(f"  {p:15s} : {r.seen_count[p]}")
-
-    if r.duplicate_count:
-        # Job 41/issue #161 -- section absente si la detection n'a pas ete
-        # demandee ou n'a rien trouve : la sortie historique reste inchangee.
-        print("\n-- Doublons inter-captures (meme payload vu a deux points quasi simultanement) --")
-        for (a, b), n in sorted(r.duplicate_count.items()):
-            print(f"  {a} <-> {b} : {n} paquet(s) duplique(s)")
-        if r.duplicates_excluded:
-            print("  (ces doublons sont EXCLUS des compteurs, debits et de la correlation de ce rapport)")
-        else:
-            print(
-                "  ATTENTION : ces doublons sont ENCORE COMPTES dans les statistiques "
-                "ci-dessous (paquets/octets potentiellement doubles) -- "
-                "--exclude-duplicates les en retire."
-            )
-
-    if r.capture_comments or r.packet_comments:
-        # Job 39/issue #159 -- section absente si la capture ne porte aucun
-        # commentaire pcapng (cas le plus frequent) : la sortie historique
-        # reste inchangee. Deux sous-parties, deux origines distinctes (voir
-        # Report.capture_comments/packet_comments dans models.py).
-        print("\n-- Commentaires pcapng --")
-        for c in r.capture_comments:
-            print(f"  [section] {c}")
-        for c in r.packet_comments:
-            print(f"  [paquet] {c}")
-
-    if r.capture_infos:
-        # Job 38/issue #158 -- metadonnees de capture (format, snaplen,
-        # paquets perdus...). Section absente si capinfos est absent ou si
-        # aucune metadonnee n'a pu etre lue : la sortie historique reste
-        # inchangee.
-        print("\n-- Metadonnees de capture --")
-        for info in r.capture_infos:
-            label = info["label"]
-            ftype = info.get("file_type") or "?"
-            version = info.get("version") or "?"
-            pkts = info.get("packet_count")
-            # encapsulation : link type au niveau FICHIER, tel que lu par
-            # capinfos ("ether"). Il etait extrait et propage jusqu'ici
-            # depuis le Job 38 mais jamais affiche (issue #263) -- or c'est
-            # la seule source de link type quand le cadrage binaire du
-            # fichier n'a pas pu etre lu (cas d'une capture compressee),
-            # auquel cas "interfaces" est vide et le detail par interface
-            # ci-dessous n'affiche rien du tout.
-            encap = info.get("encapsulation")
-            resume = f"  {label} : {ftype} v{version}"
-            if encap:
-                resume += f", encapsulation {encap}"
-            if pkts is not None:
-                resume += f", {pkts} paquets"
-            print(resume)
-            snaplen = info.get("snaplen")
-            if snaplen is not None:
-                print(f"      snaplen : {snaplen}")
-            dur = info.get("duration_seconds")
-            if dur is not None:
-                print(f"      duree : {dur:.3f}s")
-            hw = info.get("hardware")
-            if hw:
-                print(f"      materiel : {hw}")
-            os_name = info.get("operating_system")
-            if os_name:
-                print(f"      OS : {os_name}")
-            app = info.get("application")
-            if app:
-                print(f"      application : {app}")
-            dropped_if = info.get("dropped_by_interface")
-            dropped_os = info.get("dropped_by_os")
-            if dropped_if is not None or dropped_os is not None:
-                parts = []
-                if dropped_if is not None:
-                    parts.append(f"interface : {dropped_if}")
-                if dropped_os is not None:
-                    parts.append(f"OS : {dropped_os}")
-                print(f"      paquets perdus ({', '.join(parts)})")
-            interfaces = info.get("interfaces", [])
-            if not encap and not interfaces:
-                # Regle de tracabilite du projet : une information absente
-                # est signalee, pas omise. Sans cette ligne, un rapport sur
-                # une capture dont ni capinfos ni le cadrage binaire n'ont
-                # livre le link type serait indistinguable d'un rapport ou
-                # la question ne se pose pas.
-                print("      link type : non renseigne (ni capinfos, ni cadrage du fichier)")
-            for iface in interfaces:
-                iface_name = iface.get("name") or f"iface{iface.get('index', '?')}"
-                iface_parts = [f"linktype {_linktype_lisible(iface.get('linktype'))}"]
-                if iface.get("snaplen") is not None:
-                    iface_parts.append(f"snaplen {iface['snaplen']}")
-                recv = iface.get("received")
-                if recv is not None:
-                    iface_parts.append(f"recus {recv}")
-                drop_if = iface.get("dropped_by_interface")
-                drop_os = iface.get("dropped_by_os")
-                if drop_if is not None:
-                    iface_parts.append(f"perdus(iface) {drop_if}")
-                if drop_os is not None:
-                    iface_parts.append(f"perdus(os) {drop_os}")
-                print(f"      [{iface_name}] {', '.join(iface_parts)}")
-
+def _print_multi_point_sections(r: Report):
+    """Sections qui comparent des points entre eux : topologie, pertes, trafic
+    hors chemin, latence, decalage d'horloge, sauts de routeur, QoS. Sans objet
+    pour une capture unique (issue #474 lot 2) : print_report ne les appelle
+    qu'a partir de deux points."""
     print("\n-- Topologie deduite (delta TTL + recouvrement de flux entre points) --")
     if r.topology_edges:
         for u, d, info in r.topology_edges:
@@ -294,15 +190,6 @@ def print_report(r: Report):
         print(f"\n-- Chaine de sauts {r.points[0]} -> {r.points[-1]} --")
         print("  " + " ".join(chain_parts) + f"  (total: {total_hops} saut(s))")
 
-    if any(r.ttl_unstable.values()):
-        print("\n-- Instabilite de route intra-flux (TTL variable pour un meme flux) --")
-        for p in r.points:
-            if r.ttl_unstable[p]:
-                print(
-                    f"  {p:15s} : {r.ttl_unstable[p]} flux avec TTL variable "
-                    f"(routage asymetrique / load-balancing par paquet possible)"
-                )
-
     print("\n-- Changements de marquage QoS (DSCP) entre points --")
     any_qos = False
     for a, b in r.pairs:
@@ -318,6 +205,134 @@ def print_report(r: Report):
             )
     if not any_qos:
         print("  aucun changement detecte")
+    logger.debug("_print_multi_point_sections: fin")
+
+
+def print_report(r: Report):
+    logger.debug("print_report: r={}", summarize(r, "r"))
+    print("=" * 70)
+    print("ANALYSE CROISEE DE CAPTURES")
+    print("=" * 70)
+
+    print("\n-- Paquets/flux identifies par point --")
+    for p in r.points:
+        print(f"  {p:15s} : {r.seen_count[p]}")
+
+    if r.duplicate_count:
+        # Job 41/issue #161 -- section absente si la detection n'a pas ete
+        # demandee ou n'a rien trouve : la sortie historique reste inchangee.
+        print("\n-- Doublons inter-captures (meme payload vu a deux points quasi simultanement) --")
+        for (a, b), n in sorted(r.duplicate_count.items()):
+            print(f"  {a} <-> {b} : {n} paquet(s) duplique(s)")
+        if r.duplicates_excluded:
+            print("  (ces doublons sont EXCLUS des compteurs, debits et de la correlation de ce rapport)")
+        else:
+            print(
+                "  ATTENTION : ces doublons sont ENCORE COMPTES dans les statistiques "
+                "ci-dessous (paquets/octets potentiellement doubles) -- "
+                "--exclude-duplicates les en retire."
+            )
+
+    if r.capture_comments or r.packet_comments:
+        # Job 39/issue #159 -- section absente si la capture ne porte aucun
+        # commentaire pcapng (cas le plus frequent) : la sortie historique
+        # reste inchangee. Deux sous-parties, deux origines distinctes (voir
+        # Report.capture_comments/packet_comments dans models.py).
+        print("\n-- Commentaires pcapng --")
+        for c in r.capture_comments:
+            print(f"  [section] {c}")
+        for c in r.packet_comments:
+            print(f"  [paquet] {c}")
+
+    if r.capture_infos:
+        # Job 38/issue #158 -- metadonnees de capture (format, snaplen,
+        # paquets perdus...). Section absente si capinfos est absent ou si
+        # aucune metadonnee n'a pu etre lue : la sortie historique reste
+        # inchangee.
+        print("\n-- Metadonnees de capture --")
+        for info in r.capture_infos:
+            label = info["label"]
+            ftype = info.get("file_type") or "?"
+            version = info.get("version") or "?"
+            pkts = info.get("packet_count")
+            # encapsulation : link type au niveau FICHIER, tel que lu par
+            # capinfos ("ether"). Il etait extrait et propage jusqu'ici
+            # depuis le Job 38 mais jamais affiche (issue #263) -- or c'est
+            # la seule source de link type quand le cadrage binaire du
+            # fichier n'a pas pu etre lu (cas d'une capture compressee),
+            # auquel cas "interfaces" est vide et le detail par interface
+            # ci-dessous n'affiche rien du tout.
+            encap = info.get("encapsulation")
+            resume = f"  {label} : {ftype} v{version}"
+            if encap:
+                resume += f", encapsulation {encap}"
+            if pkts is not None:
+                resume += f", {pkts} paquets"
+            print(resume)
+            snaplen = info.get("snaplen")
+            if snaplen is not None:
+                print(f"      snaplen : {snaplen}")
+            dur = info.get("duration_seconds")
+            if dur is not None:
+                print(f"      duree : {dur:.3f}s")
+            hw = info.get("hardware")
+            if hw:
+                print(f"      materiel : {hw}")
+            os_name = info.get("operating_system")
+            if os_name:
+                print(f"      OS : {os_name}")
+            app = info.get("application")
+            if app:
+                print(f"      application : {app}")
+            dropped_if = info.get("dropped_by_interface")
+            dropped_os = info.get("dropped_by_os")
+            if dropped_if is not None or dropped_os is not None:
+                parts = []
+                if dropped_if is not None:
+                    parts.append(f"interface : {dropped_if}")
+                if dropped_os is not None:
+                    parts.append(f"OS : {dropped_os}")
+                print(f"      paquets perdus ({', '.join(parts)})")
+            interfaces = info.get("interfaces", [])
+            if not encap and not interfaces:
+                # Regle de tracabilite du projet : une information absente
+                # est signalee, pas omise. Sans cette ligne, un rapport sur
+                # une capture dont ni capinfos ni le cadrage binaire n'ont
+                # livre le link type serait indistinguable d'un rapport ou
+                # la question ne se pose pas.
+                print("      link type : non renseigne (ni capinfos, ni cadrage du fichier)")
+            for iface in interfaces:
+                iface_name = iface.get("name") or f"iface{iface.get('index', '?')}"
+                iface_parts = [f"linktype {_linktype_lisible(iface.get('linktype'))}"]
+                if iface.get("snaplen") is not None:
+                    iface_parts.append(f"snaplen {iface['snaplen']}")
+                recv = iface.get("received")
+                if recv is not None:
+                    iface_parts.append(f"recus {recv}")
+                drop_if = iface.get("dropped_by_interface")
+                drop_os = iface.get("dropped_by_os")
+                if drop_if is not None:
+                    iface_parts.append(f"perdus(iface) {drop_if}")
+                if drop_os is not None:
+                    iface_parts.append(f"perdus(os) {drop_os}")
+                print(f"      [{iface_name}] {', '.join(iface_parts)}")
+
+    if len(r.points) >= 2:
+        _print_multi_point_sections(r)
+    else:
+        # issue #474 lot 2 : une seule capture -> pas de bruit multi-points
+        print(
+            "\n-- Capture unique : sections multi-points omises (topologie, pertes, "
+            "latence, sauts de routeur, QoS entre points) --"
+        )
+    if any(r.ttl_unstable.values()):
+        print("\n-- Instabilite de route intra-flux (TTL variable pour un meme flux) --")
+        for p in r.points:
+            if r.ttl_unstable[p]:
+                print(
+                    f"  {p:15s} : {r.ttl_unstable[p]} flux avec TTL variable "
+                    f"(routage asymetrique / load-balancing par paquet possible)"
+                )
 
     print("\n-- VLAN 802.1Q --")
     any_vlan = any(r.vlan_seen.values())

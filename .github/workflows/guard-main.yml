@@ -18,7 +18,9 @@ permissions:
 jobs:
   garde-dev-vers-main:
     name: "Garde : PR vers main doit venir de dev"
-    runs-on: ubuntu-latest
+    # Runners maison (groupe maison, Ubuntu 20.04, root) ; repli GitHub :
+    # variable NETCROSS_RUNS_ON_LEGER = '"ubuntu-latest"'.
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON_LEGER || '{"group":"maison","labels":["self-hosted","linux"]}') }}
     steps:
       - name: Vérifier la branche source
         run: |

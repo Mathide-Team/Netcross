@@ -56,7 +56,7 @@ def test_les_deux_modes_renseignent_exactement_les_memes_champs():
     analyse = analysis_outcome("single", _Rapport(), [], [], "texte")
     comparaison = diff_outcome([], _Rapport(), _Rapport(), "texte")
     assert set(analyse.etat()) == set(comparaison.etat())
-    assert len(analyse.etat()) == 16
+    assert len(analyse.etat()) == 17  # + rule_engine (#864)
 
 
 def test_l_analyse_efface_l_etat_de_comparaison():

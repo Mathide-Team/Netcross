@@ -15,20 +15,36 @@ GLib.idle_add(self._log, ...) du code original.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import io
 import os
+import shutil
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from netcross_core.correlate import correlate
-from netcross_core.logging_config import get_logger
+from netcross_core.logging_config import get_logger, summarize
 from netcross_core.models import Report
 from netcross_core.parsing import parse_capture
 from netcross_core.report_text import print_report
 from netcross_core.wireshark_expert import build_wireshark_expert_events
+from netcross_gtk4 import capture_list
+from netcross_gtk4.advanced_options import AdvancedSettings, load_host_set, workers_note
+from netcross_gtk4.advanced_options import validate as validate_advanced
+from netcross_gtk4.expertise_view import (
+    ExpertiseExports,
+    ExpertiseSettings,
+    timeline_summary,
+    tshark_stats_summary,
+    validate_settings,
+)
+from netcross_gtk4.notifications import NotifySettings, send_notifications
+from netcross_gtk4.report_exports import HistorySettings, ReportContext, record_history
 from netcross_report.security_report import build_security_report, print_security_report
+from netcross_report.siem_export import observed_bounds
 
 logger = get_logger(__name__)
 
@@ -57,6 +73,31 @@ class AnalysisOptions:
     detect_duplicates: bool = False
     exclude_duplicates: bool = False
     duplicate_threshold_ms: float = 2.0
+    # Issue #474 lot 2 : un point par interface d'un pcapng (--split-interfaces)
+    split_interfaces: bool = False
+    # Issue #675 : index de recherche forensic (--forensic-search), construit
+    # ici pendant que les paquets sont encore en memoire
+    forensic_index: bool = False
+    # Issue #675 : comparaison de postes (--client-group, --client-reference)
+    client_groups: dict | None = None
+    client_reference: str | None = None
+    # Issue #676 : notifications (webhook, Slack, courriel) sur le rapport de
+    # securite, comme --notify-on de la CLI. None ou sans seuil : aucune.
+    notify: NotifySettings | None = None
+    # Issue #673 : sections d'expertise (--rule-engine, --expert-section,
+    # --media-quality, --tshark-stats, --flow-timeline)
+    expertise: ExpertiseSettings | None = None
+    # Issue #672 : options avancees (--max-packets, --sample,
+    # --parallel-workers, --test-net-external, --known-*, --cve-db)
+    advanced: AdvancedSettings | None = None
+    # Issue #674 : historique SQLite (--history-db, --history-label)
+    history: HistorySettings | None = None
+    # Issue #866 : module IA local (--ai-*) ; None ou sans usage : aucun
+    ai: Any = None
+
+    # Issue #867 : plugins charges avant l'analyse (--plugins, --plugin-path,
+    # --plugin-export) ; None = aucun plugin demande
+    plugins: Any = None
 
 
 @dataclass
@@ -75,12 +116,23 @@ class AnalysisResult:
     # l'analyse de securite n'a pas ete demandee -- meme objet que celui de
     # --security-report, pour les exports JSON/PDF/HTML de la GUI
     security_report: Any = None
+    # Issue #675 : ForensicSearchIndex, None sans « Index de recherche forensic »
+    search_index: Any = None
+    # Issue #675 : ClientComparisonResult, None sans groupes de postes
+    client_comparison: Any = None
+    # Issue #673 : chronologie des flux et statistiques tshark (JSON)
+    expertise: ExpertiseExports | None = None
+    # Issue #674 : bornes STIX, historique, contexte du ticket de support
+    report_context: ReportContext | None = None
+    # Issue #866 : resultat JSON du module IA (meme document que --ai-report)
+    ai: dict | None = None
 
 
 def load_packets(
     captures: Sequence[tuple[str, str]],
     parallel: bool,
     on_progress: Callable[[str], None] | None = None,
+    max_workers: int | None = None,
 ) -> list:
     """Charge les paquets depuis une liste de (label, chemin).
 
@@ -91,7 +143,7 @@ def load_packets(
     if parallel:
         from pcap_parser.capture import parse_captures_parallel
 
-        all_packets, per_file_stats = parse_captures_parallel(captures)
+        all_packets, per_file_stats = parse_captures_parallel(captures, max_workers=max_workers)
         if on_progress:
             for s in per_file_stats:
                 if s["error"]:
@@ -153,6 +205,12 @@ def run_analysis_pipeline(
         logger.debug("run_analysis_pipeline: si options.security and options.redact -> levée ValueError")
         raise ValueError("le rapport de securite n'est pas disponible avec l'anonymisation des adresses")
 
+    if options.client_groups and options.redact:
+        # meme refus que --client-group --redact (CLI) : les groupes portent
+        # des IP reelles, introuvables dans des paquets anonymises
+        logger.debug("run_analysis_pipeline: client_groups and redact -> levée ValueError")
+        raise ValueError("la comparaison de postes n'est pas disponible avec l'anonymisation des adresses")
+
     def _log(msg: str) -> None:
         # Avec la GUI, on_progress aboutit a MainWindow._log qui trace deja
         # chaque ligne ("journal: ...") : on ne trace ici que sans callback,
@@ -163,10 +221,83 @@ def run_analysis_pipeline(
             logger.debug("étape: {}", msg)
         logger.debug("run_analysis_pipeline._log: fin")
 
-    points_order = None if options.auto_topology else [label for label, _ in captures]
+    if options.split_interfaces:
+        # Fichiers extraits gardes jusqu'a la fin du processus, comme la CLI
+        # (atexit) : les vues et exports de la GUI peuvent relire les chemins.
+        workdir = tempfile.mkdtemp(prefix="netcross-gui-split-")
+        atexit.register(shutil.rmtree, workdir, True)
+        captures = expand_split_interfaces(captures, workdir, _log)
+    result = _run_pipeline(captures, options, on_progress, _log)
+    logger.debug("run_analysis_pipeline: retour result={}", summarize(result, "result"))
+    return result
+
+
+def expand_split_interfaces(
+    captures: Sequence[tuple[str, str]],
+    workdir: str,
+    log: Callable[[str], None],
+) -> list[tuple[str, str]]:
+    """Comme --split-interfaces de la CLI (issue #474 lot 2) : chaque fichier
+    qui contient plusieurs captures devient un point NOM:INTERFACE par
+    capture, extraite dans `workdir`. Un fichier a une seule capture, ou
+    illisible, est garde tel quel (la lecture normale signalera l'erreur)."""
+    from pcap_parser.capture import split_by_interface
+    from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
+
+    expanded: list[tuple[str, str]] = []
+    for index, (label, path) in enumerate(captures):
+        try:
+            slices = split_by_interface(path, os.path.join(workdir, str(index)))
+        except (OSError, TsharkNotFoundError, TsharkError) as exc:
+            logger.warning("separation des interfaces : {} non separe ({})", path, exc)
+            log(f"[{label}] separation des interfaces impossible ({exc}) : fichier lu tel quel")
+            expanded.append((label, path))
+            continue
+        if len(slices) <= 1:
+            log(f"[{label}] une seule capture dans {path} : lu tel quel")
+            expanded.append((label, path))
+            continue
+        log(f"[{label}] {len(slices)} captures dans {path}")
+        expanded.extend((f"{label}:{s.name}", str(s.path)) for s in slices)
+    logger.debug("expand_split_interfaces: retour expanded={}", summarize(expanded, "expanded"))
+    return expanded
+
+
+def _run_pipeline(
+    captures: Sequence[tuple[str, str]],
+    options: AnalysisOptions,
+    on_progress: Callable[[str], None] | None,
+    _log: Callable[[str], None],
+) -> AnalysisResult:
+    """Etapes 1 a 11 de run_analysis_pipeline, sur des captures deja separees."""
+    # Issue #671 : deux lignes de meme nom = segments d'un meme point.
+    points_order = None if options.auto_topology else capture_list.ordre_des_points(captures)
+    for label, segments in capture_list.segments_par_point(captures).items():
+        _log(f"[{label}] {segments} segments lus a la suite (capture en rotation)")
+
+    # Issue #672 : refus et fichiers de securite lus AVANT la lecture des
+    # captures, comme la CLI (une erreur ne coute pas une analyse)
+    advanced = options.advanced or AdvancedSettings()
+    advanced_errors = validate_advanced(advanced, security=options.security)
+    if advanced_errors:
+        raise ValueError("; ".join(advanced_errors))
+    known_destinations = load_host_set(advanced.known_destinations, "--known-destinations")
+    known_hosts = load_host_set(advanced.known_hosts, "--known-hosts")
 
     # 1. Chargement
-    all_packets = load_packets(captures, options.parallel, on_progress)
+    if options.parallel and advanced.parallel_workers:
+        _log(f"Lecture parallele : {advanced.parallel_workers} lecteur(s) (--parallel-workers)")
+        note = workers_note(advanced.parallel_workers, os.cpu_count())
+        if note:
+            _log(f"  ATTENTION : {note}")
+    all_packets = load_packets(captures, options.parallel, on_progress, max_workers=advanced.parallel_workers)
+    truncation_note = None
+    if advanced.max_packets is not None or advanced.sample_n:
+        from netcross_core.packet_limits import apply_packet_limits
+
+        all_packets, truncation_note = apply_packet_limits(all_packets, advanced.max_packets, advanced.sample_n)
+        if truncation_note:
+            _log(f"ATTENTION : {truncation_note}")
 
     # 2. Doublons
     duplicate_counts = None
@@ -178,12 +309,14 @@ def run_analysis_pipeline(
         duplicate_total = sum(duplicate_counts.values())
         _log(f"  -> {duplicate_total} paquet(s) dupliqué(s) détecté(s)")
 
+    redaction_map: tuple = ()
     # 3. Anonymisation
     if options.redact:
         _log("Anonymisation des adresses IP/MAC (--redact)...")
         from netcross_core.redact import redact_packets
 
         redactor = redact_packets(all_packets)
+        redaction_map = tuple(redactor.entries())  # issue #876 : --redact-map
         _log(f"  -> {len(redactor)} adresse(s) anonymisée(s)")
 
     # 4. Corrélation
@@ -207,11 +340,25 @@ def run_analysis_pipeline(
         exclude_duplicates=options.exclude_duplicates,
         duplicate_counts=duplicate_counts,
     )
+    if truncation_note:  # issue #283 : jamais silencieuse, comme la CLI
+        report.truncated = True
+        report.truncation_note = truncation_note
 
     # 6. Expertise tshark
     _log("Expertise tshark (signaux bruts)...")
     wireshark_expert_events = build_wireshark_expert_events(all_packets)
     _log(f"  -> {len(wireshark_expert_events)} signal(aux) d'expertise")
+
+    search_index = None
+    if options.forensic_index:
+        # Meme index que --forensic-search (paquets + flux). Les paquets ne
+        # sont pas conserves par la fenetre ; l'index, lui, l'est jusqu'a
+        # l'analyse suivante -- d'ou l'option explicite.
+        from netcross_core.forensic_search import ForensicSearchIndex
+
+        _log("Index de recherche forensic...")
+        search_index = ForensicSearchIndex(all_packets, flows=flows)
+        _log(f"  -> {len(search_index)} element(s) indexe(s)")
 
     # 7. Métadonnées de capture
     if captures:
@@ -225,6 +372,8 @@ def run_analysis_pipeline(
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         print_report(report)
+        if report.truncated:
+            print(f"\nATTENTION : {report.truncation_note}")
 
     # 9. Triage
     findings = None
@@ -246,6 +395,30 @@ def run_analysis_pipeline(
             print("=" * 70)
             print_triage(ranked, options.triage_topn)
             print(format_health_line(health_score(ranked)))
+
+    # 9 bis. Comparaison de postes (issue #675) -- meme appel que la CLI
+    client_comparison = None
+    if options.client_groups:
+        _log("Comparaison de postes...")
+        from netcross_core.client_diff import compare_clients, print_client_comparison
+
+        client_comparison = compare_clients(
+            all_packets,
+            options.client_groups,
+            reference=options.client_reference,
+            points_order=points_order,
+            bucket_seconds=options.bucket_ms / 1000.0,
+            nat_tolerant=options.nat_tolerant,
+            nat_window_ms=options.nat_window_ms,
+            rtp_clock_rate=options.rtp_rate,
+        )
+        with contextlib.redirect_stdout(buf):
+            print_client_comparison(client_comparison)
+
+    # 9 ter. Sections d'expertise (issue #673) -- memes fonctions que la CLI
+    expertise_exports = None
+    if options.expertise is not None and options.expertise.active:
+        expertise_exports = _run_expertise(options.expertise, report, findings, flows, all_packets, captures, buf, _log)
 
     # 10. TLS
     tls_findings = None
@@ -295,16 +468,77 @@ def run_analysis_pipeline(
                 print_quic_diagnostics(quic_findings)
 
     security_report = None
+    if options.notify is not None and options.notify.active and not options.security:
+        _log("Notifications ignorees : elles portent sur le rapport de securite, non demande.")
     if options.security:
-        security_report = run_security_analysis(report, all_packets, captures, _log)
+        security_report = run_security_analysis(
+            report,
+            all_packets,
+            captures,
+            _log,
+            known_destinations=known_destinations,
+            known_hosts=known_hosts,
+            test_net_external=advanced.test_net_external,
+            cve_db=advanced.cve_db,
+            plugins=options.plugins,
+        )
+        if options.notify is not None and options.notify.active:
+            # Avant l'impression : la section « Notifications » du rapport
+            # de securite trace chaque canal, comme dans la CLI.
+            _log("Notifications...")
+            security_report.notifications = send_notifications(report, security_report, options.notify)
+            for entry in security_report.notifications:
+                _log(f"  -> {entry['line']}")
         with contextlib.redirect_stdout(buf):
             print()
             print_security_report(security_report)
 
+    ai_result = None
+    if options.ai is not None and options.ai.requested:
+        # Issue #866 : apres l'analyse de securite, comme --ai-* de la CLI.
+        from netcross_gtk4.ai_settings import run_ai_section
+
+        _log("Module IA local...")
+        ai_result, ai_text, ai_logs = run_ai_section(options.ai, report, all_packets)
+        for line in ai_logs:
+            _log(line)
+        if ai_text:
+            with contextlib.redirect_stdout(buf):
+                print(ai_text)
+
+    if options.plugins is not None:
+        _run_plugin_exports(report, options.plugins, security_done=options.security, log=_log)
+
+    history = options.history or HistorySettings()
+    history_message = ""
+    if history.db_path:
+        from netcross_report import HistoryDatabaseError
+
+        try:
+            history_message = record_history(
+                report, history, findings=findings, tls=tls_findings, quic=quic_findings, redact=options.redact
+            )
+        except HistoryDatabaseError as exc:
+            # L'analyse reste valable : on la garde et on dit clairement que
+            # la trace demandee n'a pas ete conservee (issue #287).
+            logger.exception("historique non enregistre : {}", exc)
+            history_message = f"ERREUR historique non enregistre : {exc}"
+        _log(history_message)
+    observed_from, observed_until = observed_bounds(all_packets)
+    report_context = ReportContext(
+        observed_from=observed_from,
+        observed_until=observed_until,
+        captures=len(captures),
+        redact=options.redact,
+        history=history,
+        history_message=history_message,
+        redaction_map=redaction_map,
+    )
+
     text = buf.getvalue()
     _log("Analyse terminée.")
 
-    logger.debug("run_analysis_pipeline: retour AnalysisResult(…)")
+    logger.debug("_run_pipeline: retour AnalysisResult(…)")
     return AnalysisResult(
         mode="single",
         report=report,
@@ -314,15 +548,86 @@ def run_analysis_pipeline(
         tls_findings=tls_findings,
         quic_findings=quic_findings,
         wireshark_expert_events=wireshark_expert_events,
+        search_index=search_index,
+        client_comparison=client_comparison,
         security_report=security_report,
+        expertise=expertise_exports,
+        report_context=report_context,
+        ai=ai_result,
     )
 
 
-def run_security_analysis(report, all_packets, captures, log: Callable[[str], None]):
+def _run_expertise(settings, report, findings, flows, all_packets, captures, buf, log):
+    """Sections d'expertise de l'issue #673, dans l'ordre de la CLI. Renvoie
+    les documents JSON a exporter ; les constats calcules pour la section
+    expertise sans triage restent locaux (le resultat garde ceux du triage)."""
+    validate_settings(settings)
+    rule_engine = None
+    if settings.rule_engine:
+        log("Moteur de regles...")
+        from netcross_report import print_rule_engine
+
+        with contextlib.redirect_stdout(buf):
+            rule_engine = print_rule_engine(report)
+    if settings.media_quality:
+        log("Qualite media (relecture des captures)...")
+        from netcross_core.extract.contents import format_extraction, run_extraction
+
+        with contextlib.redirect_stdout(buf):
+            print("\n" + "=" * 70)
+            print("CONTENUS AUDIO/VIDEO/DOCUMENTS (relit les memes fichiers)")
+            print("=" * 70)
+            for line in format_extraction(run_extraction(captures, out_dir=None, kinds=())):
+                print(line)
+    if settings.expert_section:
+        log("Section expertise...")
+        from netcross_report import build_findings
+        from netcross_report.session_objects import build_session_objects, print_session_objects
+
+        if findings is None:
+            findings = build_findings(report)
+        session_objects = build_session_objects(report, findings, flows, all_packets)
+        with contextlib.redirect_stdout(buf):
+            print()
+            print_session_objects(session_objects)
+    flow_timelines = None
+    if settings.flow_timeline:
+        log("Chronologie des flux...")
+        from netcross_core.flow_timeline import build_flow_timelines
+
+        flow_timelines = build_flow_timelines(all_packets, window_s=settings.flow_timeline_window)
+        log(f"  -> {timeline_summary(flow_timelines)}")
+    tshark_stats = None
+    if settings.tshark_stats:
+        log("Statistiques tshark (relecture des captures)...")
+        from netcross_core.tshark_stats import collect_capture_stats
+
+        tshark_stats = collect_capture_stats(
+            captures, on_error=lambda label, path, exc: log(f"  -> {label} ({path}) : {exc}")
+        )
+        log(f"  -> {tshark_stats_summary(tshark_stats)}")
+    logger.debug("_run_expertise: fin")
+    return ExpertiseExports(flow_timelines=flow_timelines, tshark_stats=tshark_stats, rule_engine=rule_engine)
+
+
+def run_security_analysis(
+    report,
+    all_packets,
+    captures,
+    log: Callable[[str], None],
+    *,
+    known_destinations=None,
+    known_hosts=None,
+    test_net_external: bool = False,
+    cve_db: str | None = None,
+    plugins: Any = None,
+):
     """Analyse de securite de la GUI (issue #357), alignee sur
     --security-report : signatures d'exploits relues sur les fichiers,
-    correlation CVE sur la base minimale embarquee (la GUI n'a pas de
-    --cve-db), puis `build_security_report`. Retourne le SecurityReport."""
+    correlation CVE sur la base choisie (--cve-db, issue #672) ou, a
+    defaut, sur la base minimale embarquee, puis `build_security_report`.
+    Retourne le SecurityReport."""
+    from netcross_core.security import connect_cve_db
     from netcross_core.security.cve_db import close_db
     from netcross_core.security.cve_seed import open_seed_db
     from netcross_core.security.findings import apply_security_findings, scan_capture_exploits
@@ -338,20 +643,59 @@ def run_security_analysis(report, all_packets, captures, log: Callable[[str], No
         log(f"  [{label}] {len(found)} signature(s) d'exploit")
         detections.extend(found)
     cve_conn = None
+    if cve_db:
+        cve_conn = connect_cve_db(cve_db)
+        log(f"  Base CVE : {cve_db} (--cve-db)")
     try:
-        cve_conn, seed = open_seed_db()
-        log(
-            f"  Base CVE minimale embarquee ({len(seed.entries)} CVE critiques, NVD {seed.generated}) : "
-            "une version absente de cette selection n'est pas pour autant non vulnerable."
-        )
+        if cve_conn is None:
+            cve_conn, seed = open_seed_db()
+            log(
+                f"  Base CVE minimale embarquee ({len(seed.entries)} CVE critiques, NVD {seed.generated}) : "
+                "une version absente de cette selection n'est pas pour autant non vulnerable."
+            )
     except (OSError, ValueError) as exc:
         logger.warning("run_security_analysis: base CVE embarquée illisible ({})", exc)
         log(f"  Base CVE embarquee illisible ({exc}) : services listes sans correlation CVE.")
     try:
-        apply_security_findings(report, all_packets, detections=detections, cve_conn=cve_conn)
+        apply_security_findings(
+            report,
+            all_packets,
+            detections=detections,
+            cve_conn=cve_conn,
+            known_destinations=known_destinations,
+            known_hosts=known_hosts,
+            treat_test_net_as_external=test_net_external,
+        )
     finally:
         if cve_conn is not None:
             close_db(cve_conn)
+    if plugins is not None:
+        # Issue #867 : detecteurs autorises apres les constats du coeur,
+        # avant build_security_report (section « Plugins »), comme la CLI.
+        from netcross_gtk4.plugin_settings import detector_runs
+
+        runs = detector_runs(plugins, all_packets, report)
+        report.plugin_runs += runs
+        for run in runs:
+            log(f"  Plugins : {run['line']}")
     log(f"  -> {len(report.security_findings)} constat(s) de securite")
     logger.debug("run_security_analysis: {} constat(s) de sécurité", len(report.security_findings))
     return build_security_report(report)
+
+
+def _run_plugin_exports(report, plugins, security_done: bool, log: Callable[[str], None]) -> None:
+    """Issue #867 : exporteurs ``NOM=FICHIER`` apres l'analyse. Sans rapport
+    de securite, les plugins non charges sont traces ici (sinon deja dans
+    la section « Plugins »), comme la CLI."""
+    from netcross_core.plugins import load_error_runs
+    from netcross_gtk4.plugin_settings import exporter_runs
+
+    if not security_done:
+        errors = load_error_runs(plugins.loaded.errors)
+        report.plugin_runs += errors
+        for run in errors:
+            log(f"Plugins : {run['line']}")
+    for run in exporter_runs(plugins, report):
+        report.plugin_runs.append(run)
+        log(f"Plugins : {run['line']}")
+    logger.debug("_run_plugin_exports: {} ligne(s) de plugin", len(report.plugin_runs))

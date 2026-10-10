@@ -50,7 +50,14 @@ paths:
 
         NOM=a,b``). ``split_interfaces`` sépare les interfaces d''un pcapng
 
-        multi-interfaces en points distincts (équiv. ``--split-interfaces``).'
+        multi-interfaces en points distincts (équiv. ``--split-interfaces``).
+
+
+        Issue #330 (suite) : ``bucket_ms``, ``rtp_clock_rate``, ``idle_timeout_seconds``,
+
+        ``detect_duplicates``, ``exclude_duplicates`` et ``duplicate_threshold_ms``
+
+        sont les équivalents des options de même nom de la CLI.'
       operationId: upload_capture_captures_post
       security:
       - APIKeyHeader: []
@@ -129,6 +136,13 @@ paths:
         ou ``/status``) détaille les pertes et le délai de chaque segment.
 
         Options d''analyse : comme ``POST /captures`` (issue #330, #672).
+
+
+        Issue #474 lot 2 : avec ``split_interfaces=true``, un seul fichier est
+
+        accepté (pcapng multi-interfaces) ; ``points_order`` cite alors les
+
+        étiquettes ``ETIQUETTE:INTERFACE`` et est validé après la séparation.
 
 
         Issue #671 : ``split_interfaces`` sépare les interfaces d''un pcapng
@@ -382,6 +396,60 @@ paths:
             application/json:
               schema: {}
             text/plain: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/markdown:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Markdown
+      description: 'Rapport Markdown d''une analyse terminée (équivalent de ``--md-report``,
+
+        issue #864) : rapport, constats, TLS/QUIC, sécurité, objets de session et,
+
+        si l''analyse l''avait demandé, moteur de règles.
+
+
+        409 si l''analyse a été relue depuis SQLite après un redémarrage.'
+      operationId: get_analysis_markdown_analyses__analysis_id__markdown_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/markdown: {}
         '401':
           content:
             application/json:
@@ -778,6 +846,120 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/ai:
+    post:
+      tags:
+      - analyses
+      summary: Run Analysis Ai
+      description: "Module IA local sur une analyse terminée (issue #866, équiv. ``--ai-*``).\n\
+        \n- ``baseline_save`` (+ ``baseline_base``, ``baseline_label``) : baseline\n\
+        \  des flux de cette analyse, rendue sous ``baseline_document`` ;\n- ``baseline``\
+        \ : anomalies de flux par rapport à cette baseline ;\n- ``training_export``\
+        \ : jeu pré-étiqueté rendu sous ``training_document`` ;\n- ``training`` :\
+        \ classification des flux (forêt aléatoire) ;\n- ``summary`` (+ ``endpoint``)\
+        \ : résumé exécutif, moteur local au serveur.\n\nMêmes validations que la\
+        \ CLI ; rien n'est conservé côté serveur (les\nfichiers joints vivent le temps\
+        \ de la requête). ``baseline`` et\n``training`` nécessitent scikit-learn (extra\
+        \ ``ai``) : sinon ``503``."
+      operationId: run_analysis_ai_analyses__analysis_id__ai_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_run_analysis_ai_analyses__analysis_id__ai_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /plugins:
+    get:
+      tags:
+      - plugins
+      summary: Get Plugins
+      description: 'Plugins disponibles côté serveur (équiv. ``--list-plugins``, issue
+        #867).
+
+
+        Installés (entry points ``netcross.detectors`` / ``netcross.exporters``)
+
+        et locaux (``NETCROSS_PLUGIN_PATH``). Un plugin listé n''est exécuté que
+
+        s''il est nommé dans le champ ``plugins`` d''une analyse.'
+      operationId: get_plugins_plugins_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: plugins
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Noms à marquer comme autorisés, séparés par des virgules (comme
+            --plugins avec --list-plugins)
+          title: Plugins
+        description: Noms à marquer comme autorisés, séparés par des virgules (comme
+          --plugins avec --list-plugins)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/support-ticket:
     post:
       tags:
@@ -788,7 +970,17 @@ paths:
 
         Construit un ticket anonymisé en mémoire à partir des erreurs
 
-        d''analyse. Le consentement explicite (consent=true) est obligatoire.'
+        d''analyse. Le consentement explicite (consent=true) est obligatoire.
+
+        Issue #877 : ``scopes`` restreint les portées (comme
+
+        ``--support-scope``), ``marker`` ajoute des marqueurs (comme
+
+        ``--support-marker``) et ``include_map=true`` ajoute la table de
+
+        correspondance des rédactions sous ``support_map`` (comme
+
+        ``--support-map``) -- usage opérateur, jamais jointe au ticket.'
       operationId: create_support_ticket_analyses__analysis_id__support_ticket_post
       security:
       - APIKeyHeader: []
@@ -816,6 +1008,43 @@ paths:
           default: diagnostic
           title: Kind
         description: Type de ticket (diagnostic, erreur, etc.)
+      - name: scopes
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Portées autorisées, séparées par des virgules (équiv. --support-scope)
+            ; toutes par défaut
+          title: Scopes
+        description: Portées autorisées, séparées par des virgules (équiv. --support-scope)
+          ; toutes par défaut
+      - name: marker
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex.
+            trace_id=T-042)
+          title: Marker
+        description: Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex.
+          trace_id=T-042)
+      - name: include_map
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: 'true : renvoie aussi la table de correspondance réelle <->
+            pseudonyme (équiv. --support-map), à NE PAS transmettre avec le ticket'
+          default: false
+          title: Include Map
+        description: 'true : renvoie aussi la table de correspondance réelle <-> pseudonyme
+          (équiv. --support-map), à NE PAS transmettre avec le ticket'
       responses:
         '200':
           description: Successful Response
@@ -1175,6 +1404,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/redact-map:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Redact Map
+      description: 'Table adresse réelle -> pseudonyme d''une analyse ``redact=true``
+
+        (équivalent de ``--redact-map``, issue #876). Gardée en mémoire
+
+        seulement (jamais en SQLite) ; à conserver en privé.'
+      operationId: get_analysis_redact_map_analyses__analysis_id__redact_map_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /comparisons/{comparison_id}/redact-map:
+    get:
+      tags:
+      - comparisons
+      summary: Get Comparison Redact Map
+      description: 'Table commune baseline/courant d''une comparaison ``redact=true``
+
+        (équivalent de ``--redact-map`` de ``netcross-diff``, issue #876).'
+      operationId: get_comparison_redact_map_comparisons__comparison_id__redact_map_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: comparison_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Comparison Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /comparisons/{comparison_id}/csv:
     get:
       tags:
@@ -1217,6 +1546,585 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /batches:
+    post:
+      tags:
+      - batches
+      summary: Create Batch
+      description: 'Lot de captures (issue #872, équivalent de ``cross_capture_batch_cli.py``).
+
+
+        Inventaire de chaque capture, regroupement conservateur des captures qui
+
+        observent le même événement, un rapport par capture et par groupe, index
+
+        du lot. Une capture illisible n''arrête pas le lot (listée en échec).
+
+        ``--skip-existing`` n''a pas d''équivalent : chaque lot repart de zéro.
+
+        Avancement et résultat : ``GET /batches/{batch_id}``.'
+      operationId: create_batch_batches_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: wait
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Attendre la fin du lot (201) au lieu de 202
+          default: false
+          title: Wait
+        description: Attendre la fin du lot (201) au lieu de 202
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_create_batch_batches_post'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '201':
+          description: Lot terminé (?wait=true)
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Content Too Large
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - batches
+      summary: List Batches
+      description: Lots conservés en mémoire (les plus anciens terminés sont évincés).
+      operationId: list_batches_batches_get
+      security:
+      - APIKeyHeader: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /batches/{batch_id}:
+    get:
+      tags:
+      - batches
+      summary: Get Batch
+      description: 'Avancement (``progress``, lignes de la CLI) et résultat du lot
+        :
+
+        groupes et justification, captures isolées et motif, échecs, rapports,
+
+        constats par sévérité, synthèse.'
+      operationId: get_batch_batches__batch_id__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /batches/{batch_id}/index:
+    get:
+      tags:
+      - batches
+      summary: Get Batch Index
+      description: Index du lot (``index.txt`` de la CLI).
+      operationId: get_batch_index_batches__batch_id__index_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/plain: {}
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /batches/{batch_id}/reports/{name}:
+    get:
+      tags:
+      - batches
+      summary: Get Batch Report
+      description: Rapport texte d'une capture ou d'un groupe (``rapport-*.txt``).
+      operationId: get_batch_report_batches__batch_id__reports__name__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/plain: {}
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /history:
+    get:
+      tags:
+      - history
+      summary: List History Route
+      description: 'Runs de l''historique du serveur, du plus récent au plus ancien
+
+        (équivalent de ``netcross-history --db ...``).'
+      operationId: list_history_route_history_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: run_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: analyse ou diff (équivalent de --run-type)
+          title: Run Type
+        description: analyse ou diff (équivalent de --run-type)
+      - name: label
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Étiquette exacte (équivalent de --label)
+          title: Label
+        description: Étiquette exacte (équivalent de --label)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          description: Nombre maximal de runs (équivalent de --limit)
+          title: Limit
+        description: Nombre maximal de runs (équivalent de --limit)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response List History Route History Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /tools/merge:
+    post:
+      tags:
+      - tools
+      summary: Merge Captures Route
+      description: Fusion ordonnée par horodatage (équivalent de ``--merge``).
+      operationId: merge_captures_route_tools_merge_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_merge_captures_route_tools_merge_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/split:
+    post:
+      tags:
+      - tools
+      summary: Split Capture Route
+      description: 'Découpage ; réponse = archive zip des morceaux, dans l''ordre
+
+        (équivalent de ``--split`` / ``--split-output-dir``).'
+      operationId: split_capture_route_tools_split_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_split_capture_route_tools_split_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/convert:
+    post:
+      tags:
+      - tools
+      summary: Convert Capture Route
+      description: Conversion de format ou export structuré (équivalent de ``--convert``).
+      operationId: convert_capture_route_tools_convert_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_convert_capture_route_tools_convert_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/export:
+    post:
+      tags:
+      - tools
+      summary: Export Subset Route
+      description: Sous-ensemble filtré (équivalent de ``--export-pcap``).
+      operationId: export_subset_route_tools_export_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_export_subset_route_tools_export_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/adjust-time:
+    post:
+      tags:
+      - tools
+      summary: Adjust Time Route
+      description: 'Recalage des horodatages (équivalent de ``--adjust-time-output``)
+        ;
+
+        un seul mode parmi ``time_offset``, ``normalize``, ``align_to``.'
+      operationId: adjust_time_route_tools_adjust_time_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_adjust_time_route_tools_adjust_time_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/replay:
+    post:
+      tags:
+      - tools
+      summary: Replay Capture Route
+      description: 'Rejeu sur une interface réseau via tcpreplay (équivalent de
+
+        ``--replay``) : ÉMET du trafic réel. Refusé (403) si ``interface``
+
+        n''est pas autorisée par ``NETCROSS_REPLAY_INTERFACES`` côté serveur.
+
+        Réponse à la fin du rejeu.'
+      operationId: replay_capture_route_tools_replay_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_replay_capture_route_tools_replay_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Replay Capture Route Tools Replay Post
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: tcpreplay absent du serveur
+        '403':
+          description: Interface non autorisée par NETCROSS_REPLAY_INTERFACES (rejeu
+            désactivé par défaut)
+      security:
+      - APIKeyHeader: []
+  /lua-doc/classes:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Classes
+      description: Liste des classes (équivalent de ``netcross-lua-doc --classes --json``).
+      operationId: get_lua_classes_lua_doc_classes_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Lua Classes Lua Doc Classes Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
+      security:
+      - APIKeyHeader: []
+  /lua-doc/classes/{name}:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Class
+      description: 'Fiche complète d''une classe, insensible à la casse (équivalent
+        de
+
+        ``netcross-lua-doc --class NOM --json``).'
+      operationId: get_lua_class_lua_doc_classes__name__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Lua Class Lua Doc Classes  Name  Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /lua-doc/search:
+    get:
+      tags:
+      - lua-doc
+      summary: Search Lua Doc
+      description: 'Recherche plein texte (équivalent de ``netcross-lua-doc --json
+        TERME``).
+
+        Aucun résultat : liste vide (code 200), comme le JSON de la CLI.'
+      operationId: search_lua_doc_lua_doc_search_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          description: Terme de recherche (classes, méthodes, fonctions, attributs)
+          title: Q
+        description: Terme de recherche (classes, méthodes, fonctions, attributs)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          description: Nombre maximal de résultats (équivalent de --limit)
+          default: 20
+          title: Limit
+        description: Nombre maximal de résultats (équivalent de --limit)
+      - name: full
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Détail complet de chaque résultat (équivalent de --full)
+          default: false
+          title: Full
+        description: Détail complet de chaque résultat (équivalent de --full)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Search Lua Doc Lua Doc Search Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua introuvable sur le serveur
         '422':
           description: Validation Error
           content:
@@ -1295,11 +2203,121 @@ components:
           type: integer
           title: Security Finding Count
           default: 0
+        history_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: History Id
+          description: 'Id du run dans l''historique (history=true, #890)'
+        history_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Error
+          description: Enregistrement dans l'historique impossible (l'analyse reste
+            valable)
       type: object
       required:
       - analysis_id
       title: AnalysisSummary
       description: Résumé d'une analyse (retourné par POST /captures).
+    Body_adjust_time_route_tools_adjust_time_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à recaler
+        time_offset:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time Offset
+          description: Décalage en secondes (équivalent de --time-offset)
+        normalize:
+          type: boolean
+          title: Normalize
+          description: Premier paquet à t=0 (équivalent de --normalize-time)
+          default: false
+        align_to:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Align To
+          description: Capture de référence (équivalent de --align-to)
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_adjust_time_route_tools_adjust_time_post
+    Body_convert_capture_route_tools_convert_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à convertir
+        format:
+          type: string
+          title: Format
+          description: pcap, pcapng, erf, csv ou json (équivalent de --convert-format)
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_convert_capture_route_tools_convert_post
+    Body_create_batch_batches_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+          description: Captures du lot (.pcap, .pcapng, .cap, .erf, .gz) ou une archive
+            .zip (extraite à plat, sous-dossiers compris, comme --recursive)
+        no_group:
+          type: boolean
+          title: No Group
+          description: Aucun regroupement (équiv. --no-group)
+          default: false
+        group_window:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Group Window
+          description: Décalage d'horloge maximal toléré, en secondes (équiv. --group-window)
+        min_overlap:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Min Overlap
+          description: Recouvrement temporel minimal, ]0, 1] (équiv. --min-overlap)
+        min_common_ips:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Min Common Ips
+          description: IP communes minimales (équiv. --min-common-ips)
+        jobs:
+          type: integer
+          title: Jobs
+          description: Captures inventoriées en parallèle (équiv. --jobs)
+          default: 1
+        security_report:
+          type: boolean
+          title: Security Report
+          description: Analyse de sécurité dans chaque rapport (équiv. --security-report)
+          default: false
+      type: object
+      required:
+      - files
+      title: Body_create_batch_batches_post
     Body_create_comparison_comparisons_post:
       properties:
         baseline_files:
@@ -1379,11 +2397,63 @@ components:
           title: Triage Top N
           description: 'Nombre de segments au triage (défaut: 5)'
           default: 5
+        history:
+          type: boolean
+          title: History
+          description: 'true : enregistre la comparaison dans l''historique du serveur
+            (NETCROSS_HISTORY_DB), équivalent de --history-db (issue #874)'
+          default: false
+        history_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Label
+          description: Étiquette du run dans l'historique (équivalent de --history-label)
       type: object
       required:
       - baseline_files
       - current_files
       title: Body_create_comparison_comparisons_post
+    Body_export_subset_route_tools_export_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture source
+        bpf:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bpf
+          description: Filtre d'affichage Wireshark (équivalent de --export-bpf)
+        time_start:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time Start
+          description: Début, secondes après le 1er paquet (--export-time-start)
+        time_end:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time End
+          description: Fin, secondes après le 1er paquet (--export-time-end)
+        endpoints:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Endpoints
+          description: IP1,IP2,... en source ou destination (--export-endpoints)
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_export_subset_route_tools_export_post
     Body_extract_contents_analyses__analysis_id__extract_post:
       properties:
         files:
@@ -1407,6 +2477,29 @@ components:
       required:
       - files
       title: Body_extract_contents_analyses__analysis_id__extract_post
+    Body_merge_captures_route_tools_merge_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+          description: Captures à fusionner (pcap/pcapng, formats mélangeables)
+        dedup:
+          type: boolean
+          title: Dedup
+          description: Supprimer les paquets identiques (équivalent de --merge-dedup)
+          default: false
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng (défaut de mergecap) ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - files
+      title: Body_merge_captures_route_tools_merge_post
     Body_netflow_summary_analyses__analysis_id__netflow_post:
       properties:
         files:
@@ -1432,6 +2525,108 @@ components:
       required:
       - files
       title: Body_netflow_summary_analyses__analysis_id__netflow_post
+    Body_replay_capture_route_tools_replay_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à rejouer
+        interface:
+          type: string
+          title: Interface
+          description: Interface d'émission (équivalent de --replay)
+        speed:
+          type: string
+          title: Speed
+          description: Multiplicateur ou topspeed (équivalent de --replay-speed)
+          default: '1.0'
+        loop:
+          type: integer
+          title: Loop
+          description: Nombre de passes, >= 1 (équivalent de --replay-loop)
+          default: 1
+      type: object
+      required:
+      - file
+      - interface
+      title: Body_replay_capture_route_tools_replay_post
+    Body_run_analysis_ai_analyses__analysis_id__ai_post:
+      properties:
+        baseline:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Baseline
+          description: Baseline JSON de référence pour la détection d'anomalies (équiv.
+            --ai-anomalies)
+        baseline_base:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Baseline Base
+          description: Baseline JSON existante à enrichir avec baseline_save (équiv.
+            fichier existant de --ai-baseline-save)
+        training:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Training
+          description: Jeu d'entraînement JSON étiqueté pour la classification (équiv.
+            --ai-classify)
+        baseline_save:
+          type: boolean
+          title: Baseline Save
+          description: 'true : renvoie la baseline construite sur les flux de cette
+            analyse, supposée normale (équiv. --ai-baseline-save), sous baseline_document'
+          default: false
+        baseline_label:
+          type: string
+          title: Baseline Label
+          description: 'Avec baseline_save : nom libre (équiv. --ai-baseline-label)'
+          default: ''
+        training_export:
+          type: boolean
+          title: Training Export
+          description: 'true : renvoie les flux pré-étiquetés par les règles FLOW-4
+            (équiv. --ai-training-export), sous training_document'
+          default: false
+        summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Summary
+          description: 'Résumé exécutif : template, ollama:MODELE ou llamacpp (équiv.
+            --ai-summary) ; modèle local au serveur'
+        endpoint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Endpoint
+          description: 'Avec summary ollama/llamacpp : point d''accès local au serveur
+            (équiv. --ai-endpoint), toute adresse hors boucle locale est refusée'
+      type: object
+      title: Body_run_analysis_ai_analyses__analysis_id__ai_post
+    Body_split_capture_route_tools_split_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à découper
+        split:
+          type: string
+          title: Split
+          description: 'MODE:VALEUR : time:60, count:10000 ou size:100M (équivalent
+            de --split)'
+      type: object
+      required:
+      - file
+      - split
+      title: Body_split_capture_route_tools_split_post
     Body_upload_capture_captures_post:
       properties:
         file:
@@ -1491,6 +2686,43 @@ components:
           description: 'true : plages TEST-NET traitées comme externes (équivalent
             de --test-net-external)'
           default: false
+        parallel_workers:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Parallel Workers
+          description: Lecture parallèle avec N processus tshark (équivalent de --parallel
+            --parallel-workers N)
+        notify_on:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify On
+          description: 'Seuil de notification : critique, elevee, moyenne ou faible
+            (équivalent de --notify-on)'
+        notify_webhook:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Webhook
+          description: URL de webhook (équivalent de --notify-webhook)
+        notify_slack:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Slack
+          description: URL de webhook Slack (équivalent de --notify-slack)
+        notify_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Email
+          description: Destinataire du courriel (équivalent de --notify-email)
+        notify_detail:
+          type: string
+          title: Notify Detail
+          description: resume ou complet (équivalent de --notify-detail)
+          default: resume
         names:
           anyOf:
           - type: string
@@ -1559,6 +2791,63 @@ components:
           description: Fenêtre temporelle en secondes pour la chronologie (équiv.
             --flow-timeline-window)
           default: 1.0
+        bucket_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Bucket Ms
+          description: Fenêtre temporelle du débit en ms (équivalent de --bucket-ms)
+          default: 1000
+        rtp_clock_rate:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rtp Clock Rate
+          description: Horloge RTP en Hz pour la gigue (équivalent de --rtp-clock-rate)
+          default: 8000
+        idle_timeout_seconds:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Idle Timeout Seconds
+          description: Seuil de coupure NAT/pare-feu silencieuse en secondes, défaut
+            du cœur (60 s) si absent (équivalent de --idle-timeout-seconds)
+        detect_duplicates:
+          type: boolean
+          title: Detect Duplicates
+          description: 'true : compte les doublons inter-captures (équivalent de --detect-duplicates)'
+          default: false
+        exclude_duplicates:
+          type: boolean
+          title: Exclude Duplicates
+          description: 'true : exclut les doublons inter-captures de l''analyse (équivalent
+            de --exclude-duplicates, implique detect_duplicates)'
+          default: false
+        duplicate_threshold_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Duplicate Threshold Ms
+          description: Fenêtre de tolérance pour la détection des doublons en ms (équivalent
+            de --duplicate-threshold-ms)
+          default: 1.0
+        history:
+          type: boolean
+          title: History
+          description: 'true : enregistre l''analyse dans l''historique du serveur
+            (NETCROSS_HISTORY_DB), équivalent de --history-db (issue #890)'
+          default: false
+        history_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Label
+          description: Étiquette du run dans l'historique (équivalent de --history-label)
+        plugins:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plugins
+          description: Plugins à exécuter, séparés par des virgules (équiv. --plugins)
+            ; détecteurs uniquement, voir GET /plugins
       type: object
       required:
       - file
@@ -1629,6 +2918,43 @@ components:
           description: 'true : plages TEST-NET traitées comme externes (équivalent
             de --test-net-external)'
           default: false
+        parallel_workers:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Parallel Workers
+          description: Lecture parallèle avec N processus tshark (équivalent de --parallel
+            --parallel-workers N)
+        notify_on:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify On
+          description: 'Seuil de notification : critique, elevee, moyenne ou faible
+            (équivalent de --notify-on)'
+        notify_webhook:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Webhook
+          description: URL de webhook (équivalent de --notify-webhook)
+        notify_slack:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Slack
+          description: URL de webhook Slack (équivalent de --notify-slack)
+        notify_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notify Email
+          description: Destinataire du courriel (équivalent de --notify-email)
+        notify_detail:
+          type: string
+          title: Notify Detail
+          description: resume ou complet (équivalent de --notify-detail)
+          default: resume
         names:
           anyOf:
           - type: string
@@ -1687,6 +3013,63 @@ components:
           description: Fenêtre temporelle en secondes pour la chronologie (équiv.
             --flow-timeline-window)
           default: 1.0
+        bucket_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Bucket Ms
+          description: Fenêtre temporelle du débit en ms (équivalent de --bucket-ms)
+          default: 1000
+        rtp_clock_rate:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rtp Clock Rate
+          description: Horloge RTP en Hz pour la gigue (équivalent de --rtp-clock-rate)
+          default: 8000
+        idle_timeout_seconds:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Idle Timeout Seconds
+          description: Seuil de coupure NAT/pare-feu silencieuse en secondes, défaut
+            du cœur (60 s) si absent (équivalent de --idle-timeout-seconds)
+        detect_duplicates:
+          type: boolean
+          title: Detect Duplicates
+          description: 'true : compte les doublons inter-captures (équivalent de --detect-duplicates)'
+          default: false
+        exclude_duplicates:
+          type: boolean
+          title: Exclude Duplicates
+          description: 'true : exclut les doublons inter-captures de l''analyse (équivalent
+            de --exclude-duplicates, implique detect_duplicates)'
+          default: false
+        duplicate_threshold_ms:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Duplicate Threshold Ms
+          description: Fenêtre de tolérance pour la détection des doublons en ms (équivalent
+            de --duplicate-threshold-ms)
+          default: 1.0
+        history:
+          type: boolean
+          title: History
+          description: 'true : enregistre l''analyse dans l''historique du serveur
+            (NETCROSS_HISTORY_DB), équivalent de --history-db (issue #890)'
+          default: false
+        history_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Label
+          description: Étiquette du run dans l'historique (équivalent de --history-label)
+        plugins:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plugins
+          description: Plugins à exécuter, séparés par des virgules (équiv. --plugins)
+            ; détecteurs uniquement, voir GET /plugins
       type: object
       required:
       - files
@@ -1744,6 +3127,19 @@ components:
           type: integer
           title: Security Finding Count
           default: 0
+        history_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: History Id
+          description: 'Id du run dans l''historique (history=true, #890)'
+        history_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Error
+          description: Enregistrement dans l'historique impossible (l'analyse reste
+            valable)
         points:
           items:
             type: string

@@ -116,7 +116,7 @@ def test_parite_json_gui_cli(run, tmp_path):
 
 def test_app_raccorde_la_securite_aux_exports():
     src = APP.read_text(encoding="utf-8")
-    assert src.count("security_report=self.last_security_report") == 2  # JSON + PDF
+    assert src.count("security_report=self.last_security_report") == 3  # JSON + PDF + Markdown (#864)
     assert "result.security_report" in src
     assert "self.security_check)" in src  # desactivee avec --redact
     assert "export_security_report(self.last_security_report, path)" in src

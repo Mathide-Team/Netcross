@@ -208,18 +208,32 @@ def test_on_diff_toggled_affiche_les_panneaux_de_comparaison(window):
     assert window.single_panel.get_visible() is False
     assert window.single_options_box.get_visible() is False
     assert window.diff_options_box.get_visible() is True
-    assert window.live_check.get_sensitive() is False
+    assert window.current_panel.get_visible() is True
+    # issue #676 : la capture en direct reste disponible (courant en direct)
+    assert window.live_check.get_sensitive() is True
 
 
-def test_on_diff_toggled_desactive_le_live_actif(window):
+def test_diff_puis_live_compare_avec_un_courant_en_direct(window):
+    """Issue #676 (--live-current) : les deux modes se combinent ; le panneau
+    live remplace le panneau « Courant » des fichiers."""
+    window.diff_check.set_active(True)
+    window.diff_tls_check.set_active(True)
     window.live_check.set_active(True)
-    assert window.live_panel.get_visible() is True
 
-    window.diff_check.set_active(True)  # doit declencher _on_live_toggled(False) en cascade
-
-    assert window.live_check.get_active() is False
-    assert window.live_panel.get_visible() is False
+    assert window.diff_check.get_active() is True
     assert window.diff_panels_box.get_visible() is True
+    assert window.baseline_panel.get_visible() is True
+    assert window.current_panel.get_visible() is False
+    assert window.live_panel.get_visible() is True
+    assert window.live_extra_box.get_visible() is True
+    assert window.ring_buffer_box.get_visible() is False
+    assert window.diff_tls_check.get_active() is False
+    assert window.diff_tls_check.get_sensitive() is False
+
+    window.live_check.set_active(False)
+    assert window.current_panel.get_visible() is True
+    assert window.live_panel.get_visible() is False
+    assert window.diff_tls_check.get_sensitive() is True
 
 
 def test_on_duplicate_detection_toggled_active_le_seuil_et_l_exclusion(window):
@@ -250,18 +264,8 @@ def test_on_live_toggled_affiche_le_panneau_live(window):
     assert window.live_panel.get_visible() is True
     assert window.live_extra_box.get_visible() is True
     assert window.single_panel.get_visible() is False
-    assert window.diff_check.get_sensitive() is False
-
-
-def test_on_live_toggled_desactive_le_diff_actif(window):
-    window.diff_check.set_active(True)
-    assert window.diff_panels_box.get_visible() is True
-
-    window.live_check.set_active(True)  # doit declencher _on_diff_toggled(False) en cascade
-
-    assert window.diff_check.get_active() is False
-    assert window.diff_panels_box.get_visible() is False
-    assert window.live_panel.get_visible() is True
+    assert window.ring_buffer_box.get_visible() is True
+    assert window.diff_check.get_sensitive() is True
 
 
 def test_on_ring_buffer_toggled_active_les_spinbuttons_de_configuration(window):
@@ -318,15 +322,22 @@ def test_run_button_devient_sensible_avec_deux_captures_simples(window):
     assert window.run_btn.get_tooltip_text() is None
 
 
-def test_run_button_reste_insensible_avec_une_seule_capture_simple(window):
-    window.single_panel.add_row("/tmp/a.pcap", default_label="A")
-
+def test_run_button_insensible_sans_capture_simple(window):
     window._update_run_sensitivity()
     window._update_run_button_label()
 
     assert window.run_btn.get_sensitive() is False
     assert window.run_btn.get_label() == LABEL_LANCER_ANALYSE
     assert window.run_btn.get_tooltip_text()  # raison du refus affichee en infobulle
+
+
+def test_run_button_sensible_avec_une_seule_capture_simple(window):
+    """Issue #474 : une capture unique s'analyse (tout sauf le croise)."""
+    window.single_panel.add_row("/tmp/a.pcap", default_label="A")
+
+    window._update_run_sensitivity()
+
+    assert window.run_btn.get_sensitive() is True
 
 
 def test_run_button_libelle_et_sensibilite_en_mode_live(window):

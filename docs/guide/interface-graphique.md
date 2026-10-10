@@ -18,13 +18,22 @@ captures d'exemple de [Première analyse](premiere-analyse.md).
 
 1. **Ajouter une capture** ouvre un sélecteur de fichiers. Répétez
    l'opération pour chaque point.
-2. Renommez chaque point dans le champ de gauche (`LAN`, `WAN`...).
+2. Renommez chaque point dans le champ de gauche (`LAN`, `WAN`...). Deux
+   lignes de même nom forment un seul point : ce sont les fichiers
+   successifs d'une capture en rotation, lus dans l'ordre de la liste.
 3. **Rangez les points dans l'ordre du chemin réseau** avec les flèches,
    du plus proche de la source au plus éloigné. Contrairement à la ligne
    de commande, l'interface utilise cet ordre tel quel par défaut. Si vous
    ne le connaissez pas, cochez « Déduire la topologie automatiquement » :
    Netcross le retrouve seul, comme en ligne de commande sans `--order`.
 4. Choisissez les options, puis cliquez sur **Lancer l'analyse**.
+
+Une seule capture suffit. Le rapport omet alors les sections qui comparent
+des points entre eux (topologie, pertes, latence, sauts de routeur) : il
+l'indique par une ligne « Capture unique : sections multi-points omises ».
+Avec un pcapng pris sur plusieurs interfaces, cochez « Séparer les
+interfaces d'un pcapng » : chaque interface devient un point, et l'analyse
+croisée se fait entre elles (voir [Préparer les captures](preparer-captures.md)).
 
 Options principales :
 
@@ -37,16 +46,60 @@ Options principales :
 | Anonymiser les adresses IP/MAC | Rapport partageable sans adresses réelles | `--redact` |
 | Diagnostic TLS, Diagnostic QUIC/HTTP3 | Certificats, négociations, QUIC | `--tls`, `--quic` |
 | Rapport de sécurité | Vulnérabilités et tentatives d'attaque | `--security-report` |
+| Notifier si, webhook, Slack, courriel, Détail complet | Envoie un résumé du rapport de sécurité quand son pire constat atteint le seuil choisi (voir [Notifications](../notifications.md)). Nécessite « Rapport de sécurité » ; une URL invalide bloque le lancement. Le résultat de chaque canal s'affiche au journal | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail` |
+| Postes à comparer, Référence | Compare des postes entre eux dans la même analyse : un groupe par poste, `NOM=IP1[,IP2...]`, séparés par « ; » (au moins deux), comparé au poste de référence (le premier par défaut). Résultat dans le rapport, synthèse et export CSV sur la page Résultats. Indisponible avec l'anonymisation | `--client-group`, `--client-reference`, `--client-diff-csv` |
 | Fenêtre temporelle (ms) | Précision des mesures de débit (réduire pour les micro-rafales) | `--bucket-ms` |
+| Séparer les interfaces d'un pcapng | Un fichier capturé sur plusieurs interfaces devient un point par interface, nommé `NOM:INTERFACE` | `--split-interfaces` |
+| Moteur de règles | Évalue chaque règle du catalogue déclaratif ; section « MOTEUR DE REGLES DECLARATIF » du rapport | `--rule-engine` |
+| Section expertise | Objets de session détaillés (flux, segments, diagnostics, preuves) à la fin du rapport | `--expert-section` |
+| Qualité média | Relit les fichiers : voix et vidéo RTP, documents transportés, sans rien écrire (l'extraction vers un dossier est sur la page Résultats) | `--media-quality` |
+| Statistiques tshark | `tshark -z` sur chaque fichier (conversations, endpoints, hiérarchie de protocoles, IO), export JSON sur la page Résultats | `--tshark-stats` |
+| Chronologie des flux, Fenêtre (s) | Chronologie de chaque conversation, point par point, par fenêtres de N secondes ; export JSON sur la page Résultats | `--flow-timeline`, `--flow-timeline-window` |
+| Paquets max., Échantillonnage 1/N | N premiers paquets, ou 1 paquet sur N (l'échantillonnage passe d'abord). La troncature est toujours annoncée dans le rapport | `--max-packets`, `--sample 1/N` |
+| Lecteurs parallèles | Nombre de processus tshark avec « Lecture parallèle » (0 = un par cœur) ; au-delà du nombre de cœurs, le journal prévient que la lecture peut ralentir | `--parallel-workers` |
+| Plages TEST-NET externes | 192.0.2.0/24, 198.51.100.0/24 et 203.0.113.0/24 traitées comme des adresses externes (laboratoires, démonstrations). Nécessite « Rapport de sécurité » | `--test-net-external` |
+| Destinations connues..., Hôtes connus... | Listes JSON d'IP (liste plate ou clé `hosts`) : destinations habituelles et hôtes déjà vus, les autres sont signalés. Nécessitent « Rapport de sécurité » ; un fichier sans IP bloque le lancement | `--known-destinations`, `--known-hosts` |
+| Base CVE... | Base CVE complète à la place de la base minimale embarquée. Nécessite « Rapport de sécurité » ; un fichier absent bloque le lancement | `--cve-db` |
+| Diagramme de séquence (flux) | Ajoute à l'export PDF le diagramme de séquence des N flux les plus volumineux (0 = aucun) | `--sequence-diagram N` |
+| Historique..., Étiquette | Base SQLite (créée si absente) : chaque analyse de fichiers ou comparaison (fichiers ou courant en direct) y ajoute son résumé (score, constats), avec l'étiquette choisie. Un fichier qui n'est pas une base netcross est signalé au journal, l'analyse reste affichée | `--history-db`, `--history-label` |
+
+Réglages fins, à ne modifier qu'en connaissance de cause :
+
+| Champ ou bouton | Effet | Équivalent en ligne de commande |
+|---|---|---|
+| Fenêtre NAT (ms) | Écart maximal entre deux observations d'un même paquet traduit par un NAT. Actif seulement avec la corrélation tolérante au NAT (défaut : 200 ms) | `--nat-window-ms` |
+| Coupure silencieuse (s) | Silence au-delà duquel une connexion inactive est signalée comme coupée par un NAT ou un pare-feu. 0 = défaut (60 s) | `--idle-timeout-seconds` |
+| Table des noms... / Retirer | Charge un fichier JSON ou YAML de noms lisibles des hôtes (`srv-ad`, `imprimante-rdc`...), repris dans les exports CSV et JSON | `--names` |
+| Seuil doublons (ms) | Écart maximal pour considérer deux paquets identiques comme doublons | `--duplicate-threshold-ms` |
 
 En haut de l'onglet, deux cases changent de mode :
 
 - **Mode comparaison** : deux listes de captures, Baseline et Courant,
-  pour comparer deux situations (voir [Comparer deux situations](comparer.md)) ;
+  pour comparer deux situations. Ce mode a ses propres cases : seuils de
+  pertes et de latence, Diagnostic TLS/QUIC et « Triage des écarts »
+  (voir [Comparer deux situations](comparer.md)) ;
 - **Capture en direct** : un nom, une interface réseau et un filtre BPF
   facultatif par point, au lieu de fichiers. Démarrage et arrêt manuels,
   ou durée maximale. Demande les droits de capture (voir
   [Installation](installation.md)).
+  Deux options propres à ce mode : « Rotation de capture » (enregistre
+  aussi la capture brute en fichiers tournants) et « Rapport HTML en
+  continu ». Ce dernier publie pendant la capture une page `index.html`
+  rafraîchie toutes les N secondes (débit, protocoles, hôtes, état de
+  chaque point) dans le répertoire choisi, ou dans un répertoire temporaire
+  indiqué au journal. Avec « Servir la page », elle est aussi servie sur
+  `http://127.0.0.1:PORT/` (port 0 : port libre, indiqué au journal).
+  Équivalent de `--live-report`, `--live-report-interval` et
+  `--live-report-serve`.
+
+Les deux cases se combinent : **Mode comparaison** et **Capture en
+direct** cochées ensemble comparent un baseline enregistré (liste
+Baseline) avec un courant capturé en direct (panneau live, qui remplace la
+liste Courant). La comparaison démarre à l'arrêt de la capture (bouton ou
+durée maximale), avec les seuils et le triage du mode comparaison.
+Diagnostic TLS/QUIC, rotation de capture et rapport en continu ne sont
+pas disponibles dans cette combinaison. Équivalent de `--live-current` et
+`--live-duration` de `cross_capture_diff_cli.py`.
 
 Ces deux modes ne se combinent pas entre eux.
 
@@ -64,8 +117,9 @@ que chaque point a bien chargé des paquets.
 
 La zone principale affiche le même rapport que la ligne de commande
 (voir [Lire le rapport](lire-le-rapport.md)). En bas, **Exporter en PDF**,
-**Exporter en CSV** et **Exporter en JSON** produisent les mêmes fichiers
-que `--pdf-report`, `--detail-csv` et `--json-report`, et
+**Exporter en CSV**, **Exporter en JSON** et **Exporter en Markdown**
+(analyse simple) produisent les mêmes fichiers que `--pdf-report`,
+`--detail-csv`, `--json-report` et `--md-report`, et
 **Nouvelle analyse** revient à la configuration.
 
 Sous le rapport, plusieurs sections se déplient :
@@ -87,8 +141,56 @@ Sous le rapport, plusieurs sections se déplient :
 - **Dashboard analytique** et **Exploration statistique** : vues
   interactives par segment, flux, hôte et protocole, avec tri et
   regroupement.
+- **Recherche forensic** : si la case « Index de recherche forensic »
+  était cochée, retrouve paquets et flux par texte libre, adresse IP,
+  point, protocole, port ou champ décodé (SNI, URI, statut HTTP, Call-ID
+  SIP, nom DNS, méthode, type de contenu, message), seuls ou combinés. Au
+  moins un critère est demandé ; les 500 premiers résultats sont affichés,
+  « Exporter JSON... » écrit tous les résultats avec la requête, dans le
+  même format que `--forensic-search`. Cliquer un résultat affiche sa trame
+  et le filtre Wireshark correspondant (`frame.number == N`) ; « Annoter la
+  trame » pré-remplit le panneau « Annotations / signets », « Ouvrir dans
+  Wireshark » ouvre la capture du point positionnée sur la trame
+  (`wireshark -r FICHIER -g N`, si Wireshark est installé). Disponible après une analyse de
+  fichiers ou une capture en direct, pas après une comparaison.
+- **Contenus (extraction)** : relit les fichiers de l'analyse pour en
+  extraire la voix et la vidéo transportées en RTP et les documents
+  (HTTP, SMB, courriel, TFTP, FTP), vers un dossier **vide** choisi par
+  « Extraire vers un dossier... ». Fichiers lisibles par vous seul, avec un
+  `manifest.json` (empreintes SHA-256, origine, note de dégradation) et un
+  `LISEZ-MOI.txt`. Lisez le rappel d'usage affiché : ce sont des
+  correspondances et des données personnelles. Indisponible après une
+  analyse anonymisée, une capture en direct ou une comparaison.
+  Équivalent de `--extract-contents` et `--extract-kinds`.
+- **Comparaison de postes** : si des postes ont été renseignés, la
+  référence, les postes comparés et le nombre d'écarts, avec « Exporter
+  CSV » (même fichier que `--client-diff-csv`).
+- **NetFlow v5 (résumé d'exports)** : indépendant de l'analyse en cours.
+  « Ajouter des exports... » (datagrammes NetFlow v5 concaténés, un fichier
+  par exportateur, étiqueté par le nom du fichier), « Top », puis
+  « Résumer » : volumes, protocoles, principaux émetteurs, conversations et
+  ports, comme `--netflow` ; « Exporter JSON... » écrit le même fichier que
+  `--netflow ... --json-report`. Les flux agrégés ne se corrèlent pas entre
+  points de capture : ils ne sont pas mêlés à l'analyse.
+- **Expertise (exports JSON)** : si « Chronologie des flux » ou
+  « Statistiques tshark » étaient cochées, leur résumé et un bouton
+  d'export chacun, même fichier que `--flow-timeline` et `--tshark-stats`.
+  Les trois autres sections d'expertise sont dans le rapport texte.
 - **Sécurité** : le rapport de sécurité, si la case correspondante était
   cochée, avec export HTML et JSON.
+- **SIEM, ticket de support, historique** : export SIEM CEF, LEEF ou
+  STIX 2.1 du rapport de sécurité (même fichier que `--siem-export`) ;
+  ticket de support anonymisé « diagnostic », seulement après avoir coché
+  le consentement (`--support-ticket --support-consent`, rien n'est
+  envoyé), avec les portées cochées (`--support-scope`, toutes par
+  défaut) et les marqueurs `CLE=VALEUR` séparés par `;`
+  (`--support-marker`) ; **Correspondance du ticket (--support-map)...**
+  écrit ensuite la correspondance privée du dernier ticket, à ne jamais
+  joindre au ticket ; derniers runs de l'historique choisi (`--history-show N`) ;
+  après une analyse anonymisée (simple ou comparaison), **Table
+  d'anonymisation (--redact-map)...** écrit le CSV adresse réelle →
+  pseudonyme de `--redact-map` (une seule table pour baseline et courant).
+  Ce fichier désanonymise le rapport : gardez-le pour vous.
 
 Après une comparaison ou une capture en direct, certaines sections sont
 grisées : elles ont besoin des fichiers de capture d'une analyse simple.
@@ -100,9 +202,72 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
     l'**Exploration statistique** (Top-N réglable) ou l'export CSV.
     Le défaut est suivi dans le dépôt.
 
+## Outils de capture
+
+Le bouton **Outils de capture** de la barre de titre ouvre une fenêtre à
+onglets qui transforme des fichiers sans lancer d'analyse, comme les
+modes utilitaires de la CLI :
+
+| Onglet | Équivalent CLI |
+|---|---|
+| Fusion (captures, « Dedupliquer les paquets identiques ») | `--merge`, `--merge-dedup` |
+| Decoupage (durée, nombre de paquets ou taille ; dossier) | `--split`, `--split-output-dir` |
+| Conversion (pcap, pcapng, erf, csv, json) | `--convert`, `--convert-format` |
+| Export filtre (filtre Wireshark, début, fin, adresses) | `--export-pcap`, `--export-bpf`, `--export-time-*`, `--export-endpoints` |
+| Recalage temporel (décalage, t=0, alignement sur une référence) | `--adjust-time-output`, `--time-offset`, `--normalize-time`, `--align-to` |
+| Rejeu (interface, vitesse, passes ; bouton « Arreter ») | `--replay`, `--replay-speed`, `--replay-loop` |
+
+Les mêmes saisies sont refusées avec les mêmes messages que la CLI ; le
+résultat ou l'erreur s'affiche en bas de la fenêtre. Les outils Wireshark
+(`tshark`, `editcap`, `mergecap`, `reordercap`) doivent être installés.
+
+L'onglet **Rejeu** émet du trafic réel : il reste inactif tant que la case
+« J'ai l'autorisation d'emettre sur cette interface » n'est pas cochée.
+Réservez-le à un banc de test isolé ; tcpreplay et les droits d'émission
+(root ou `CAP_NET_RAW`) sont nécessaires.
+
+## Analyse d'un dossier
+
+Le bouton **Analyse d'un dossier** de la barre de titre ouvre l'équivalent
+de `cross_capture_batch_cli.py` (voir [mode lot](../batch-mode.md)) : même
+moteur, mêmes groupes, mêmes rapports et même `index.txt`.
+
+| Réglage | Équivalent CLI |
+|---|---|
+| « Dossier de captures... » | `--input` |
+| « Inclure les sous-dossiers » | `--recursive` |
+| « Regrouper les captures d'un meme incident » (décoché) | `--no-group` |
+| Fenêtre de regroupement, recouvrement minimal, adresses communes minimales | `--group-window`, `--min-overlap`, `--min-common-ips` |
+| Tâches en parallèle | `--jobs` |
+| « Reprendre un lot interrompu » | `--skip-existing` |
+| « Analyse de securite dans chaque rapport » | `--security-report` |
+| « Dossier de sortie... » | `--output` |
+
+L'avancement s'affiche ligne à ligne (inventaire de chaque capture, puis
+analyses par groupe) ; la fin résume groupes, captures isolées et échecs,
+avec le chemin de l'index. Les refus sont ceux de la CLI (dossier
+introuvable, aucune capture, seuils hors bornes).
+
+## Documentation Lua
+
+Le bouton **Documentation Lua** de la barre de titre ouvre la
+documentation hors ligne de l'API Lua de Wireshark, la même que
+`netcross-lua-doc` : liste des classes à gauche (un clic ouvre la fiche
+complète), recherche plein texte (« Resultats max. » = `--limit`,
+« Detail complet (--full) » = `--full`), bouton **JSON** pour le document
+de `--json`. Aucun accès réseau ; la banque est celle de la CLI
+(`~/.cache/netcross/lua_api.db`).
+
+## Historique des runs
+
+Le bouton **Historique des runs** de la barre de titre ouvre la
+consultation d'une base `--history-db` sans relancer d'analyse, comme
+`netcross-history` : type (tous, analyses, comparaisons ; `--run-type`),
+étiquette exacte (`--label`) et nombre maximal de runs (`--limit`, 0 =
+tous). La base et l'étiquette de la configuration sont reprises à
+l'ouverture.
+
 ## Ce que l'interface ne fait pas
 
-Certaines fonctions restent réservées à la ligne de commande : fusion,
-découpage, conversion et rejeu de captures, notifications, plugins,
-module IA, historique des analyses, base CVE complète (`--cve-db`),
-export SIEM. Voir `--help` et les pages de la section Analyses.
+Certaines fonctions restent réservées à la ligne de commande : plugins,
+module IA. Voir `--help` et les pages de la section Analyses.

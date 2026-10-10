@@ -148,6 +148,7 @@ from netcross_core import (
     write_detail_csv,
     write_redaction_map_csv,
 )
+from netcross_core.capture_tools import split_label_dir
 from netcross_core.discovery import load_baseline_hosts
 from netcross_core.flow_timeline import build_flow_timelines
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
@@ -334,37 +335,15 @@ def _write_json_output(path, payload, label) -> None:
 
 
 def _collect_tshark_stats(captures) -> dict:
-    """Statistiques tshark -z par fichier (issue #361). Une capture en echec
-    porte une cle `error` explicite (et un message stderr) au lieu de faire
-    perdre les autres ; tshark absent est une erreur par capture elle aussi."""
-    import subprocess
-    from dataclasses import asdict
+    """Statistiques tshark -z par fichier (issue #361) : document commun a
+    l'API et a la GUI (``collect_capture_stats``, issue #673) ; une capture
+    en echec porte une cle `error` et un message stderr."""
+    from netcross_core.tshark_stats import collect_capture_stats
 
-    from netcross_core.tshark_stats import (
-        TsharkUnavailableError,
-        collect_conversations,
-        collect_endpoints,
-        collect_io_stat,
-        collect_protocol_hierarchy,
-    )
+    def _report(label, path, exc):
+        print(f"--tshark-stats {label} ({path}) : {exc}", file=sys.stderr)
 
-    result: dict = {"version": 1, "captures": []}
-    for label, path in captures:
-        entry: dict = {"label": label, "path": path}
-        try:
-            entry["conversations"] = {
-                proto: [asdict(c) for c in collect_conversations(path, proto)] for proto in ("tcp", "udp")
-            }
-            entry["endpoints"] = {
-                proto: [asdict(e) for e in collect_endpoints(path, proto)] for proto in ("tcp", "udp")
-            }
-            entry["protocol_hierarchy"] = [asdict(p) for p in collect_protocol_hierarchy(path)]
-            entry["io_stat"] = asdict(collect_io_stat(path))
-        except (TsharkUnavailableError, subprocess.SubprocessError, OSError) as exc:
-            entry = {"label": label, "path": path, "error": str(exc)}
-            logger.warning("--tshark-stats {} ({}) : {}", label, path, exc)
-            print(f"--tshark-stats {label} ({path}) : {exc}", file=sys.stderr)
-        result["captures"].append(entry)
+    result = collect_capture_stats(captures, on_error=_report)
     logger.debug("_collect_tshark_stats: retour result={}", summarize(result, "result"))
     return result
 
@@ -657,53 +636,26 @@ def _run_export(capture_specs, output_path, bpf_filter, time_start, time_end, en
 
 
 _SPLIT_DEFAULT_DIR = "captures_split"
-_SIZE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*([kmg])?[ob]?", re.IGNORECASE)
-_SIZE_FACTORS = {None: 1, "k": 10**3, "m": 10**6, "g": 10**9}
 
 
 def _parse_size(text):
-    """ "100M" -> 100_000_000. Unites DECIMALES (k=10^3, M=10^6, G=10^9),
-    comme `tcpdump -C` : `--split size:100M` correspond donc a `tcpdump -C
-    100`. Suffixe optionnel o/b apres l'unite (100Mo, 100MB). None si le
-    format n'est pas reconnu -- les unites binaires (MiB, Mio) sont
-    volontairement refusees plutot que lues comme des unites decimales."""
-    logger.debug("_parse_size: text={}", summarize(text, "text"))
-    m = _SIZE_RE.fullmatch(text.strip())
-    if not m:
-        logger.debug("_parse_size: si not m -> retour None")
-        return None
-    number, unit = m.groups()
-    logger.debug("_parse_size: retour int(…)")
-    return int(float(number.replace(",", ".")) * _SIZE_FACTORS[unit.lower() if unit else None])
+    """Voir netcross_core.capture_tools.parse_size (partage GUI/API, #869)."""
+    from netcross_core.capture_tools import parse_size
+
+    return parse_size(text)
 
 
 def _parse_split_spec(spec):
-    """MODE:VALEUR -> (mode, valeur) pour pcap_parser.split_capture.
-    time:60 (secondes, decimales admises) | count:10000 (paquets) |
-    size:100M (octets, voir _parse_size)."""
-    mode, sep, raw = spec.partition(":")
-    mode = mode.strip().lower()
-    raw = raw.strip()
-    err = f"Format invalide pour --split: {spec} (attendu time:SECONDES, count:PAQUETS ou size:TAILLE, ex: size:100M)"
-    if not sep or mode not in ("time", "count", "size") or not raw:
-        print(err, file=sys.stderr)
-        sys.exit(1)
+    """MODE:VALEUR -> (mode, valeur) : netcross_core.capture_tools.parse_split_spec
+    (partage avec la GUI et l'API, issue #869) ; message d'erreur puis sortie 1."""
+    from netcross_core.capture_tools import parse_split_spec
+
     try:
-        if mode == "time":
-            value = float(raw.replace(",", "."))
-        elif mode == "count":
-            value = int(raw)
-        else:
-            value = _parse_size(raw)
-    except ValueError:
-        logger.exception("échec dans _parse_split_spec")
-        value = None
-    if value is None or value <= 0:
-        hint = " (unites decimales k/M/G, ex: 100M ; MiB/Mio non supportes)" if mode == "size" else ""
-        print(f"{err} -- la valeur doit etre un nombre > 0{hint}", file=sys.stderr)
+        return parse_split_spec(spec)
+    except ValueError as e:
+        logger.exception(f"échec dans _parse_split_spec: {e}")
+        print(e, file=sys.stderr)
         sys.exit(1)
-    logger.debug("_parse_split_spec: retour tuple de 2")
-    return mode, value
 
 
 def _run_split(capture_specs, split_spec, output_dir):
@@ -718,7 +670,7 @@ def _run_split(capture_specs, split_spec, output_dir):
         label, paths = _parse_capture_spec(spec, "--capture")
         # le label sert de nom de sous-repertoire : on neutralise les
         # separateurs de chemin et les points de tete (jamais de "..")
-        label_dir = os.path.join(output_dir, re.sub(r"[^\w.-]+", "_", label).lstrip(".") or "capture")
+        label_dir = split_label_dir(output_dir, label)
         segments = []
         # OSError : capture absente / sortie deja occupee ; ValueError : mode ou format
         # invalide ; RuntimeError : parent de TsharkNotFoundError/TsharkError (editcap
@@ -817,6 +769,54 @@ def _run_replay(capture_specs, interface, speed, loop):
     logger.debug("_run_replay: fin")
 
 
+def _start_ring_recorders(points, ring_buffer):
+    """Issue #676 : lance un enregistreur en ring buffer par point si
+    ``ring_buffer`` vaut (N, SECONDES). Renvoie {label: (processus, repertoire)}.
+    Quitte avec un message si une source ne le permet pas (pipe://)."""
+    if not ring_buffer or ring_buffer[0] is None:
+        logger.debug("_start_ring_recorders: pas de ring buffer -> retour dict vide")
+        return {}
+    from pcap_parser.capture import start_ring_recorder
+
+    max_files, max_duration = ring_buffer
+    recorders = {}
+    for label, iface, bpf in points:
+        directory = tempfile.mkdtemp(prefix=f"netcross-ring-{label}-")
+        try:
+            proc = start_ring_recorder(
+                iface,
+                directory,
+                max_files=max_files,
+                max_duration_per_file=max_duration,
+                prefix=label,
+                bpf_filter=bpf,
+            )
+        except (CaptureSourceError, TsharkNotFoundError) as exc:
+            logger.warning("_start_ring_recorders: point {} refuse ({})", label, exc)
+            _stop_ring_recorders(recorders)
+            print(f"--ring-buffer [{label}] : {exc}", file=sys.stderr)
+            sys.exit(1)
+        recorders[label] = (proc, directory)
+        print(f"[{label}] rotation de capture : {max_files} fichier(s) de {max_duration:g} s max dans {directory}")
+    logger.debug("_start_ring_recorders: retour {} enregistreur(s)", len(recorders))
+    return recorders
+
+
+def _stop_ring_recorders(recorders):
+    """Arrete les enregistreurs et affiche les fichiers conserves par point."""
+    if not recorders:
+        return
+    from pcap_parser.capture import stop_ring_recorder
+
+    for label, (proc, directory) in recorders.items():
+        err = stop_ring_recorder(proc)
+        files = sorted(f for f in os.listdir(directory) if not f.startswith("."))
+        print(f"[{label}] rotation de capture : {len(files)} fichier(s) conserve(s) dans {directory}")
+        if proc.returncode not in (0, -signal.SIGTERM, None) and err:
+            print(f"[{label}] enregistreur tshark : {err}", file=sys.stderr)
+    logger.debug("_stop_ring_recorders: fin")
+
+
 def _run_live_captures(live_specs, duration, reporter=None, ring_buffer=None):
     """Capture en direct sur un ou plusieurs points simultanement (un thread
     par point, comme l'interface graphique -- voir netcross_gtk4.app
@@ -832,35 +832,22 @@ def _run_live_captures(live_specs, duration, reporter=None, ring_buffer=None):
     points = [_parse_live_spec(s) for s in live_specs]
     _check_single_stdin(points)
     stop_event = threading.Event()
-    # Issue #676 : ring buffer de capture (equivalent GUI)
-    ring_buffers = {}
-    if ring_buffer and ring_buffer[0] is not None:
-        from pcap_parser.capture import CaptureRingBuffer
-
-        for label, _iface, _bpf in points:
-            import tempfile as _tf
-
-            rb_dir = _tf.mkdtemp(prefix=f"netcross-ring-{label}-")
-            ring_buffers[label] = CaptureRingBuffer(
-                directory=rb_dir,
-                max_files=ring_buffer[0],
-                max_duration_per_file=ring_buffer[1],
-            )
+    # Issue #676 : ring buffer de capture. Un tshark d'enregistrement par
+    # point ecrit les trames brutes en rotation native (-b files/duration) ;
+    # l'analyse, elle, continue sur le flux de dissection habituel.
+    recorders = _start_ring_recorders(points, ring_buffer)
     packets_by_point = {label: [] for label, _iface, _bpf in points}
     lock = threading.Lock()
 
     def _worker(label, iface, bpf):
         count = 0
         last_log = time.monotonic()
-        rb = ring_buffers.get(label)
         try:
             for pkt in parse_live(label, iface, bpf_filter=bpf, stop_event=stop_event):
                 with lock:
                     packets_by_point[label].append(pkt)
                 if reporter is not None:
                     reporter.add(pkt)
-                if rb is not None:
-                    rb.maybe_rotate()
                 count += 1
                 now = time.monotonic()
                 if now - last_log >= 2.0:
@@ -924,6 +911,7 @@ def _run_live_captures(live_specs, duration, reporter=None, ring_buffer=None):
         signal.signal(signal.SIGINT, old_handler)
         if reporter is not None:
             reporter.stop()
+        _stop_ring_recorders(recorders)
 
     all_packets = []
     for label, _iface, _bpf in points:
@@ -1152,38 +1140,11 @@ def _parse_sample_spec(spec: str) -> int:
 
 
 def _apply_packet_limits(all_packets, max_packets, sample_n):
-    """Applique --max-packets/--sample (issue #283, Etape 3) a la liste de
-    paquets DEJA CHARGEE (tous les fichiers de --capture sont toujours lus
-    integralement par parse_capture -- limiter la LECTURE elle-meme est le
-    travail de l'Etape 4/traitement en flux, hors perimetre de cette PR) et
-    renvoie ``(paquets_retenus, note_ou_None)``. --sample est applique
-    AVANT --max-packets quand les deux sont fournis ensemble (echantillonner
-    puis plafonner le resultat) : l'ordre inverse laisserait --sample sans
-    effet visible si --max-packets est plus restrictif. ``note`` vaut None
-    si aucune limite n'a reellement tronque quoi que ce soit (fichier plus
-    petit que la limite demandee) -- Report.truncated ne doit jamais
-    devenir True sans raison, meme discipline que duplicates_excluded."""
-    logger.debug(
-        "_apply_packet_limits: all_packets={} max_packets={} sample_n={}",
-        summarize(all_packets, "all_packets"),
-        summarize(max_packets, "max_packets"),
-        summarize(sample_n, "sample_n"),
-    )
-    total = len(all_packets)
-    kept = all_packets
-    notes = []
-    if sample_n and sample_n > 1:
-        kept = kept[::sample_n]
-        notes.append(f"echantillonnage 1 paquet sur {sample_n} ({len(kept)} retenus sur {total})")
-    if max_packets is not None and len(kept) > max_packets:
-        before = len(kept)
-        kept = kept[:max_packets]
-        notes.append(f"analyse limitee aux {max_packets:,} premiers paquets sur {before:,}".replace(",", " "))
-    if not notes:
-        logger.debug("_apply_packet_limits: si not notes -> retour tuple de 2")
-        return kept, None
-    logger.debug("_apply_packet_limits: retour tuple de 2")
-    return kept, "analyse tronquee -- " + " ; ".join(notes) + " -- les constats ne couvrent pas la capture entiere."
+    """--max-packets/--sample (issue #283) : ``netcross_core.packet_limits``,
+    partage avec la GUI (issue #672). Renvoie ``(paquets_retenus, note)``."""
+    from netcross_core.packet_limits import apply_packet_limits
+
+    return apply_packet_limits(all_packets, max_packets, sample_n)
 
 
 def _send_notifications(args, report, security_report_obj) -> list[dict]:
@@ -1538,10 +1499,12 @@ def main():
     ap.add_argument(
         "--ring-buffer",
         metavar="N:SECONDES",
-        help="Avec --live : rotation de capture (ring buffer). Garde au plus N fichiers "
-        "de SECONDES secondes chacun dans un repertoire temporaire, supprime "
-        "automatiquement le plus ancien. Ex: 5:60 (5 fichiers de 60 s). "
-        "Equivalent GUI de la rotation de capture (issue #676).",
+        help="Avec --live : enregistre aussi la capture brute de chaque point en "
+        "rotation (ring buffer tshark) : au plus N fichiers pcapng de SECONDES "
+        "secondes chacun dans un repertoire temporaire affiche au demarrage, le "
+        "plus ancien supprime automatiquement. L'analyse finale porte toujours "
+        "sur toute la session. SECONDES est arrondi a l'entier superieur. "
+        "Ex: 5:60 (5 fichiers de 60 s). Incompatible avec pipe:// (issue #676).",
     )
     ap.add_argument(
         "--bpf-library",
@@ -3094,19 +3057,11 @@ def main():
                 )
                 print(f"Rapport de securite HTML ecrit dans {args.security_html}")
             if args.siem_export:
-                from netcross_report.siem_export import write_siem
+                from netcross_report.siem_export import observed_bounds, write_siem
 
                 # bornes de la capture : datent les objets STIX (jamais
                 # l'heure de l'export -- determinisme, issue #279)
-                timestamps = [p.ts for p in all_packets if p.ts]
-                bounds = (
-                    (
-                        datetime.fromtimestamp(min(timestamps), tz=timezone.utc),
-                        datetime.fromtimestamp(max(timestamps), tz=timezone.utc),
-                    )
-                    if timestamps
-                    else (None, None)
-                )
+                bounds = observed_bounds(all_packets)
                 written = write_siem(
                     r, args.siem_output, args.siem_export, observed_from=bounds[0], observed_until=bounds[1]
                 )
@@ -3157,21 +3112,9 @@ def main():
 
     rule_engine_findings = None
     if args.rule_engine:
-        from netcross_report import available_rule_ids, evaluate
+        from netcross_report import print_rule_engine
 
-        rule_engine_findings = {}
-        total = 0
-        print("\n" + "=" * 70)
-        print("MOTEUR DE REGLES DECLARATIF (rule_engine)")
-        print("=" * 70)
-        for rule_id in available_rule_ids():
-            rule_findings = evaluate(rule_id, r)
-            rule_engine_findings[rule_id] = rule_findings
-            if rule_findings:
-                total += len(rule_findings)
-                for f in rule_findings:
-                    print(f"  [{f.severity}] {f.category} / {f.segment} -- {f.message}")
-        print(f"\n{len(available_rule_ids())} regles evaluees, {total} Finding produits.")
+        rule_engine_findings = print_rule_engine(r)
         if not args.json_report:
             print("(utilisez --json-report pour obtenir la sortie JSON structuree)")
 

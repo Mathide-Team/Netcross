@@ -15,7 +15,9 @@ permissions:
 jobs:
   rapport-phases:
     name: Rapport d'avancement par phase
-    runs-on: ubuntu-latest
+    # Runners maison (groupe maison, Ubuntu 20.04, root) ; repli GitHub :
+    # variable NETCROSS_RUNS_ON_LEGER = '"ubuntu-latest"'.
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON_LEGER || '{"group":"maison","labels":["self-hosted","linux"]}') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

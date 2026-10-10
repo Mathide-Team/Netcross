@@ -285,6 +285,19 @@ def write_leef(report: Report, output_path: str | Path) -> str:
     return _write_lines(export_leef(report), output_path)
 
 
+def observed_bounds(packets) -> tuple[_dt.datetime | None, _dt.datetime | None]:
+    """Bornes (UTC) des paquets analyses : datent les objets STIX, jamais
+    l'heure de l'export (determinisme, issue #279). Partage par la CLI et la
+    GUI (issue #674) ; ``(None, None)`` sans horodatage."""
+    timestamps = [p.ts for p in packets if p.ts]
+    if not timestamps:
+        return None, None
+    return (
+        _dt.datetime.fromtimestamp(min(timestamps), tz=_dt.timezone.utc),
+        _dt.datetime.fromtimestamp(max(timestamps), tz=_dt.timezone.utc),
+    )
+
+
 def write_siem(
     report: Report,
     output_path: str | Path,

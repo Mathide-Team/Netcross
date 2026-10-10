@@ -333,11 +333,13 @@ def test_moteur_de_regles_avec_constats(lance, monkeypatch, capsys):
     """Lignes 3079-3081 : constats du moteur de regles affiches."""
     from types import SimpleNamespace
 
-    import netcross_report
+    from netcross_report import rule_engine
 
+    # print_rule_engine (partage CLI/GUI, issue #673) appelle les fonctions
+    # de son module
     constat = SimpleNamespace(severity="elevee", category="perte", segment="A->B", message="pertes en rafale")
-    monkeypatch.setattr(netcross_report, "available_rule_ids", lambda: ["r1"])
-    monkeypatch.setattr(netcross_report, "evaluate", lambda rule_id, r: [constat])
+    monkeypatch.setattr(rule_engine, "available_rule_ids", lambda: ["r1"])
+    monkeypatch.setattr(rule_engine, "evaluate", lambda rule_id, r: [constat])
     assert lance("--rule-engine") == 0
     out = capsys.readouterr().out
     assert "  [elevee] perte / A->B -- pertes en rafale" in out
