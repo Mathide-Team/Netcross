@@ -18,6 +18,20 @@ configuration (`.netcross.toml`, variables d'environnement), même fenêtre
 anti-répétition ; le résultat de chaque canal s'affiche au journal et dans la
 section « Notifications » du rapport de sécurité.
 
+L'API REST accepte les mêmes réglages sur `POST /captures` et
+`POST /captures/multi` : `notify_on`, `notify_webhook`, `notify_slack`,
+`notify_email`, `notify_detail`. Mêmes refus (canal sans seuil, URL
+invalide, anonymisation `redact=true` qui supprime le rapport de sécurité :
+réponse 400). La configuration lue est celle du serveur ; le résultat de
+chaque canal est dans `security_report.notifications` de
+`GET /analyses/{id}/report`. Les URL ne sont jamais enregistrées avec
+l'analyse : seuls le seuil, le détail et les noms des canaux le sont.
+
+```bash
+curl -F file=@nuit.pcap -F label=LAN -F notify_on=elevee \
+     -F notify_slack="$NETCROSS_SLACK_WEBHOOK" http://localhost:8000/captures
+```
+
 ## Garde-fous
 
 Un outil qui notifie trop est un outil qu'on coupe. Trois règles, dans cet ordre :
