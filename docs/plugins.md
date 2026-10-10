@@ -79,6 +79,26 @@ netcross-analyze --list-plugins --plugins telnet_clair   # installés ET non aut
   détecteurs et exporteurs ne s'exécutent que s'ils sont nommés dans `--plugins`.
 - Les détecteurs nécessitent `--security-report` (leurs constats y vivent).
 
+## Interface graphique (issue #867)
+
+Dans les options d'analyse, la ligne « Plugins » reprend les options de la
+CLI, avec les mêmes règles :
+
+| Champ | Équivalent CLI |
+| --- | --- |
+| « Plugins (--plugins) » : noms séparés par des virgules | `--plugins` |
+| « Fichiers plugins » : chemins séparés par `;` | `--plugin-path` (répétable) |
+| « Exports NOM=FICHIER » : séparés par `;` | `--plugin-export` (répétable) |
+| bouton « Lister (--list-plugins) » : tableau dans le journal | `--list-plugins` |
+
+Les plugins sont chargés au lancement de l'analyse ; un réglage incohérent
+(fichiers sans nom autorisé, export d'un exporteur non nommé, export mal
+formé, détecteur sans « Rapport de securite ») bloque le lancement avec le
+même message que la CLI. Les constats des détecteurs arrivent dans le
+rapport de sécurité (section « Plugins » et exports JSON/PDF/HTML), les
+exporteurs écrivent après l'analyse, et chaque ligne de trace apparaît dans
+le journal.
+
 ## Isolation
 
 - **Un plugin qui échoue ne fait pas échouer l'analyse.** L'exception est attrapée,
