@@ -40,7 +40,7 @@ flowchart TD
     netcross_gtk4 -->|"90 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
-    netcross_api -->|"28 imports"| netcross_core
+    netcross_api -->|"29 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
