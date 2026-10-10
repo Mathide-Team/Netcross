@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 32 cases à cocher, 24 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 22 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 24 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -53,7 +53,7 @@ actif, non réglable.
 | Limiter ou échantillonner les paquets | oui (« Paquets max. », « Echantillonnage 1/N » en analyse simple, troncature annoncée dans le rapport ; issue #672) | `--max-packets`, `--sample` | `max_packets`, `sample` (issue #672) |
 | Noms logiques des hôtes | oui (« Table des noms... », exports CSV détaillé et JSON) | `--names` | `names` (fichier joint, issue #672) |
 | Plages TEST-NET traitées comme externes | oui (case « Plages TEST-NET externes », avec « Rapport de securite » ; issue #672) | `--test-net-external` | `test_net_external` (issue #672) |
-| Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` (table de correspondance : CLI seule) | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) |
+| Anonymisation IP/MAC | oui (« Anonymiser les adresses IP/MAC ») | `--redact`, `--redact-map` | `redact` (sans sécurité, refusé avec `tls`/`quic`, comme la CLI) ; table : `GET /analyses/{analysis_id}/redact-map` (issue #876) |
 
 ## Diagnostics et triage
 
@@ -143,7 +143,7 @@ de sécurité, déjà produit par `POST /analyses`.
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
 | Exports | oui (PDF, CSV, JSON) | `--pdf-report`, `--diff-csv`, `--json-report` | `GET /comparisons/{id}/csv` (issue #669) |
-| Anonymisation partagée | oui | `--redact`, `--redact-map` | `redact` (issue #669) |
+| Anonymisation partagée | oui | `--redact`, `--redact-map` | `redact` (un seul pseudonyme par adresse pour baseline et courant), table : `GET /comparisons/{comparison_id}/redact-map` (issues #669, #876) |
 | Historique | non | `--history-db`, `--history-label`, `--history-show` | non |
 | Code de sortie 1 sur régression | sans objet | oui | `regression: true` dans la réponse (issue #669) |
 
@@ -261,9 +261,11 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /analyses/{analysis_id}/markdown` | Rapport Markdown (issue #864) |
 | `GET /analyses/{analysis_id}/pdf` | Rapport PDF, `topn` (issue #670) |
 | `GET /analyses/{analysis_id}/detail.csv` | CSV du détail par flux (issue #670) |
+| `GET /analyses/{analysis_id}/redact-map` | Table adresse réelle -> pseudonyme, `redact=true` (issue #876) |
 | `POST /comparisons` | Comparaison baseline/courant (issue #669) |
 | `GET /comparisons/{comparison_id}` | Résultat d'une comparaison (issue #669) |
 | `GET /comparisons/{comparison_id}/csv` | CSV des écarts (issue #669) |
+| `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,

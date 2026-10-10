@@ -568,7 +568,8 @@ def _analyse_captures(
     order_list: list[str] | None,
     multi: bool,
     options: ApiAnalysisOptions | None = None,
-) -> tuple[dict, dict, dict, Any, Any, list, Any, Any, list | None, list | None]:
+    redactor: Any = None,
+) -> tuple[dict, dict, dict, Any, Any, list, Any, Any, list | None, list | None, Any]:
     """Analyse complète (corrélation, sécurité) ; retourne le document brut,
     le résumé, le rapport structuré (celui de ``--json-report``, issue
     #330), l'objet Report vivant, les flows, les findings, le
@@ -584,9 +585,13 @@ def _analyse_captures(
 
         all_packets, truncation_note = apply_packet_limits(all_packets, options.max_packets, options.sample_n)
         if options.redact:
-            from netcross_core.redact import redact_packets
+            from netcross_core.redact import AddressRedactor
 
-            redact_packets(all_packets)
+            # Issue #876 : un redacteur partage (comparaison baseline/courant,
+            # comme la CLI) ; sa table est rendue par /redact-map.
+            if redactor is None:
+                redactor = AddressRedactor()
+            redactor.redact(all_packets)
         # Issue #330 : détection des doublons inter-captures (même enchaînement
         # que la CLI : détection, puis retrait de la liste pour que tout l'aval
         # voie la même population).
@@ -703,7 +708,7 @@ def _analyse_captures(
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
-    logger.debug("_analyse_captures: retour tuple de 10")
+    logger.debug("_analyse_captures: retour tuple de 11")
     return (
         report_document(report),
         summary,
@@ -715,6 +720,7 @@ def _analyse_captures(
         tls_findings,
         quic_findings,
         all_packets,
+        redactor if options and options.redact else None,
     )
 
 
@@ -775,6 +781,7 @@ def _run_job(
             tls_findings,
             quic_findings,
             all_packets,
+            redactor,
         ) = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
@@ -798,6 +805,7 @@ def _run_job(
             tls_findings=tls_findings,
             quic_findings=quic_findings,
             all_packets=all_packets,
+            redaction_map=redactor.entries() if redactor is not None else None,
         )
     finally:
         for _label, path in captures:
@@ -1992,11 +2000,18 @@ async def create_comparison(
 
     def _run_comparison():
         try:
+            # Issue #876 : un seul redacteur pour les deux jeux (même
+            # adresse -> même pseudonyme, comme cross_capture_diff_cli).
+            shared = None
+            if options is not None and options.redact:
+                from netcross_core.redact import AddressRedactor
+
+                shared = AddressRedactor()
             _baseline_doc, baseline_summary, _, baseline_report, *_ = _analyse_captures(
-                baseline_captures, order_list, multi=True, options=options
+                baseline_captures, order_list, multi=True, options=options, redactor=shared
             )
             _current_doc, current_summary, _, current_report, *_ = _analyse_captures(
-                current_captures, order_list, multi=True, options=options
+                current_captures, order_list, multi=True, options=options, redactor=shared
             )
             from netcross_core.baseline_diff import diff_reports
             from netcross_report.triage import health_score, rank_segments
@@ -2022,7 +2037,12 @@ async def create_comparison(
                 "baseline_summary": baseline_summary,
                 "current_summary": current_summary,
             }
-            _comparisons[comparison_id] = {"status": COMPLETED, "result": result, "error": None}
+            _comparisons[comparison_id] = {
+                "status": COMPLETED,
+                "result": result,
+                "error": None,
+                "redaction_map": shared.entries() if shared is not None else None,
+            }
         except Exception as exc:
             logger.exception("comparaison {} : erreur", comparison_id)
             _comparisons[comparison_id] = {"status": FAILED, "result": None, "error": str(exc)}
@@ -2093,6 +2113,74 @@ async def get_comparison(
     if entry["status"] == FAILED:
         raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
     return JSONResponse(content=entry["result"])
+
+
+_REDACT_MAP_WARNING = "a conserver en prive, ne pas transmettre avec le rapport"
+
+
+def _redact_map_response(entries: list | None, what: str, filename: str) -> PlainTextResponse:
+    if entries is None:
+        raise HTTPException(status_code=404, detail=f"{what} sans anonymisation (redact=true) : aucune table")
+    from netcross_core.redact import redaction_map_csv
+
+    return PlainTextResponse(
+        redaction_map_csv(entries),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Netcross-Warning": _REDACT_MAP_WARNING,
+        },
+    )
+
+
+@app.get(
+    "/analyses/{analysis_id}/redact-map",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_analysis_redact_map(
+    analysis_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Table adresse réelle -> pseudonyme d'une analyse ``redact=true``
+    (équivalent de ``--redact-map``, issue #876). Gardée en mémoire
+    seulement (jamais en SQLite) ; à conserver en privé."""
+    entry = _completed_entry(analysis_id)
+    if entry.get("redaction_map") is None and not (entry.get("metadata") or {}).get("options", {}).get("redact"):
+        raise HTTPException(
+            status_code=404, detail=f"Analyse {analysis_id} sans anonymisation (redact=true) : aucune table"
+        )
+    if entry.get("redaction_map") is None:
+        raise HTTPException(
+            status_code=409, detail=f"Analyse {analysis_id} relue après redémarrage : table non conservée"
+        )
+    return _redact_map_response(
+        entry["redaction_map"], f"Analyse {analysis_id}", f"netcross-redact-map-{analysis_id}.csv"
+    )
+
+
+@app.get(
+    "/comparisons/{comparison_id}/redact-map",
+    tags=["comparisons"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_comparison_redact_map(
+    comparison_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Table commune baseline/courant d'une comparaison ``redact=true``
+    (équivalent de ``--redact-map`` de ``netcross-diff``, issue #876)."""
+    entry = _comparisons.get(comparison_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
+    if entry["status"] == PENDING:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    return _redact_map_response(
+        entry.get("redaction_map"), f"Comparaison {comparison_id}", f"netcross-diff-redact-map-{comparison_id}.csv"
+    )
 
 
 @app.get(

@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-180 modules · 265 classes · 613 fonctions publiques de module.
+180 modules · 265 classes · 616 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -40,7 +40,7 @@ flowchart TD
     netcross_gtk4 -->|"90 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
-    netcross_api -->|"29 imports"| netcross_core
+    netcross_api -->|"31 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -1630,6 +1630,7 @@ classDiagram
     class mod_netcross_core_redact["netcross_core.redact"] {
         <<module>>
         +redact_packets(packets) AddressRedactor
+        +redaction_map_csv(entries) str
         +write_redaction_map_csv(redactor, path) None
     }
 
@@ -3851,6 +3852,8 @@ classDiagram
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
         +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, wait, _auth) JSONResponse
         +get_comparison(comparison_id, _auth) JSONResponse
+        +get_analysis_redact_map(analysis_id, _auth) PlainTextResponse
+        +get_comparison_redact_map(comparison_id, _auth) PlainTextResponse
         +get_comparison_csv(comparison_id, _auth) PlainTextResponse
     }
 
@@ -3929,7 +3932,7 @@ classDiagram
     class AnalysesStore {
         +persistent() bool
         +create_pending(metadata) str
-        +complete(analysis_id, document, summary, report, report_obj, flows, findings, security_report_obj, tls_findings, quic_findings, all_packets) None
+        +complete(analysis_id, document, summary, report, report_obj, flows, findings, security_report_obj, tls_findings, quic_findings, all_packets, redaction_map) None
         +fail(analysis_id, error) None
         +get(analysis_id) dict?
         +get_status(analysis_id) str?
