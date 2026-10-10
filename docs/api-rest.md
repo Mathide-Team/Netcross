@@ -23,8 +23,10 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_MAX_FILES` | `16` | Fichiers par requête `/captures/multi` (400 au-delà). |
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
+| `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
 | `NETCROSS_API_MAX_BATCHES` | 20 | Lots conservés en mémoire avec leurs rapports (issue #872) ; au-delà, les plus anciens lots terminés sont supprimés. |
+| `NETCROSS_PLUGIN_PATH` | absent | Fichiers plugins locaux, séparés par `:` (équivalent de `--plugin-path`, issue #867). Fixés par l'administrateur : le client ne fait que nommer un plugin dans le champ `plugins`. Voir [plugins](plugins.md#api-rest-issue-867). |
 
 ```bash
 NETCROSS_API_TOKEN=$(openssl rand -hex 32) NETCROSS_DB_PATH=/var/lib/netcross/api.db \
@@ -71,6 +73,13 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/batches` | Lot de captures ou archive ZIP, équivalent de `cross_capture_batch_cli.py` (issue #872, voir [mode lot](batch-mode.md#api-rest-issue-872)) |
 | `GET` | `/batches/{id}` | Avancement et résultat d'un lot ; `/index` et `/reports/{name}` pour les textes |
 | `GET` | `/analyses` | Liste des analyses |
+| `GET` | `/history` | Historique des runs (`run_type` analyse/diff, `label`, `limit`) : `netcross-history`. Base fixée par l'administrateur (`NETCROSS_HISTORY_DB`) ; 503 si non configurée (issue #874) |
+| `POST` | `/tools/merge` | Fusion (`files`, `dedup`, `format` pcapng/pcap) : `--merge`, `--merge-dedup` (issue #868) |
+| `POST` | `/tools/split` | Découpage (`file`, `split` = `time:60`, `count:N`, `size:100M`), archive zip : `--split` (issue #869) |
+| `POST` | `/tools/convert` | Conversion (`file`, `format` pcap/pcapng/erf/csv/json) : `--convert` (issue #870) |
+| `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
+| `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
+| `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl
