@@ -69,6 +69,12 @@ LOT : 4 capture(s), /data/lot
 Code de sortie : 0 si tout a été traité, 2 si au moins une capture ou une
 analyse est en échec (le lot va quand même au bout), 1 sur erreur d'usage.
 
+## Interface graphique (issue #872)
+
+Bouton « Analyse d'un dossier » de la barre de titre : mêmes options, même
+moteur (`netcross_report.batch_runner`), avancement ligne à ligne. Voir le
+[guide de l'interface graphique](guide/interface-graphique.md#analyse-dun-dossier).
+
 ## API REST (issue #872)
 
 Le même moteur (`netcross_report.batch_runner`) est servi par l'API :

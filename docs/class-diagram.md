@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-193 modules · 281 classes · 671 fonctions publiques de module.
+194 modules · 282 classes · 671 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -36,9 +36,9 @@ flowchart TD
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"30 imports"| netcross_report
+    netcross_gtk4 -->|"31 imports"| netcross_report
     netcross_gtk4 -->|"4 imports"| netcross_ai
-    netcross_gtk4 -->|"107 imports"| netcross_core
+    netcross_gtk4 -->|"109 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"19 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
@@ -4113,6 +4113,7 @@ classDiagram
 | `netcross_gtk4.annotations_panel` | panneau GTK des annotations (issue #363). |
 | `netcross_gtk4.annotations_view` | logique de presentation pour l'etiquetage/signets sur paquets (Job 40 / issue #160, section "Metadonnees et annotation"). |
 | `netcross_gtk4.app` | interface GTK4 pour netcross_core / netcross_report. |
+| `netcross_gtk4.batch_window` | fenetre « Analyse d'un dossier » (issue #872), equivalent de ``cross_capture_batch_cli.py`` : choix du dossier, regroupement, nombre de taches, sortie, avancement ligne a ligne. |
 | `netcross_gtk4.bpf_panel` | Decisions du panneau de filtres BPF de la capture live, sorties de ``netcross_gtk4/app.py`` (issue #285, quatrieme lot). |
 | `netcross_gtk4.capture_list` | Enumeration, ordre et retrait des lignes des panneaux de captures, sortis de ``netcross_gtk4/app.py`` (issue #285, cinquieme lot). |
 | `netcross_gtk4.capture_tools_window` | fenetre « Outils de capture » (issues #868, #869, #870, #886, #887) : fusion, decoupage, conversion, export filtre et recalage temporel, equivalents des modes utilitaires de la CLI (``--merge``,… |
@@ -4319,6 +4320,7 @@ classDiagram
         <<Gtk.ApplicationWindow>>
         +open_history()
         +open_capture_tools()
+        +open_batch()
         +open_lua_doc()
         +load_names_table(path)
         +plugin_settings() PluginSettings
@@ -4347,6 +4349,15 @@ classDiagram
         +display_available() bool
         +display_unavailable_message(environ, euid) str
         +main()
+    }
+
+    %% ===== netcross_gtk4.batch_window =====
+    class BatchWindow {
+        <<Gtk.Window>>
+        +options() batch_runner.BatchOptions
+        +progress_text() str
+        +run_batch_now(progress) str
+        +launch() None
     }
 
     %% ===== netcross_gtk4.bpf_panel =====

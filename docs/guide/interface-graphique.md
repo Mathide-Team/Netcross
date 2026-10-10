@@ -226,6 +226,28 @@ L'onglet **Rejeu** émet du trafic réel : il reste inactif tant que la case
 Réservez-le à un banc de test isolé ; tcpreplay et les droits d'émission
 (root ou `CAP_NET_RAW`) sont nécessaires.
 
+## Analyse d'un dossier
+
+Le bouton **Analyse d'un dossier** de la barre de titre ouvre l'équivalent
+de `cross_capture_batch_cli.py` (voir [mode lot](../batch-mode.md)) : même
+moteur, mêmes groupes, mêmes rapports et même `index.txt`.
+
+| Réglage | Équivalent CLI |
+|---|---|
+| « Dossier de captures... » | `--input` |
+| « Inclure les sous-dossiers » | `--recursive` |
+| « Regrouper les captures d'un meme incident » (décoché) | `--no-group` |
+| Fenêtre de regroupement, recouvrement minimal, adresses communes minimales | `--group-window`, `--min-overlap`, `--min-common-ips` |
+| Tâches en parallèle | `--jobs` |
+| « Reprendre un lot interrompu » | `--skip-existing` |
+| « Analyse de securite dans chaque rapport » | `--security-report` |
+| « Dossier de sortie... » | `--output` |
+
+L'avancement s'affiche ligne à ligne (inventaire de chaque capture, puis
+analyses par groupe) ; la fin résume groupes, captures isolées et échecs,
+avec le chemin de l'index. Les refus sont ceux de la CLI (dossier
+introuvable, aucune capture, seuils hors bornes).
+
 ## Documentation Lua
 
 Le bouton **Documentation Lua** de la barre de titre ouvre la

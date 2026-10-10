@@ -760,6 +760,13 @@ class MainWindow(Gtk.ApplicationWindow):
         header.pack_start(self.capture_tools_btn)
         self.capture_tools_window = None
 
+        # Issue #872 : dossier entier de captures (cross_capture_batch_cli)
+        self.batch_btn = Gtk.Button(label="Analyse d'un dossier")
+        self.batch_btn.set_tooltip_text("Lot de captures : regroupement, rapports, index (cross_capture_batch_cli)")
+        self.batch_btn.connect("clicked", lambda _b: self.open_batch())
+        header.pack_start(self.batch_btn)
+        self.batch_window = None
+
         # Issue #873 : documentation Lua hors ligne (netcross-lua-doc)
         self.lua_doc_btn = Gtk.Button(label="Documentation Lua")
         self.lua_doc_btn.set_tooltip_text("API Lua de Wireshark, hors ligne (equivalent de netcross-lua-doc)")
@@ -809,6 +816,20 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _on_capture_tools_closed(self, _win):
         self.capture_tools_window = None
+        return False
+
+    def open_batch(self):
+        """Fenetre « Analyse d'un dossier » (issue #872), une seule a la fois."""
+        from netcross_gtk4.batch_window import BatchWindow
+
+        if self.batch_window is None:
+            self.batch_window = BatchWindow(parent=self)
+            self.batch_window.connect("close-request", self._on_batch_closed)
+        self.batch_window.present()
+        return self.batch_window
+
+    def _on_batch_closed(self, _win):
+        self.batch_window = None
         return False
 
     def open_lua_doc(self):
