@@ -25,6 +25,7 @@ from netcross_core.batch import (
     justify,
     plan_batch,
 )
+from netcross_report import batch_runner as runner
 
 T0 = 1_700_000_000.0
 
@@ -238,7 +239,7 @@ def dossier(tmp_path, monkeypatch):
             raise RuntimeError("tshark: The file appears to be damaged or corrupt.\ndetail")
         return [dataclasses.replace(p, point=label) for p in pk]
 
-    monkeypatch.setattr(cli, "parse_capture", faux_parse)
+    monkeypatch.setattr(runner, "parse_capture", faux_parse)
     return src, tmp_path / "out"
 
 
@@ -272,13 +273,13 @@ def test_cli_skip_existing_reutilise_cache_et_rapports(dossier, monkeypatch, cap
 
     # la capture cassee n'est pas mise en cache : elle est retentee
     appels = []
-    orig = cli.parse_capture
+    orig = runner.parse_capture
 
     def compte(label, path, raise_on_error=False):
         appels.append(label)
         return orig(label, path, raise_on_error)
 
-    monkeypatch.setattr(cli, "parse_capture", compte)
+    monkeypatch.setattr(runner, "parse_capture", compte)
     _main(monkeypatch, "--input", src, "--output", out, "--skip-existing")
     assert appels == ["casse"]
     assert "deja present, conserve (--skip-existing)" in capsys.readouterr().out
@@ -298,7 +299,7 @@ def test_cli_analyse_en_echec_n_arrete_pas_le_lot(dossier, monkeypatch):
     def boom(*_a, **_k):
         raise ValueError("boom")
 
-    monkeypatch.setattr(cli, "analyse", boom)
+    monkeypatch.setattr(runner, "analyse", boom)
     assert _main(monkeypatch, "--input", src, "--output", out) == 2
     assert "analyse groupe 1 en echec : boom" in (out / "index.txt").read_text()
 
@@ -341,7 +342,7 @@ def test_build_inventory_capture_l_erreur(monkeypatch):
     def boom(*_a, **_k):
         raise RuntimeError("")
 
-    monkeypatch.setattr(cli, "parse_capture", boom)
+    monkeypatch.setattr(runner, "parse_capture", boom)
     inv = cli.build_inventory("A", "a.pcap")
     assert inv.error == "RuntimeError"
 
@@ -451,8 +452,8 @@ def test_collect_inventories_en_parallele(monkeypatch):
 
     from types import SimpleNamespace
 
-    monkeypatch.setattr(cli, "ProcessPoolExecutor", _Pool)
-    monkeypatch.setattr(cli, "build_inventory", lambda label, path: SimpleNamespace(label=label, error="illisible"))
+    monkeypatch.setattr(runner, "ProcessPoolExecutor", _Pool)
+    monkeypatch.setattr(runner, "build_inventory", lambda label, path: SimpleNamespace(label=label, error="illisible"))
     res = cli.collect_inventories(["p1", "p2"], {"p1": "A", "p2": "B"}, "out", jobs=3)
     assert [inv.label for inv in res] == ["A", "B"]
     assert vus == [3]
@@ -468,13 +469,13 @@ def test_analyse_and_write_compte_les_constats(tmp_path, monkeypatch):
     def _constats(report, packets):
         report.security_findings = [{"severity": "critique"}, {"severity": None}, {}]
 
-    monkeypatch.setattr(cli, "parse_capture", lambda label, path, raise_on_error: [])
-    monkeypatch.setattr(cli, "correlate", lambda pkts: [])
-    monkeypatch.setattr(cli, "analyse", lambda *a: rapport)
-    monkeypatch.setattr(cli, "print_report", lambda r: print("rapport"))
-    monkeypatch.setattr(cli.security_findings, "apply_security_findings", _constats)
-    monkeypatch.setattr(cli, "build_security_report", lambda r: r)
-    monkeypatch.setattr(cli, "print_security_report", lambda r: print("securite"))
+    monkeypatch.setattr(runner, "parse_capture", lambda label, path, raise_on_error: [])
+    monkeypatch.setattr(runner, "correlate", lambda pkts: [])
+    monkeypatch.setattr(runner, "analyse", lambda *a: rapport)
+    monkeypatch.setattr(runner, "print_report", lambda r: print("rapport"))
+    monkeypatch.setattr(runner.security_findings, "apply_security_findings", _constats)
+    monkeypatch.setattr(runner, "build_security_report", lambda r: r)
+    monkeypatch.setattr(runner, "print_security_report", lambda r: print("securite"))
     membres = [SimpleNamespace(label="A", path="a.pcap")]
     res = cli.analyse_and_write(membres, str(tmp_path / "r.txt"), security=True)
     assert res == {"findings": {"critique": 1, "faible": 2}}

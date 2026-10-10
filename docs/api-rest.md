@@ -25,6 +25,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
 | `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
+| `NETCROSS_API_MAX_BATCHES` | 20 | Lots conservés en mémoire avec leurs rapports (issue #872) ; au-delà, les plus anciens lots terminés sont supprimés. |
 | `NETCROSS_PLUGIN_PATH` | absent | Fichiers plugins locaux, séparés par `:` (équivalent de `--plugin-path`, issue #867). Fixés par l'administrateur : le client ne fait que nommer un plugin dans le champ `plugins`. Voir [plugins](plugins.md#api-rest-issue-867). |
 
 ```bash
@@ -69,8 +70,8 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
 | `GET` | `/analyses/{id}/markdown` | Rapport Markdown, identique à `--md-report` (issue #864) ; liste complète des routes : [parité des surfaces](parite-surfaces.md) |
-| `POST` | `/analyses/{id}/ai` | Module IA local, équivalent des options `--ai-*` (issue #866, voir [module IA](module-ia.md#api-rest-issue-866)) |
-| `GET` | `/plugins` | Plugins disponibles côté serveur, équivalent de `--list-plugins` ; champ `plugins` à l'analyse (issue #867, voir [plugins](plugins.md#api-rest-issue-867)) |
+| `POST` | `/batches` | Lot de captures ou archive ZIP, équivalent de `cross_capture_batch_cli.py` (issue #872, voir [mode lot](batch-mode.md#api-rest-issue-872)) |
+| `GET` | `/batches/{id}` | Avancement et résultat d'un lot ; `/index` et `/reports/{name}` pour les textes |
 | `GET` | `/analyses` | Liste des analyses |
 | `GET` | `/history` | Historique des runs (`run_type` analyse/diff, `label`, `limit`) : `netcross-history`. Base fixée par l'administrateur (`NETCROSS_HISTORY_DB`) ; 503 si non configurée (issue #874) |
 | `POST` | `/tools/merge` | Fusion (`files`, `dedup`, `format` pcapng/pcap) : `--merge`, `--merge-dedup` (issue #868) |

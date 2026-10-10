@@ -68,3 +68,39 @@ LOT : 4 capture(s), /data/lot
 
 Code de sortie : 0 si tout a été traité, 2 si au moins une capture ou une
 analyse est en échec (le lot va quand même au bout), 1 sur erreur d'usage.
+
+## API REST (issue #872)
+
+Le même moteur (`netcross_report.batch_runner`) est servi par l'API :
+
+```bash
+curl -F files=@amont.pcap -F files=@aval.pcapng -F files=@autre.pcap \
+     -F security_report=true "http://localhost:8000/batches?wait=true"
+curl -F files=@incident-4412.zip http://localhost:8000/batches      # 202, puis :
+curl http://localhost:8000/batches/0123456789ab                     # avancement
+curl http://localhost:8000/batches/0123456789ab/index               # index.txt
+curl http://localhost:8000/batches/0123456789ab/reports/rapport-groupe-1.txt
+```
+
+| Champ | Équivalent CLI |
+| --- | --- |
+| `files` (captures ou une archive `.zip`) | `--input` ; l'archive est extraite à plat, sous-dossiers compris (`--recursive`) |
+| `no_group` | `--no-group` |
+| `group_window`, `min_overlap`, `min_common_ips` | mêmes options, mêmes bornes (`400` sinon) |
+| `jobs` | `--jobs` (64 au plus) |
+| `security_report` | `--security-report` |
+| `?wait=true` | exécution synchrone (`201`) au lieu de `202` |
+
+`GET /batches/{batch_id}` renvoie `status` (`pending`, `running`,
+`completed`, `failed`), `progress` (les lignes affichées par la CLI) et
+`result` : groupes avec membres, justification et rapport, captures isolées
+avec motif, échecs avec motif, rapports par capture, constats par sévérité,
+fichiers ignorés, synthèse et `has_failures` (code de sortie 2 de la CLI).
+
+`--output` et `--skip-existing` n'ont pas d'équivalent : chaque lot a son
+répertoire de travail côté serveur, supprimé quand le lot est évincé
+(`NETCROSS_API_MAX_BATCHES`, défaut 20) ou à l'arrêt du service. Défenses
+de l'archive : noms nettoyés (aucune écriture hors du lot), taille
+décompressée bornée (`NETCROSS_MAX_UPLOAD_MB` × `NETCROSS_API_MAX_FILES`),
+fichiers sans extension de capture ignorés et listés.
+
