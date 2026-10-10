@@ -76,6 +76,9 @@ from netcross_gtk4.advanced_options import (  # noqa: E402
     settings_from_values,
 )
 from netcross_gtk4.advanced_options import validate as validate_advanced  # noqa: E402
+from netcross_gtk4.ai_settings import AISettings  # noqa: E402
+from netcross_gtk4.ai_settings import settings_from_widgets as ai_settings_from_widgets  # noqa: E402
+from netcross_gtk4.ai_settings import validate_settings as validate_ai_settings  # noqa: E402
 from netcross_gtk4.annotations_panel import AnnotationsPanel  # noqa: E402
 from netcross_gtk4.bpf_panel import (  # noqa: E402
     doit_desolidariser_le_menu,
@@ -1321,6 +1324,50 @@ class MainWindow(Gtk.ApplicationWindow):
         self.history_label_entry = Gtk.Entry(placeholder_text="site, scenario...")
         report_box.append(self.history_label_entry)
         self.single_options_box.append(report_box)
+
+        # Issue #866 : module IA local, equivalent des options --ai-* (voir
+        # docs/module-ia.md). Tout tourne sur ce poste.
+        ai_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
+        ai_box.append(Gtk.Label(label="Module IA local :", halign=Gtk.Align.START))
+        self.ai_baseline_save_entry = Gtk.Entry(placeholder_text="Enregistrer la baseline (--ai-baseline-save)")
+        self.ai_baseline_save_entry.set_tooltip_text(
+            "Ajoute les flux de cette capture (supposee NORMALE) a la baseline FICHIER.json (creee si absente)."
+        )
+        self.ai_baseline_label_entry = Gtk.Entry(placeholder_text="Libelle de baseline (--ai-baseline-label)")
+        self.ai_anomalies_option = FileOption(
+            "Baseline (anomalies)...",
+            "Detection d'anomalies de flux (Isolation Forest) par rapport a cette baseline (--ai-anomalies). "
+            "Necessite scikit-learn.",
+            ("*.json",),
+            "Baseline (*.json)",
+        )
+        self.ai_training_export_entry = Gtk.Entry(placeholder_text="Exporter l'entrainement (--ai-training-export)")
+        self.ai_training_export_entry.set_tooltip_text(
+            "Exporte les flux pre-etiquetes par les regles FLOW-4, a corriger pour la classification."
+        )
+        self.ai_classify_option = FileOption(
+            "Jeu d'entrainement...",
+            "Classe les flux (foret aleatoire entrainee sur ce jeu etiquete) avec un score de confiance "
+            "(--ai-classify). Necessite scikit-learn.",
+            ("*.json",),
+            "Jeu d'entrainement (*.json)",
+        )
+        self.ai_summary_entry = Gtk.Entry(placeholder_text="Resume (--ai-summary) : template, ollama:MODELE, llamacpp")
+        self.ai_endpoint_entry = Gtk.Entry(placeholder_text="Point d'acces local (--ai-endpoint)")
+        self.ai_endpoint_entry.set_tooltip_text("Toute adresse hors boucle locale est refusee.")
+        self.ai_report_entry = Gtk.Entry(placeholder_text="Resultats JSON (--ai-report)")
+        for widget in (
+            self.ai_baseline_save_entry,
+            self.ai_baseline_label_entry,
+            self.ai_anomalies_option,
+            self.ai_training_export_entry,
+            self.ai_classify_option,
+            self.ai_summary_entry,
+            self.ai_endpoint_entry,
+            self.ai_report_entry,
+        ):
+            ai_box.append(widget)
+        self.single_options_box.append(ai_box)
         self._on_notify_threshold_changed(None)
         page.append(self.single_options_box)
 
@@ -2028,6 +2075,8 @@ class MainWindow(Gtk.ApplicationWindow):
             return
 
         notify = None
+        ai = None
+
         plugins = None
         client_groups: dict = {}
         client_reference = None
@@ -2040,6 +2089,14 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.stack.set_visible_child_name("log")
                 self._log(f"Notifications : {'; '.join(notify_errors)} -- analyse non lancee.")
                 logger.debug("MainWindow.on_run_analysis: si notify_errors -> retour")
+                return
+            ai = self.ai_settings()
+            ai_errors = validate_ai_settings(ai)
+            if ai_errors:
+                # Echec immediat plutot qu'apres l'analyse, comme la CLI (issue #866).
+                self.stack.set_visible_child_name("log")
+                self._log(f"Module IA : {'; '.join(ai_errors)} -- analyse non lancee.")
+                logger.debug("MainWindow.on_run_analysis: si ai_errors -> retour")
                 return
             try:
                 plugins, plugin_errors = prepare_plugins(self.plugin_settings(), self.security_check.get_active())
@@ -2164,6 +2221,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     "expertise": self.expertise_settings(),
                     "advanced": advanced,
                     "history": self.history_settings(),
+                    "ai": ai,
                     "plugins": plugins,
                 },
                 daemon=True,
@@ -2639,6 +2697,7 @@ class MainWindow(Gtk.ApplicationWindow):
         expertise=None,
         advanced=None,
         history=None,
+        ai=None,
         plugins=None,
     ):
         logger.debug(
@@ -2677,6 +2736,7 @@ class MainWindow(Gtk.ApplicationWindow):
             expertise=expertise,
             advanced=advanced,
             history=history,
+            ai=ai,
             plugins=plugins,
         )
 
@@ -2906,6 +2966,20 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child_name("results")
         logger.debug("MainWindow._on_analysis_done: retour False")
         return False
+
+    def ai_settings(self) -> AISettings:
+        """Module IA local de la configuration (issue #866)."""
+        logger.debug("MainWindow.ai_settings()")
+        return ai_settings_from_widgets(
+            self.ai_baseline_save_entry.get_text(),
+            self.ai_baseline_label_entry.get_text(),
+            self.ai_anomalies_option.path,
+            self.ai_training_export_entry.get_text(),
+            self.ai_classify_option.path,
+            self.ai_summary_entry.get_text(),
+            self.ai_endpoint_entry.get_text(),
+            self.ai_report_entry.get_text(),
+        )
 
     def history_settings(self) -> HistorySettings:
         """Historique SQLite de la configuration (issue #674)."""
