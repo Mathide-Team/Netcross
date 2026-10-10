@@ -3,7 +3,9 @@ historique » de la page Resultats (issue #674).
 
 - Export SIEM CEF, LEEF ou STIX du rapport de securite (``--siem-export``) ;
 - ticket de support anonymise, apres consentement explicite
-  (``--support-ticket`` avec ``--support-consent``) ;
+  (``--support-ticket`` avec ``--support-consent``) : portees
+  (``--support-scope``), marqueurs (``--support-marker``) et
+  correspondance privee du ticket (``--support-map``), issue #877 ;
 - historique SQLite choisi dans la configuration : message
   d'enregistrement et derniers runs (``--history-show N``) ;
 - table d'anonymisation adresse reelle -> pseudonyme (``--redact-map``,
@@ -25,8 +27,11 @@ from netcross_core.logging_config import get_logger  # noqa: E402
 from netcross_gtk4.report_exports import (  # noqa: E402
     HISTORY_SHOW_MAX,
     SIEM_EXTENSIONS,
+    SupportTicketError,
     export_siem,
     history_text,
+    parse_support_markers,
+    write_support_map,
     write_support_ticket,
 )
 
@@ -69,6 +74,35 @@ class ReportExportsPanel(Gtk.Box):
         ticket_row.append(self.consent_check)
         ticket_row.append(self.ticket_btn)
 
+        # Issue #877 : portees (--support-scope, toutes cochees = defaut de la
+        # CLI), marqueurs (--support-marker) et correspondance (--support-map).
+        scope_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        scope_row.append(Gtk.Label(label="Portees (--support-scope) :"))
+        self.scope_checks = {
+            "environnement": Gtk.CheckButton(label="Environnement"),
+            "journal": Gtk.CheckButton(label="Journal"),
+            "trace_appels": Gtk.CheckButton(label="Trace d'appels"),
+            "marqueurs": Gtk.CheckButton(label="Marqueurs"),
+        }
+        for check in self.scope_checks.values():
+            check.set_active(True)
+            check.connect("toggled", lambda _c: self._sync())
+            scope_row.append(check)
+        self.markers_entry = Gtk.Entry(placeholder_text="Marqueurs CLE=VALEUR separes par ; (--support-marker)")
+        self.markers_entry.set_tooltip_text(
+            "Repere de correlation reporte dans le ticket, par exemple trace_id=T-042 (portee « Marqueurs »)."
+        )
+        self.markers_entry.set_hexpand(True)
+        scope_row.append(self.markers_entry)
+        self.support_map_btn = Gtk.Button(label="Correspondance du ticket (--support-map)...")
+        self.support_map_btn.set_tooltip_text(
+            "Valeur reelle <-> pseudonyme du dernier ticket ecrit : a garder chez vous, "
+            "ne JAMAIS transmettre avec le ticket."
+        )
+        self.support_map_btn.connect("clicked", lambda _b: self._choose("support_map"))
+        scope_row.append(self.support_map_btn)
+        self.last_ticket = None
+
         self.history_label = Gtk.Label(label="", halign=Gtk.Align.START, wrap=True)
         history_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         history_row.append(Gtk.Label(label="Derniers runs (--history-show, 0 = tous) :"))
@@ -97,6 +131,7 @@ class ReportExportsPanel(Gtk.Box):
         for widget in (
             siem_row,
             ticket_row,
+            scope_row,
             redact_row,
             self.history_label,
             history_row,
@@ -117,6 +152,7 @@ class ReportExportsPanel(Gtk.Box):
         self.history_view.get_buffer().set_text("")
         self.history_label.set_text(context.history_message if context is not None else "")
         self.redaction_map = tuple(context.redaction_map) if context is not None else ()
+        self.last_ticket = None
         self._sync()
         logger.debug("ReportExportsPanel.set_context: {}", context is not None)
 
@@ -130,9 +166,15 @@ class ReportExportsPanel(Gtk.Box):
 
     def _sync(self) -> None:
         self.siem_btn.set_sensitive(self.security_report is not None)
-        self.ticket_btn.set_sensitive(self.context is not None and self.consent_check.get_active())
+        self.ticket_btn.set_sensitive(
+            self.context is not None and self.consent_check.get_active() and bool(self.selected_scopes())
+        )
+        self.support_map_btn.set_sensitive(self.last_ticket is not None)
         self.history_btn.set_sensitive(self._has_history())
         self.redact_map_btn.set_sensitive(bool(self.redaction_map))
+
+    def selected_scopes(self) -> tuple[str, ...]:
+        return tuple(scope for scope, check in self.scope_checks.items() if check.get_active())
 
     def selected_siem_format(self) -> str:
         return SIEM_FORMATS[self.siem_format.get_selected()]
@@ -149,9 +191,29 @@ class ReportExportsPanel(Gtk.Box):
     def write_ticket_to(self, path) -> str:
         if self.context is None:
             raise ValueError("aucune analyse de fichiers terminee")
-        written, occurrences = write_support_ticket(str(path), self.context, consent=self.consent_check.get_active())
+        logger.debug("ReportExportsPanel.write_ticket_to: {}", path)
+        markers = parse_support_markers(self.markers_entry.get_text())
+        result = write_support_ticket(
+            str(path),
+            self.context,
+            consent=self.consent_check.get_active(),
+            scopes=self.selected_scopes(),
+            markers=markers,
+        )
+        self.last_ticket = result
+        self._sync()
         self.status_label.set_text(
-            f"Ticket de support anonymise ecrit : {written} (diagnostic, {occurrences} occurrence(s) redigee(s))"
+            f"Ticket de support anonymise ecrit : {result.path} (diagnostic, portees {', '.join(result.scopes)}, "
+            f"{result.occurrences} occurrence(s) redigee(s))"
+        )
+        return result.path
+
+    def write_support_map_to(self, path) -> str:
+        """Meme CSV que ``--support-map`` pour le dernier ticket ecrit."""
+        logger.debug("ReportExportsPanel.write_support_map_to: {}", path)
+        written = write_support_map(self.last_ticket.scrubber if self.last_ticket else None, str(path))
+        self.status_label.set_text(
+            f"Correspondance privee du ticket ecrite dans {written} (a NE PAS transmettre avec le ticket)."
         )
         return written
 
@@ -192,6 +254,8 @@ class ReportExportsPanel(Gtk.Box):
             dialog.set_initial_name(f"netcross-siem.{SIEM_EXTENSIONS[fmt]}")
         elif what == "redact_map":
             dialog.set_initial_name("netcross-redact-map.csv")
+        elif what == "support_map":
+            dialog.set_initial_name("netcross-ticket-support-map.csv")
         else:
             dialog.set_initial_name("netcross-ticket-support.json")
         root = self.get_root()
@@ -212,8 +276,10 @@ class ReportExportsPanel(Gtk.Box):
                 self.export_siem_to(path)
             elif what == "redact_map":
                 self.write_redaction_map_to(path)
+            elif what == "support_map":
+                self.write_support_map_to(path)
             else:
                 self.write_ticket_to(path)
-        except (OSError, ValueError, RuntimeError) as exc:
+        except (OSError, ValueError, RuntimeError, SupportTicketError) as exc:
             logger.warning("ReportExportsPanel: export impossible ({})", exc)
             self.status_label.set_text(f"Export impossible : {exc}")

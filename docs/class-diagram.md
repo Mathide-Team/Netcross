@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-194 modules · 280 classes · 667 fonctions publiques de module.
+194 modules · 282 classes · 671 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -38,9 +38,9 @@ flowchart TD
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"31 imports"| netcross_report
     netcross_gtk4 -->|"4 imports"| netcross_ai
-    netcross_gtk4 -->|"107 imports"| netcross_core
+    netcross_gtk4 -->|"109 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
-    netcross_api -->|"18 imports"| netcross_report
+    netcross_api -->|"19 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
     netcross_api -->|"42 imports"| netcross_core
     netcross_api -->|"3 imports"| pcap_parser
@@ -3915,6 +3915,8 @@ classDiagram
         +bool detect_duplicates
         +bool exclude_duplicates
         +float duplicate_threshold_ms
+        +bool history
+        +str? history_label
         +tuple~str, ...~ plugins
     }
     class AnalysisError {
@@ -3923,9 +3925,9 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, plugins, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, history, history_label, plugins, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, plugins, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, history, history_label, plugins, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
@@ -3984,6 +3986,7 @@ classDiagram
         +history_db_path() str?
         +require_history_db() str
         +record_comparison(findings, baseline_report, current_report, label, redact) dict~str, Any~
+        +record_analysis(report, findings, tls_findings, quic_findings, label, redact) dict~str, Any~
         +register(app, verify) None
     }
 
@@ -4009,6 +4012,8 @@ classDiagram
         +int point_count
         +int packet_count
         +int security_finding_count
+        +int? history_id
+        +str? history_error
     }
     class AnalysisAccepted {
         <<BaseModel>>
@@ -4062,6 +4067,8 @@ classDiagram
         +int point_count
         +int packet_count
         +int security_finding_count
+        +int? history_id
+        +str? history_error
         +list~str~ points
         +str order_source
         +list~SegmentLoss~ segments
@@ -4751,6 +4758,17 @@ classDiagram
         +str history_message
         +tuple~tuple~str, str, str~, ...~ redaction_map
     }
+    class SupportTicketError {
+        <<ValueError>>
+    }
+    class SupportTicketResult {
+        <<dataclass, frozen>>
+        +str path
+        +int occurrences
+        +tuple~str, ...~ scopes
+        +dict~str, str~ markers
+        +Any scrubber
+    }
     class mod_netcross_gtk4_report_exports["netcross_gtk4.report_exports"] {
         <<module>>
         +record_history(report, settings, findings, tls, quic, redact) str
@@ -4758,7 +4776,10 @@ classDiagram
         +history_text(db_path, limit, label, run_type) str
         +sequence_views(flows, max_flows, flow_objects) list?
         +export_siem(report, path, fmt, context) str
-        +write_support_ticket(path, context, consent) tuple~str, int~
+        +parse_support_markers(text) dict~str, str~
+        +check_support_scopes(scopes) tuple~str, ...~
+        +write_support_ticket(path, context, consent, scopes, markers) SupportTicketResult
+        +write_support_map(scrubber, path) str
     }
 
     %% ===== netcross_gtk4.report_exports_panel =====
@@ -4766,9 +4787,11 @@ classDiagram
         <<Gtk.Box>>
         +set_context(report, security_report, context) None
         +set_redaction_map(entries) None
+        +selected_scopes() tuple~str, ...~
         +selected_siem_format() str
         +export_siem_to(path) str
         +write_ticket_to(path) str
+        +write_support_map_to(path) str
         +write_redaction_map_to(path) str
         +show_history() str
     }
