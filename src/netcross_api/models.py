@@ -27,6 +27,10 @@ class AnalysisSummary(BaseModel):
     point_count: int = 0
     packet_count: int = 0
     security_finding_count: int = 0
+    history_id: int | None = Field(default=None, description="Id du run dans l'historique (history=true, #890)")
+    history_error: str | None = Field(
+        default=None, description="Enregistrement dans l'historique impossible (l'analyse reste valable)"
+    )
 
 
 class AnalysisAccepted(BaseModel):
@@ -100,6 +104,10 @@ class MultiAnalysisSummary(BaseModel):
     point_count: int = 0
     packet_count: int = 0
     security_finding_count: int = 0
+    history_id: int | None = Field(default=None, description="Id du run dans l'historique (history=true, #890)")
+    history_error: str | None = Field(
+        default=None, description="Enregistrement dans l'historique impossible (l'analyse reste valable)"
+    )
     points: list[str] = Field(default_factory=list, description="Points dans l'ordre amont -> aval retenu")
     order_source: str = Field(
         default="auto",

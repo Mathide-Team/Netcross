@@ -23,7 +23,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_MAX_FILES` | `16` | Fichiers par requête `/captures/multi` (400 au-delà). |
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
-| `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
+| `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, sur `/captures` et `/captures/multi` l'analyse (#890), `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
 
 ```bash
@@ -178,12 +178,21 @@ la CLI qui changent le résultat :
 | `tls` | `false` | `--tls` (clé `tls_findings` du rapport structuré) |
 | `quic` | `false` | `--quic` (clé `quic_findings` ; nécessite `cryptography`) |
 | `redact` | `false` | `--redact` |
+| `history` | `false` | `--history-db` (base du serveur `NETCROSS_HISTORY_DB`, issue #890) |
+| `history_label` | — | `--history-label` (avec `history`) |
 
 Mêmes règles que la CLI : `redact` avec `tls` ou `quic` est refusé (400),
 car ces diagnostics relisent les fichiers d'origine avec les adresses
 réelles ; avec `redact`, le rapport de sécurité n'est pas calculé
 (`security_report_absent` l'indique). Les options retenues sont
 enregistrées dans les métadonnées de l'analyse (`options`).
+
+Historique (issue #890) : avec `history=true`, l'analyse est enregistrée en
+fin de run dans la base du serveur, findings TLS/QUIC compris comme la CLI,
+et le résumé (réponse `?wait=true` ou `summary` du statut) porte
+`history_id`. Si la base est illisible, l'analyse reste valable et le
+résumé porte `history_error`. `history=true` sans `NETCROSS_HISTORY_DB`, ou
+`history_label` sans `history`, est refusé (400).
 
 Table de correspondance (équivalent de `--redact-map`, issue #876) :
 `GET /analyses/{id}/redact-map` et `GET /comparisons/{id}/redact-map`

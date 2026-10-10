@@ -7,7 +7,9 @@ cette variable, l'enregistrement (``history=true``) est refusé (400) et
 
 - ``GET /history`` : ``run_type`` (``analyse`` ou ``diff``), ``label``,
   ``limit`` -- mêmes filtres que ``cross_history_cli.py`` ;
-- ``POST /comparisons`` : ``history``, ``history_label`` (voir app.py).
+- ``POST /comparisons`` : ``history``, ``history_label`` (voir app.py) ;
+- ``POST /captures`` et ``POST /captures/multi`` : ``history``,
+  ``history_label`` (issue #890), enregistrés par :func:`record_analysis`.
 """
 
 from __future__ import annotations
@@ -66,6 +68,33 @@ def record_comparison(findings, baseline_report, current_report, label: str | No
         logger.warning("historique : enregistrement impossible ({})", exc)
         return {"history_error": str(exc)}
     logger.info("comparaison enregistree dans l'historique (id {}, etiquette {})", run_id, label)
+    return {"history_id": run_id}
+
+
+def record_analysis(report, findings, tls_findings, quic_findings, label: str | None, redact: bool) -> dict[str, Any]:
+    """``record_run`` dans la base du serveur, avec les findings TLS/QUIC
+    comme la CLI (issue #890) ; renvoie ``history_id`` ou ``history_error``
+    (base illisible : l'analyse reste valable)."""
+    from netcross_report import HistoryDatabaseError, record_run
+
+    path = history_db_path()
+    if path is None:
+        logger.debug("record_analysis: historique non configure -> rien")
+        return {}
+    try:
+        run_id = record_run(
+            report,
+            path,
+            findings=findings,
+            tls_findings=tls_findings,
+            quic_findings=quic_findings,
+            meta={"Anonymisation": "adresses IP/MAC anonymisees (--redact)"} if redact else None,
+            label=label,
+        )
+    except HistoryDatabaseError as exc:
+        logger.warning("historique : enregistrement de l'analyse impossible ({})", exc)
+        return {"history_error": str(exc)}
+    logger.info("analyse enregistree dans l'historique (id {}, etiquette {})", run_id, label)
     return {"history_id": run_id}
 
 
