@@ -521,3 +521,30 @@ def get_attribut(conn: sqlite3.Connection, attribut_id: int) -> Attribut | None:
     row = conn.execute(_ATTRIBUT_SELECT + "WHERE a.id = ?", (attribut_id,)).fetchone()
     logger.debug("get_attribut: retour Attribut(*row) if row else None")
     return Attribut(*row) if row else None
+
+
+# -- documents JSON partages (CLI --json, API, issue #873) --------------------
+
+
+def search_document(conn: sqlite3.Connection, terme: str, limit: int = 20, full: bool = False) -> dict[str, Any]:
+    """Document de ``netcross-lua-doc --json TERME`` (``--full`` : detail de
+    chaque resultat) ; meme document pour ``GET /lua-doc/search``."""
+    from dataclasses import asdict
+
+    items: list[dict[str, Any]] = []
+    for r in search(conn, terme, limit):
+        item = asdict(r)
+        item["est_attribut"] = r.est_attribut
+        if full:
+            detail = get_attribut(conn, r.ref_id) if r.est_attribut else get_methode(conn, r.ref_id)
+            item["detail"] = asdict(detail) if detail else None
+        items.append(item)
+    logger.debug("search_document: {} resultat(s)", len(items))
+    return {"meta": get_meta(conn), "terme": terme, "resultats": items}
+
+
+def suggest_classes(conn: sqlite3.Connection, nom: str, n: int = 5) -> list[str]:
+    """Classes proches d'un nom inconnu (message de ``--class``)."""
+    proches = sorted({r.classe for r in search(conn, nom, 50)})[:n]
+    logger.debug("suggest_classes: {}", proches)
+    return proches

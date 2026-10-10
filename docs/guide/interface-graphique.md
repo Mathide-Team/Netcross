@@ -61,7 +61,7 @@ Options principales :
 | Destinations connues..., Hôtes connus... | Listes JSON d'IP (liste plate ou clé `hosts`) : destinations habituelles et hôtes déjà vus, les autres sont signalés. Nécessitent « Rapport de sécurité » ; un fichier sans IP bloque le lancement | `--known-destinations`, `--known-hosts` |
 | Base CVE... | Base CVE complète à la place de la base minimale embarquée. Nécessite « Rapport de sécurité » ; un fichier absent bloque le lancement | `--cve-db` |
 | Diagramme de séquence (flux) | Ajoute à l'export PDF le diagramme de séquence des N flux les plus volumineux (0 = aucun) | `--sequence-diagram N` |
-| Historique..., Étiquette | Base SQLite (créée si absente) : chaque analyse de fichiers y ajoute son résumé (score, constats), avec l'étiquette choisie. Un fichier qui n'est pas une base netcross est signalé au journal, l'analyse reste affichée | `--history-db`, `--history-label` |
+| Historique..., Étiquette | Base SQLite (créée si absente) : chaque analyse de fichiers ou comparaison (fichiers ou courant en direct) y ajoute son résumé (score, constats), avec l'étiquette choisie. Un fichier qui n'est pas une base netcross est signalé au journal, l'analyse reste affichée | `--history-db`, `--history-label` |
 
 Réglages fins, à ne modifier qu'en connaissance de cause :
 
@@ -182,7 +182,11 @@ Sous le rapport, plusieurs sections se déplient :
   STIX 2.1 du rapport de sécurité (même fichier que `--siem-export`) ;
   ticket de support anonymisé « diagnostic », seulement après avoir coché
   le consentement (`--support-ticket --support-consent`, rien n'est
-  envoyé) ; derniers runs de l'historique choisi (`--history-show N`).
+  envoyé) ; derniers runs de l'historique choisi (`--history-show N`) ;
+  après une analyse anonymisée (simple ou comparaison), **Table
+  d'anonymisation (--redact-map)...** écrit le CSV adresse réelle →
+  pseudonyme de `--redact-map` (une seule table pour baseline et courant).
+  Ce fichier désanonymise le rapport : gardez-le pour vous.
 
 Après une comparaison ou une capture en direct, certaines sections sont
 grisées : elles ont besoin des fichiers de capture d'une analyse simple.
@@ -194,8 +198,50 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
     l'**Exploration statistique** (Top-N réglable) ou l'export CSV.
     Le défaut est suivi dans le dépôt.
 
+## Outils de capture
+
+Le bouton **Outils de capture** de la barre de titre ouvre une fenêtre à
+onglets qui transforme des fichiers sans lancer d'analyse, comme les
+modes utilitaires de la CLI :
+
+| Onglet | Équivalent CLI |
+|---|---|
+| Fusion (captures, « Dedupliquer les paquets identiques ») | `--merge`, `--merge-dedup` |
+| Decoupage (durée, nombre de paquets ou taille ; dossier) | `--split`, `--split-output-dir` |
+| Conversion (pcap, pcapng, erf, csv, json) | `--convert`, `--convert-format` |
+| Export filtre (filtre Wireshark, début, fin, adresses) | `--export-pcap`, `--export-bpf`, `--export-time-*`, `--export-endpoints` |
+| Recalage temporel (décalage, t=0, alignement sur une référence) | `--adjust-time-output`, `--time-offset`, `--normalize-time`, `--align-to` |
+| Rejeu (interface, vitesse, passes ; bouton « Arreter ») | `--replay`, `--replay-speed`, `--replay-loop` |
+
+Les mêmes saisies sont refusées avec les mêmes messages que la CLI ; le
+résultat ou l'erreur s'affiche en bas de la fenêtre. Les outils Wireshark
+(`tshark`, `editcap`, `mergecap`, `reordercap`) doivent être installés.
+
+L'onglet **Rejeu** émet du trafic réel : il reste inactif tant que la case
+« J'ai l'autorisation d'emettre sur cette interface » n'est pas cochée.
+Réservez-le à un banc de test isolé ; tcpreplay et les droits d'émission
+(root ou `CAP_NET_RAW`) sont nécessaires.
+
+## Documentation Lua
+
+Le bouton **Documentation Lua** de la barre de titre ouvre la
+documentation hors ligne de l'API Lua de Wireshark, la même que
+`netcross-lua-doc` : liste des classes à gauche (un clic ouvre la fiche
+complète), recherche plein texte (« Resultats max. » = `--limit`,
+« Detail complet (--full) » = `--full`), bouton **JSON** pour le document
+de `--json`. Aucun accès réseau ; la banque est celle de la CLI
+(`~/.cache/netcross/lua_api.db`).
+
+## Historique des runs
+
+Le bouton **Historique des runs** de la barre de titre ouvre la
+consultation d'une base `--history-db` sans relancer d'analyse, comme
+`netcross-history` : type (tous, analyses, comparaisons ; `--run-type`),
+étiquette exacte (`--label`) et nombre maximal de runs (`--limit`, 0 =
+tous). La base et l'étiquette de la configuration sont reprises à
+l'ouverture.
+
 ## Ce que l'interface ne fait pas
 
-Certaines fonctions restent réservées à la ligne de commande : fusion,
-découpage, conversion et rejeu de captures, plugins,
-module IA, historique des comparaisons. Voir `--help` et les pages de la section Analyses.
+Certaines fonctions restent réservées à la ligne de commande : plugins,
+module IA. Voir `--help` et les pages de la section Analyses.

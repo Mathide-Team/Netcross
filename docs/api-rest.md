@@ -23,6 +23,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_MAX_FILES` | `16` | Fichiers par requête `/captures/multi` (400 au-delà). |
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
+| `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
 
 ```bash
@@ -69,6 +70,13 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}/markdown` | Rapport Markdown, identique à `--md-report` (issue #864) ; liste complète des routes : [parité des surfaces](parite-surfaces.md) |
 | `POST` | `/analyses/{id}/support-ticket` | Ticket de support anonymisé : `consent`, `kind`, `scopes`, `marker`, `include_map` (issues #674, #877 ; voir [tickets de support](support-tickets.md#api-rest-issues-674-877)) |
 | `GET` | `/analyses` | Liste des analyses |
+| `GET` | `/history` | Historique des runs (`run_type` analyse/diff, `label`, `limit`) : `netcross-history`. Base fixée par l'administrateur (`NETCROSS_HISTORY_DB`) ; 503 si non configurée (issue #874) |
+| `POST` | `/tools/merge` | Fusion (`files`, `dedup`, `format` pcapng/pcap) : `--merge`, `--merge-dedup` (issue #868) |
+| `POST` | `/tools/split` | Découpage (`file`, `split` = `time:60`, `count:N`, `size:100M`), archive zip : `--split` (issue #869) |
+| `POST` | `/tools/convert` | Conversion (`file`, `format` pcap/pcapng/erf/csv/json) : `--convert` (issue #870) |
+| `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
+| `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
+| `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl
@@ -177,6 +185,15 @@ car ces diagnostics relisent les fichiers d'origine avec les adresses
 réelles ; avec `redact`, le rapport de sécurité n'est pas calculé
 (`security_report_absent` l'indique). Les options retenues sont
 enregistrées dans les métadonnées de l'analyse (`options`).
+
+Table de correspondance (équivalent de `--redact-map`, issue #876) :
+`GET /analyses/{id}/redact-map` et `GET /comparisons/{id}/redact-map`
+rendent le CSV `adresse_reelle,pseudonyme,type` de `--redact-map`. Une
+comparaison anonymise baseline et courant avec la même table : une adresse
+garde le même pseudonyme des deux côtés. La table n'existe qu'en mémoire du
+serveur (jamais en SQLite : 409 après redémarrage), 404 sans `redact`.
+Elle désanonymise le rapport : à conserver en privé, ne pas transmettre
+avec lui.
 
 ```bash
 curl -X POST "http://localhost:8000/captures/multi?wait=true" \

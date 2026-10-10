@@ -18,6 +18,7 @@ Déploiement (#356), par variables d'environnement lues au démarrage :
     NETCROSS_API_MAX_FILES  nombre maximal de fichiers par requête (défaut 16)
     NETCROSS_API_WORKERS    analyses simultanées en tâche de fond (défaut 2)
     NETCROSS_DB_PATH        base SQLite : analyses conservées au redémarrage
+    NETCROSS_HISTORY_DB     historique des runs (--history-db) : GET /history, history=true
     NETCROSS_CVE_DB         base CVE complète (équiv. --cve-db) ; sans elle,
                             base minimale embarquée, comme la CLI
 
@@ -57,6 +58,8 @@ from netcross_api.store import COMPLETED, FAILED, PENDING, report_document, stor
 from netcross_core import analyse, correlate, parse_capture
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
 from netcross_core.logging_config import get_logger, summarize
+from netcross_core.notify.request import NotifySettings, send_notifications
+from netcross_core.notify.request import validate_settings as validate_notify
 from netcross_core.security.findings import apply_security_findings, scan_capture_exploits
 from netcross_report.json_report import build_json_report_document
 from netcross_report.security_report import build_security_report
@@ -98,6 +101,15 @@ _PARALLEL_WORKERS_FORM = Form(
     default=None,
     description="Lecture parallèle avec N processus tshark (équivalent de --parallel --parallel-workers N)",
 )
+# Issue #875 : notifications (équivalents --notify-*)
+_NOTIFY_ON_FORM = Form(
+    default=None,
+    description="Seuil de notification : critique, elevee, moyenne ou faible (équivalent de --notify-on)",
+)
+_NOTIFY_WEBHOOK_FORM = Form(default=None, description="URL de webhook (équivalent de --notify-webhook)")
+_NOTIFY_SLACK_FORM = Form(default=None, description="URL de webhook Slack (équivalent de --notify-slack)")
+_NOTIFY_EMAIL_FORM = Form(default=None, description="Destinataire du courriel (équivalent de --notify-email)")
+_NOTIFY_DETAIL_FORM = Form(default="resume", description="resume ou complet (équivalent de --notify-detail)")
 _TEST_NET_EXTERNAL_FORM = Form(
     default=False,
     description="true : plages TEST-NET traitées comme externes (équivalent de --test-net-external)",
@@ -296,6 +308,8 @@ class ApiAnalysisOptions:
     known_destinations: frozenset[str] | None = None
     known_hosts: frozenset[str] | None = None
     parallel_workers: int | None = None
+    # Issue #875 : jamais recopié tel quel dans les métadonnées (URL secrètes)
+    notify: NotifySettings | None = None
     names_path: str | None = None
     # Issue #671 : split_interfaces (--split-interfaces)
     split_interfaces: bool = False
@@ -315,6 +329,26 @@ class ApiAnalysisOptions:
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS
 
 
+def _options_metadata(options: ApiAnalysisOptions) -> dict:
+    """Options enregistrées avec l'analyse. Les URL de notification
+    portent souvent un jeton (webhook Slack) : seuls le seuil, le détail et
+    les canaux demandés sont conservés (issue #875)."""
+    data = asdict(options)
+    notify = options.notify
+    data["notify"] = (
+        None
+        if notify is None
+        else {
+            "threshold": notify.threshold,
+            "detail": notify.detail,
+            "channels": [
+                n for n, v in (("webhook", notify.webhook), ("slack", notify.slack), ("email", notify.email)) if v
+            ],
+        }
+    )
+    return data
+
+
 def _options(
     nat_tolerant: bool,
     nat_window_ms: float,
@@ -328,6 +362,11 @@ def _options(
     known_hosts: frozenset[str] | None = None,
     names_path: str | None = None,
     parallel_workers: int | None = None,
+    notify_on: str | None = None,
+    notify_webhook: str | None = None,
+    notify_slack: str | None = None,
+    notify_email: str | None = None,
+    notify_detail: str = "resume",
     split_interfaces: bool = False,
     rule_engine: bool = False,
     expert_section: bool = False,
@@ -372,6 +411,34 @@ def _options(
         raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
     if parallel_workers is not None and not 1 <= parallel_workers <= _MAX_PARALLEL_WORKERS:
         raise HTTPException(status_code=400, detail=f"parallel_workers doit etre entre 1 et {_MAX_PARALLEL_WORKERS}")
+    notify_extras = [
+        name
+        for name, given in (
+            ("notify_webhook", notify_webhook),
+            ("notify_slack", notify_slack),
+            ("notify_email", notify_email),
+            ("notify_detail", notify_detail != "resume"),
+        )
+        if given
+    ]
+    if notify_extras and not notify_on:
+        # comme la CLI : jamais une option ignorée en silence
+        raise HTTPException(
+            status_code=400,
+            detail=f"{', '.join(notify_extras)} sans notify_on : aucun seuil, aucune notification",
+        )
+    notify = None
+    if notify_on:
+        notify = NotifySettings(
+            threshold=notify_on,
+            webhook=(notify_webhook or "").strip() or None,
+            slack=(notify_slack or "").strip() or None,
+            email=(notify_email or "").strip() or None,
+            detail=notify_detail,
+        )
+        errors = validate_notify(notify, not redact, "le rapport de securite n'est pas calcule avec redact=true")
+        if errors:
+            raise HTTPException(status_code=400, detail="; ".join(errors))
     options = ApiAnalysisOptions(
         nat_tolerant,
         nat_window_ms,
@@ -385,6 +452,7 @@ def _options(
         known_hosts=known_hosts,
         names_path=names_path,
         parallel_workers=parallel_workers,
+        notify=notify,
         split_interfaces=split_interfaces,
         rule_engine=rule_engine,
         expert_section=expert_section,
@@ -501,7 +569,8 @@ def _analyse_captures(
     order_list: list[str] | None,
     multi: bool,
     options: ApiAnalysisOptions | None = None,
-) -> tuple[dict, dict, dict, Any, Any, list, Any, Any, list | None, list | None]:
+    redactor: Any = None,
+) -> tuple[dict, dict, dict, Any, Any, list, Any, Any, list | None, list | None, Any]:
     """Analyse complète (corrélation, sécurité) ; retourne le document brut,
     le résumé, le rapport structuré (celui de ``--json-report``, issue
     #330), l'objet Report vivant, les flows, les findings, le
@@ -517,9 +586,13 @@ def _analyse_captures(
 
         all_packets, truncation_note = apply_packet_limits(all_packets, options.max_packets, options.sample_n)
         if options.redact:
-            from netcross_core.redact import redact_packets
+            from netcross_core.redact import AddressRedactor
 
-            redact_packets(all_packets)
+            # Issue #876 : un redacteur partage (comparaison baseline/courant,
+            # comme la CLI) ; sa table est rendue par /redact-map.
+            if redactor is None:
+                redactor = AddressRedactor()
+            redactor.redact(all_packets)
         # Issue #330 : détection des doublons inter-captures (même enchaînement
         # que la CLI : détection, puis retrait de la liste pour que tout l'aval
         # voie la même population).
@@ -569,6 +642,10 @@ def _analyse_captures(
 
                     close_db(cve_conn)
             security_report = build_security_report(report)
+            if options.notify is not None:
+                # Issue #875 : trace de chaque canal dans le rapport de
+                # sécurité (section « Notifications », clé `notifications`)
+                security_report.notifications = send_notifications(report, security_report, options.notify)
         tls_findings, quic_findings = _tls_quic_findings(captures, list(report.points), options)
         # Issue #330 : même document que `netcross --json-report
         # --security-report` (constats, triage, score de santé).
@@ -632,7 +709,7 @@ def _analyse_captures(
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
-    logger.debug("_analyse_captures: retour tuple de 10")
+    logger.debug("_analyse_captures: retour tuple de 11")
     return (
         report_document(report),
         summary,
@@ -644,6 +721,7 @@ def _analyse_captures(
         tls_findings,
         quic_findings,
         all_packets,
+        redactor if options and options.redact else None,
     )
 
 
@@ -704,6 +782,7 @@ def _run_job(
             tls_findings,
             quic_findings,
             all_packets,
+            redactor,
         ) = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
@@ -727,6 +806,7 @@ def _run_job(
             tls_findings=tls_findings,
             quic_findings=quic_findings,
             all_packets=all_packets,
+            redaction_map=redactor.entries() if redactor is not None else None,
         )
     finally:
         for _label, path in captures:
@@ -756,7 +836,7 @@ async def _dispatch(
         summarize(wait, "wait"),
     )
     options = options or ApiAnalysisOptions()
-    analysis_id = store.create_pending({**metadata, "options": asdict(options)})
+    analysis_id = store.create_pending({**metadata, "options": _options_metadata(options)})
     status_url = f"/analyses/{analysis_id}/status"
     if not wait:
         _get_executor().submit(_run_job, analysis_id, captures, order_list, multi, options, extra_files)
@@ -821,6 +901,11 @@ async def upload_capture(
     sample: str | None = _SAMPLE_FORM,
     test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
     parallel_workers: int | None = _PARALLEL_WORKERS_FORM,
+    notify_on: str | None = _NOTIFY_ON_FORM,
+    notify_webhook: str | None = _NOTIFY_WEBHOOK_FORM,
+    notify_slack: str | None = _NOTIFY_SLACK_FORM,
+    notify_email: str | None = _NOTIFY_EMAIL_FORM,
+    notify_detail: str = _NOTIFY_DETAIL_FORM,
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
@@ -875,6 +960,11 @@ async def upload_capture(
         sample=sample,
         test_net_external=test_net_external,
         parallel_workers=parallel_workers,
+        notify_on=notify_on,
+        notify_webhook=notify_webhook,
+        notify_slack=notify_slack,
+        notify_email=notify_email,
+        notify_detail=notify_detail,
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
@@ -1031,6 +1121,11 @@ async def upload_multi_capture(
     sample: str | None = _SAMPLE_FORM,
     test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
     parallel_workers: int | None = _PARALLEL_WORKERS_FORM,
+    notify_on: str | None = _NOTIFY_ON_FORM,
+    notify_webhook: str | None = _NOTIFY_WEBHOOK_FORM,
+    notify_slack: str | None = _NOTIFY_SLACK_FORM,
+    notify_email: str | None = _NOTIFY_EMAIL_FORM,
+    notify_detail: str = _NOTIFY_DETAIL_FORM,
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
@@ -1082,6 +1177,11 @@ async def upload_multi_capture(
         sample=sample,
         test_net_external=test_net_external,
         parallel_workers=parallel_workers,
+        notify_on=notify_on,
+        notify_webhook=notify_webhook,
+        notify_slack=notify_slack,
+        notify_email=notify_email,
+        notify_detail=notify_detail,
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
@@ -1899,6 +1999,14 @@ _comparisons: dict[str, dict] = {}
 _LOSS_THRESHOLD_FORM = Form(default=2.0, gt=0, description="Seuil d'écart de pertes en points de % (défaut: 2.0)")
 _LATENCY_THRESHOLD_FORM = Form(default=5.0, gt=0, description="Seuil d'écart de latence en ms (défaut: 5.0)")
 _TRIAGE_TOP_N_FORM = Form(default=5, ge=1, le=50, description="Nombre de segments au triage (défaut: 5)")
+_HISTORY_FORM = Form(
+    default=False,
+    description="true : enregistre la comparaison dans l'historique du serveur (NETCROSS_HISTORY_DB), "
+    "équivalent de --history-db (issue #874)",
+)
+_HISTORY_LABEL_FORM = Form(
+    default=None, description="Étiquette du run dans l'historique (équivalent de --history-label)"
+)
 
 
 _BASELINE_FILES = File(default=..., description="Fichiers pcap baseline")
@@ -1928,6 +2036,8 @@ async def create_comparison(
     loss_threshold_pp: float = _LOSS_THRESHOLD_FORM,
     latency_threshold_ms: float = _LATENCY_THRESHOLD_FORM,
     triage_top_n: int = _TRIAGE_TOP_N_FORM,
+    history: bool = _HISTORY_FORM,
+    history_label: str | None = _HISTORY_LABEL_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -1941,6 +2051,10 @@ async def create_comparison(
     import uuid
 
     options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    if history:
+        _history_routes.require_history_db()
+    elif history_label:
+        raise HTTPException(status_code=400, detail="history_label necessite history=true (comme --history-db)")
     if not baseline_files or not current_files:
         raise HTTPException(status_code=400, detail="baseline_files et current_files sont requis")
     baseline_label_list = _parse_labels(baseline_labels, len(baseline_files))
@@ -1971,11 +2085,18 @@ async def create_comparison(
 
     def _run_comparison():
         try:
+            # Issue #876 : un seul redacteur pour les deux jeux (même
+            # adresse -> même pseudonyme, comme cross_capture_diff_cli).
+            shared = None
+            if options is not None and options.redact:
+                from netcross_core.redact import AddressRedactor
+
+                shared = AddressRedactor()
             _baseline_doc, baseline_summary, _, baseline_report, *_ = _analyse_captures(
-                baseline_captures, order_list, multi=True, options=options
+                baseline_captures, order_list, multi=True, options=options, redactor=shared
             )
             _current_doc, current_summary, _, current_report, *_ = _analyse_captures(
-                current_captures, order_list, multi=True, options=options
+                current_captures, order_list, multi=True, options=options, redactor=shared
             )
             from netcross_core.baseline_diff import diff_reports
             from netcross_report.triage import health_score, rank_segments
@@ -2001,7 +2122,20 @@ async def create_comparison(
                 "baseline_summary": baseline_summary,
                 "current_summary": current_summary,
             }
+            if history:
+                result.update(
+                    _history_routes.record_comparison(
+                        findings, baseline_report, current_report, history_label or None, redact
+                    )
+                )
             _comparisons[comparison_id] = {"status": COMPLETED, "result": result, "error": None}
+
+            _comparisons[comparison_id] = {
+                "status": COMPLETED,
+                "result": result,
+                "error": None,
+                "redaction_map": shared.entries() if shared is not None else None,
+            }
         except Exception as exc:
             logger.exception("comparaison {} : erreur", comparison_id)
             _comparisons[comparison_id] = {"status": FAILED, "result": None, "error": str(exc)}
@@ -2074,6 +2208,74 @@ async def get_comparison(
     return JSONResponse(content=entry["result"])
 
 
+_REDACT_MAP_WARNING = "a conserver en prive, ne pas transmettre avec le rapport"
+
+
+def _redact_map_response(entries: list | None, what: str, filename: str) -> PlainTextResponse:
+    if entries is None:
+        raise HTTPException(status_code=404, detail=f"{what} sans anonymisation (redact=true) : aucune table")
+    from netcross_core.redact import redaction_map_csv
+
+    return PlainTextResponse(
+        redaction_map_csv(entries),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Netcross-Warning": _REDACT_MAP_WARNING,
+        },
+    )
+
+
+@app.get(
+    "/analyses/{analysis_id}/redact-map",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_analysis_redact_map(
+    analysis_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Table adresse réelle -> pseudonyme d'une analyse ``redact=true``
+    (équivalent de ``--redact-map``, issue #876). Gardée en mémoire
+    seulement (jamais en SQLite) ; à conserver en privé."""
+    entry = _completed_entry(analysis_id)
+    if entry.get("redaction_map") is None and not (entry.get("metadata") or {}).get("options", {}).get("redact"):
+        raise HTTPException(
+            status_code=404, detail=f"Analyse {analysis_id} sans anonymisation (redact=true) : aucune table"
+        )
+    if entry.get("redaction_map") is None:
+        raise HTTPException(
+            status_code=409, detail=f"Analyse {analysis_id} relue après redémarrage : table non conservée"
+        )
+    return _redact_map_response(
+        entry["redaction_map"], f"Analyse {analysis_id}", f"netcross-redact-map-{analysis_id}.csv"
+    )
+
+
+@app.get(
+    "/comparisons/{comparison_id}/redact-map",
+    tags=["comparisons"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_comparison_redact_map(
+    comparison_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Table commune baseline/courant d'une comparaison ``redact=true``
+    (équivalent de ``--redact-map`` de ``netcross-diff``, issue #876)."""
+    entry = _comparisons.get(comparison_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
+    if entry["status"] == PENDING:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    return _redact_map_response(
+        entry.get("redaction_map"), f"Comparaison {comparison_id}", f"netcross-diff-redact-map-{comparison_id}.csv"
+    )
+
+
 @app.get(
     "/comparisons/{comparison_id}/csv",
     tags=["comparisons"],
@@ -2103,3 +2305,19 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# Issue #874 : historique des runs (base fixée par NETCROSS_HISTORY_DB)
+from netcross_api import history_routes as _history_routes  # noqa: E402
+
+_history_routes.register(app, _verify_api_key)
+
+# Issues #868, #869, #870, #886, #887 : manipulation de captures
+from netcross_api import tools_routes as _tools_routes  # noqa: E402
+
+_tools_routes.register(app, _verify_api_key, _save_upload, lambda: _MAX_FILES)
+
+# Issue #873 : documentation Lua (après _verify_api_key, même authentification)
+from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
+
+_lua_doc_routes.register(app, _verify_api_key)
