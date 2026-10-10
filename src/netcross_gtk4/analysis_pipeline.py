@@ -92,6 +92,12 @@ class AnalysisOptions:
     advanced: AdvancedSettings | None = None
     # Issue #674 : historique SQLite (--history-db, --history-label)
     history: HistorySettings | None = None
+    # Issue #866 : module IA local (--ai-*) ; None ou sans usage : aucun
+    ai: Any = None
+
+    # Issue #867 : plugins charges avant l'analyse (--plugins, --plugin-path,
+    # --plugin-export) ; None = aucun plugin demande
+    plugins: Any = None
 
 
 @dataclass
@@ -118,6 +124,8 @@ class AnalysisResult:
     expertise: ExpertiseExports | None = None
     # Issue #674 : bornes STIX, historique, contexte du ticket de support
     report_context: ReportContext | None = None
+    # Issue #866 : resultat JSON du module IA (meme document que --ai-report)
+    ai: dict | None = None
 
 
 def load_packets(
@@ -472,6 +480,7 @@ def _run_pipeline(
             known_hosts=known_hosts,
             test_net_external=advanced.test_net_external,
             cve_db=advanced.cve_db,
+            plugins=options.plugins,
         )
         if options.notify is not None and options.notify.active:
             # Avant l'impression : la section « Notifications » du rapport
@@ -483,6 +492,22 @@ def _run_pipeline(
         with contextlib.redirect_stdout(buf):
             print()
             print_security_report(security_report)
+
+    ai_result = None
+    if options.ai is not None and options.ai.requested:
+        # Issue #866 : apres l'analyse de securite, comme --ai-* de la CLI.
+        from netcross_gtk4.ai_settings import run_ai_section
+
+        _log("Module IA local...")
+        ai_result, ai_text, ai_logs = run_ai_section(options.ai, report, all_packets)
+        for line in ai_logs:
+            _log(line)
+        if ai_text:
+            with contextlib.redirect_stdout(buf):
+                print(ai_text)
+
+    if options.plugins is not None:
+        _run_plugin_exports(report, options.plugins, security_done=options.security, log=_log)
 
     history = options.history or HistorySettings()
     history_message = ""
@@ -528,6 +553,7 @@ def _run_pipeline(
         security_report=security_report,
         expertise=expertise_exports,
         report_context=report_context,
+        ai=ai_result,
     )
 
 
@@ -594,6 +620,7 @@ def run_security_analysis(
     known_hosts=None,
     test_net_external: bool = False,
     cve_db: str | None = None,
+    plugins: Any = None,
 ):
     """Analyse de securite de la GUI (issue #357), alignee sur
     --security-report : signatures d'exploits relues sur les fichiers,
@@ -642,6 +669,33 @@ def run_security_analysis(
     finally:
         if cve_conn is not None:
             close_db(cve_conn)
+    if plugins is not None:
+        # Issue #867 : detecteurs autorises apres les constats du coeur,
+        # avant build_security_report (section « Plugins »), comme la CLI.
+        from netcross_gtk4.plugin_settings import detector_runs
+
+        runs = detector_runs(plugins, all_packets, report)
+        report.plugin_runs += runs
+        for run in runs:
+            log(f"  Plugins : {run['line']}")
     log(f"  -> {len(report.security_findings)} constat(s) de securite")
     logger.debug("run_security_analysis: {} constat(s) de sécurité", len(report.security_findings))
     return build_security_report(report)
+
+
+def _run_plugin_exports(report, plugins, security_done: bool, log: Callable[[str], None]) -> None:
+    """Issue #867 : exporteurs ``NOM=FICHIER`` apres l'analyse. Sans rapport
+    de securite, les plugins non charges sont traces ici (sinon deja dans
+    la section « Plugins »), comme la CLI."""
+    from netcross_core.plugins import load_error_runs
+    from netcross_gtk4.plugin_settings import exporter_runs
+
+    if not security_done:
+        errors = load_error_runs(plugins.loaded.errors)
+        report.plugin_runs += errors
+        for run in errors:
+            log(f"Plugins : {run['line']}")
+    for run in exporter_runs(plugins, report):
+        report.plugin_runs.append(run)
+        log(f"Plugins : {run['line']}")
+    logger.debug("_run_plugin_exports: {} ligne(s) de plugin", len(report.plugin_runs))

@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 35 cases à cocher, 27 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 34 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 41 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -75,8 +75,8 @@ actif, non réglable.
 | Extraction des contenus | oui (panneau « Contenus (extraction) » de la page Résultats : audio, vidéo, documents, dossier vide, même manifeste et même rappel d'usage ; après une analyse de fichiers non anonymisée, issue #675) | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
 | Comparaison de postes | oui (champs « Postes a comparer » et « Reference » de la configuration, section du rapport, panneau « Comparaison de postes » de la page Résultats avec export CSV ; issue #675) | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
 | NetFlow / sFlow | oui, NetFlow v5 (panneau « NetFlow v5 (resume d'exports) » de la page Résultats : exports ajoutés, Top, même résumé texte, export JSON ; autonome comme la CLI, issue #675) | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
-| Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
-| Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | non |
+| Module IA local | oui (ligne « Module IA local » : enregistrer la baseline et son libellé, « Baseline (anomalies)... », exporter l'entraînement, « Jeu d'entrainement... », résumé, point d'accès, résultats JSON ; issue #866) | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | `POST /analyses/{analysis_id}/ai` (issue #866) : `baseline_save`, `baseline_base`, `baseline_label`, `baseline`, `training_export`, `training`, `summary`, `endpoint` ; résultat JSON de `--ai-report` dans la réponse ; `netcross-ai-models` hors API (fichiers du poste) |
+| Plugins | oui (champs « Plugins », fichiers, exports `NOM=FICHIER`, bouton « Lister (--list-plugins) » ; détecteurs avec « Rapport de securite », issue #867) | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | `GET /plugins` (équiv. `--list-plugins`), champ `plugins` de `POST /captures` et `/captures/multi` (détecteurs, rapport de sécurité) ; chemin fixé par l'administrateur (`NETCROSS_PLUGIN_PATH`), exporteurs non exécutés (issue #867) |
 
 ## Formats de sortie
 
@@ -92,7 +92,7 @@ actif, non réglable.
 | Diagramme de séquence | oui (« Diagramme de sequence » de la configuration, dans l'export PDF ; issue #674) | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
 | Export SIEM (CEF, LEEF, STIX) | oui (panneau « SIEM, ticket de support, historique » de la page Résultats, après un rapport de sécurité, même fichier ; issue #674) | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
 | Historique SQLite | oui (« Historique... » et « Etiquette » de la configuration, derniers runs dans le panneau « SIEM, ticket de support, historique » ; issue #674) | `--history-db`, `--history-label`, `--history-show` ; `netcross-history` | `history`, `history_label` de `POST /captures` et `POST /captures/multi` (base fixée par `NETCROSS_HISTORY_DB`, `history_id` ou `history_error` dans le résumé ; issue #890), consultation `GET /history` ; persistance propre des analyses (`NETCROSS_DB_PATH`), `GET /analyses` |
-| Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic », toutes portées ; issue #674) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind` |
+| Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic », toutes portées ; issue #674) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind`, `scopes`, `marker`, `include_map` (issue #877) |
 
 ### Deux JSON côté API
 
@@ -179,7 +179,7 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
-| Dossier entier de captures | non | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | non |
+| Dossier entier de captures | non | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | `POST /batches` (`files`, captures ou archive ZIP ; `no_group`, `group_window`, `min_overlap`, `min_common_ips`, `jobs`, `security_report`), `GET /batches/{batch_id}` (avancement, groupes, échecs), `/index`, `/reports/{name}` ; `--skip-existing` sans objet (issue #872) |
 | Documentation de l'API Lua de Wireshark | non | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | non |
 | Historique des runs (analyses et comparaisons) | fenêtre « Historique des runs » (bouton de la barre de titre) : base, type, étiquette, nombre (issue #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history` : `run_type`, `label`, `limit` (base du serveur `NETCROSS_HISTORY_DB`, issue #874) |
 | Historique des analyses | non | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /analyses` |
@@ -272,6 +272,11 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `POST /comparisons` | Comparaison baseline/courant (issue #669) |
 | `GET /comparisons/{comparison_id}` | Résultat d'une comparaison (issue #669) |
 | `GET /comparisons/{comparison_id}/csv` | CSV des écarts (issue #669) |
+| `POST /batches` | Lot de captures, équivalent de `cross_capture_batch_cli.py` (issue #872) |
+| `GET /batches` | Lots conservés en mémoire (issue #872) |
+| `GET /batches/{batch_id}` | Avancement et résultat d'un lot (issue #872) |
+| `GET /batches/{batch_id}/index` | Index du lot, `index.txt` (issue #872) |
+| `GET /batches/{batch_id}/reports/{name}` | Rapport d'une capture ou d'un groupe (issue #872) |
 | `GET /history` | Historique des runs, filtres type, étiquette, nombre (issue #874) |
 | `POST /tools/merge` | Fusion de captures (issue #868) |
 | `POST /tools/split` | Découpage, archive zip (issue #869) |

@@ -21,6 +21,9 @@ Déploiement (#356), par variables d'environnement lues au démarrage :
     NETCROSS_HISTORY_DB     historique des runs (--history-db) : GET /history, history=true
     NETCROSS_CVE_DB         base CVE complète (équiv. --cve-db) ; sans elle,
                             base minimale embarquée, comme la CLI
+    NETCROSS_PLUGIN_PATH    fichiers plugins locaux (équiv. --plugin-path),
+                            séparés par « : » ; fixés par l'administrateur,
+                            jamais envoyés par le client (issue #867)
 
 Le service dépend de netcross_core (analyse). FastAPI/uvicorn sont en
 dépendance optionnelle (extra ``api``).
@@ -175,6 +178,15 @@ _DUPLICATE_THRESHOLD_FORM = Form(
     description="Fenêtre de tolérance pour la détection des doublons en ms (équivalent de --duplicate-threshold-ms)",
 )
 
+# Issue #867 : plugins autorisés (équiv. --plugins). Seuls des plugins déjà
+# installés côté serveur (entry points) ou listés par l'administrateur dans
+# NETCROSS_PLUGIN_PATH peuvent être nommés : le client n'envoie jamais de code.
+_PLUGINS_FORM = Form(
+    default=None,
+    description="Plugins à exécuter, séparés par des virgules (équiv. --plugins) ; détecteurs uniquement, "
+    "voir GET /plugins",
+)
+
 # -- Issue #675 : singletons pour les parametres de formulaire --
 _EXTRACT_FILES = File(default=..., description="Fichiers pcap a extraire")
 _EXTRACT_LABELS_FORM = Form(default="", description="Etiquettes separees par virgule")
@@ -256,7 +268,7 @@ async def _refuser_corps_trop_gros(request: Request, call_next):
     avant d'appeler la route : sans ce contrôle, un envoi énorme serait
     reçu en entier avant d'être refusé. Un envoi sans Content-Length
     (chunked) reste borné fichier par fichier par ``_save_upload``."""
-    if request.method == "POST" and request.url.path.startswith("/captures"):
+    if request.method == "POST" and request.url.path.startswith(("/captures", "/batches")):
         longueur = request.headers.get("content-length", "")
         if longueur.isdigit() and int(longueur) > _MAX_UPLOAD_BYTES * _MAX_FILES + _MULTIPART_MARGIN:
             logger.debug(
@@ -340,6 +352,9 @@ class ApiAnalysisOptions:
     history: bool = False
     history_label: str | None = None
 
+    # Issue #867 : plugins autorisés (équiv. --plugins)
+    plugins: tuple[str, ...] = ()
+
 
 def _options_metadata(options: ApiAnalysisOptions) -> dict:
     """Options enregistrées avec l'analyse. Les URL de notification
@@ -394,6 +409,7 @@ def _options(
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS,
     history: bool = False,
     history_label: str | None = None,
+    plugins: str | None = None,
 ) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
     qui relisent les fichiers d'origine (adresses réelles).
@@ -423,6 +439,15 @@ def _options(
             raise HTTPException(status_code=400, detail="sample : N doit etre > 0")
     if max_packets is not None and max_packets < 1:
         raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
+    # Issue #867 : comme `--plugins` (noms séparés par des virgules). Les
+    # détecteurs alimentent le rapport de sécurité, absent avec redact.
+    plugin_names = tuple(dict.fromkeys(n.strip() for n in (plugins or "").split(",") if n.strip()))
+    if plugin_names and redact:
+        raise HTTPException(
+            status_code=400,
+            detail="plugins n'est pas disponible avec redact : les détecteurs alimentent le rapport de "
+            "sécurité, absent avec l'anonymisation",
+        )
     if parallel_workers is not None and not 1 <= parallel_workers <= _MAX_PARALLEL_WORKERS:
         raise HTTPException(status_code=400, detail=f"parallel_workers doit etre entre 1 et {_MAX_PARALLEL_WORKERS}")
     notify_extras = [
@@ -488,6 +513,7 @@ def _options(
         duplicate_threshold_ms=duplicate_threshold_ms,
         history=history,
         history_label=history_label,
+        plugins=plugin_names,
     )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
@@ -563,6 +589,41 @@ def _read_captures(captures: list[tuple[str, str]], parallel_workers: int | None
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
         packets.extend(pkts)
     return packets
+
+
+def _plugin_paths() -> list[str]:
+    """Fichiers plugins locaux fixés par l'administrateur (issue #867) :
+    ``NETCROSS_PLUGIN_PATH``, chemins séparés par ``os.pathsep``. Équivalent
+    serveur de ``--plugin-path`` : le client ne fournit jamais de code."""
+    raw = os.environ.get("NETCROSS_PLUGIN_PATH", "")
+    paths = [p for p in raw.split(os.pathsep) if p.strip()]
+    logger.debug("_plugin_paths: retour {} chemin(s)", len(paths))
+    return paths
+
+
+def _run_plugin_detectors(report: Any, all_packets: list, names: tuple[str, ...]) -> None:
+    """Exécute les détecteurs autorisés comme la CLI (issue #867) : les
+    constats vont dans ``report.security_findings``, la traçabilité dans
+    ``report.plugin_runs`` (section « plugins » du rapport de sécurité).
+    Un plugin introuvable ou refusé donne une ligne d'erreur, jamais un
+    échec de l'analyse. Les exporteurs écrivent des fichiers côté serveur :
+    l'API ne les exécute pas et le dit."""
+    from netcross_core.plugins import load_error_runs, load_plugins, run_detectors
+    from netcross_core.plugins.runner import run_line
+
+    loaded = load_plugins(list(names), _plugin_paths())
+    report.plugin_runs += load_error_runs(loaded.errors)
+    report.plugin_runs += run_detectors(loaded.detectors, all_packets, report)
+    for name in loaded.exporters:
+        run = {
+            "plugin": name,
+            "kind": "exporter",
+            "status": "ignore",
+            "reason": "exporteur non execute par l'API (ecriture de fichiers cote serveur)",
+        }
+        run["line"] = run_line(run)
+        report.plugin_runs.append(run)
+    logger.debug("_run_plugin_detectors: {} ligne(s) de plugin", len(report.plugin_runs))
 
 
 def _open_cve_db():
@@ -663,6 +724,8 @@ def _analyse_captures(
                     from netcross_core.security.cve_db import close_db
 
                     close_db(cve_conn)
+            if options.plugins:
+                _run_plugin_detectors(report, all_packets, options.plugins)
             security_report = build_security_report(report)
             if options.notify is not None:
                 # Issue #875 : trace de chaque canal dans le rapport de
@@ -955,6 +1018,7 @@ async def upload_capture(
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
     history: bool = _ANALYSIS_HISTORY_FORM,
     history_label: str | None = _ANALYSIS_HISTORY_LABEL_FORM,
+    plugins: str | None = _PLUGINS_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -1015,6 +1079,7 @@ async def upload_capture(
         duplicate_threshold_ms=duplicate_threshold_ms,
         history=history,
         history_label=history_label,
+        plugins=plugins,
     )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
@@ -1178,6 +1243,7 @@ async def upload_multi_capture(
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
     history: bool = _ANALYSIS_HISTORY_FORM,
     history_label: str | None = _ANALYSIS_HISTORY_LABEL_FORM,
+    plugins: str | None = _PLUGINS_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -1236,6 +1302,7 @@ async def upload_multi_capture(
         duplicate_threshold_ms=duplicate_threshold_ms,
         history=history,
         history_label=history_label,
+        plugins=plugins,
     )
     # Issue #474 lot 2 : avec split_interfaces, un seul pcapng multi-interfaces
     # suffit (un point ETIQUETTE:INTERFACE par interface).
@@ -1788,6 +1855,211 @@ async def extract_contents(
     )
 
 
+# Issue #866 : module IA local sur une analyse terminée (équiv. --ai-*).
+_AI_BASELINE_FILE = File(
+    default=None, description="Baseline JSON de référence pour la détection d'anomalies (équiv. --ai-anomalies)"
+)
+_AI_BASELINE_BASE_FILE = File(
+    default=None,
+    description="Baseline JSON existante à enrichir avec baseline_save (équiv. fichier existant de --ai-baseline-save)",
+)
+_AI_TRAINING_FILE = File(
+    default=None, description="Jeu d'entraînement JSON étiqueté pour la classification (équiv. --ai-classify)"
+)
+_AI_BASELINE_SAVE_FORM = Form(
+    default=False,
+    description="true : renvoie la baseline construite sur les flux de cette analyse, supposée normale "
+    "(équiv. --ai-baseline-save), sous baseline_document",
+)
+_AI_BASELINE_LABEL_FORM = Form(default="", description="Avec baseline_save : nom libre (équiv. --ai-baseline-label)")
+_AI_TRAINING_EXPORT_FORM = Form(
+    default=False,
+    description="true : renvoie les flux pré-étiquetés par les règles FLOW-4 (équiv. --ai-training-export), "
+    "sous training_document",
+)
+_AI_SUMMARY_FORM = Form(
+    default=None,
+    description="Résumé exécutif : template, ollama:MODELE ou llamacpp (équiv. --ai-summary) ; modèle local au serveur",
+)
+_AI_ENDPOINT_FORM = Form(
+    default=None,
+    description="Avec summary ollama/llamacpp : point d'accès local au serveur (équiv. --ai-endpoint), "
+    "toute adresse hors boucle locale est refusée",
+)
+
+
+async def _save_ai_json(upload: UploadFile | None, directory: str, name: str) -> str | None:
+    """Fichier JSON joint écrit dans le répertoire temporaire de la requête."""
+    if upload is None:
+        return None
+    path = os.path.join(directory, name)
+    Path(path).write_bytes(await upload.read())
+    return path
+
+
+def _ai_result_without_paths(result: dict, baseline_save: str | None, training_export: str | None) -> dict:
+    """Résultat de ``run_ai`` sans chemins du serveur ; baseline et jeu
+    d'entraînement produits rendus en ligne (le client les conserve)."""
+    import json
+
+    out = dict(result)
+    if "baseline_saved" in out and baseline_save:
+        out["baseline_saved"] = {"flows": out["baseline_saved"]["flows"]}
+        out["baseline_document"] = json.loads(Path(baseline_save).read_text(encoding="utf-8"))
+    if "training_exported" in out and training_export:
+        out["training_exported"] = {"samples": out["training_exported"]["samples"]}
+        out["training_document"] = json.loads(Path(training_export).read_text(encoding="utf-8"))
+    for key in ("baseline", "training"):
+        if isinstance(out.get(key), dict):
+            out[key] = {k: v for k, v in out[key].items() if k != "path"}
+    return out
+
+
+@app.post(
+    "/analyses/{analysis_id}/ai",
+    tags=["analyses"],
+    responses={
+        **_ANALYSIS_RESPONSES,
+        400: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+    },
+)
+async def run_analysis_ai(
+    analysis_id: str,
+    baseline: UploadFile | None = _AI_BASELINE_FILE,
+    baseline_base: UploadFile | None = _AI_BASELINE_BASE_FILE,
+    training: UploadFile | None = _AI_TRAINING_FILE,
+    baseline_save: bool = _AI_BASELINE_SAVE_FORM,
+    baseline_label: str = _AI_BASELINE_LABEL_FORM,
+    training_export: bool = _AI_TRAINING_EXPORT_FORM,
+    summary: str | None = _AI_SUMMARY_FORM,
+    endpoint: str | None = _AI_ENDPOINT_FORM,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Module IA local sur une analyse terminée (issue #866, équiv. ``--ai-*``).
+
+    - ``baseline_save`` (+ ``baseline_base``, ``baseline_label``) : baseline
+      des flux de cette analyse, rendue sous ``baseline_document`` ;
+    - ``baseline`` : anomalies de flux par rapport à cette baseline ;
+    - ``training_export`` : jeu pré-étiqueté rendu sous ``training_document`` ;
+    - ``training`` : classification des flux (forêt aléatoire) ;
+    - ``summary`` (+ ``endpoint``) : résumé exécutif, moteur local au serveur.
+
+    Mêmes validations que la CLI ; rien n'est conservé côté serveur (les
+    fichiers joints vivent le temps de la requête). ``baseline`` et
+    ``training`` nécessitent scikit-learn (extra ``ai``) : sinon ``503``.
+    """
+    logger.debug("run_analysis_ai(analysis_id={})", analysis_id)
+    from netcross_ai.anomaly import BaselineError
+    from netcross_ai.flow_classifier import TrainingSetError
+    from netcross_ai.optional import AIUnavailableError, require_ml
+    from netcross_ai.pipeline import AIOptions, run_ai
+    from netcross_ai.report_writer import WriterConfigError, parse_engine
+
+    summary = (summary or "").strip() or None
+    endpoint = (endpoint or "").strip() or None
+    if not (baseline_save or baseline is not None or training_export or training is not None or summary):
+        raise HTTPException(
+            status_code=400,
+            detail="aucun usage demandé : baseline_save, baseline, training_export, training ou summary",
+        )
+    if baseline_label and not baseline_save:
+        raise HTTPException(status_code=400, detail="baseline_label nécessite baseline_save")
+    if baseline_base is not None and not baseline_save:
+        raise HTTPException(status_code=400, detail="baseline_base nécessite baseline_save")
+    if endpoint and not summary:
+        raise HTTPException(status_code=400, detail="endpoint nécessite summary")
+    try:
+        if baseline is not None:
+            require_ml("baseline (anomalies)")
+        if training is not None:
+            require_ml("training (classification)")
+        if summary:
+            parse_engine(summary, endpoint)
+    except AIUnavailableError as exc:
+        logger.warning("run_analysis_ai: module IA indisponible ({})", exc)
+        raise HTTPException(status_code=503, detail=f"Module IA : {exc}") from exc
+    except WriterConfigError as exc:
+        logger.warning("run_analysis_ai: moteur refusé ({})", exc)
+        raise HTTPException(status_code=400, detail=f"Module IA : {exc}") from exc
+
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    flows = report.flow_anomalies
+    if not flows:
+        from netcross_core.security.flow_stats import analyze_flow_stats
+
+        flows = [f.to_dict() for f in analyze_flow_stats(entry.get("all_packets") or []).flows]
+
+    with tempfile.TemporaryDirectory(prefix="netcross-ai-") as tmpdir:
+        baseline_path = await _save_ai_json(baseline, tmpdir, "baseline.json")
+        training_path = await _save_ai_json(training, tmpdir, "training.json")
+        save_path = None
+        if baseline_save:
+            save_path = await _save_ai_json(baseline_base, tmpdir, "baseline-save.json") or os.path.join(
+                tmpdir, "baseline-save.json"
+            )
+        export_path = os.path.join(tmpdir, "training-export.json") if training_export else None
+        options = AIOptions(
+            baseline_path=baseline_path,
+            baseline_save=save_path,
+            baseline_label=baseline_label,
+            training_path=training_path,
+            training_export=export_path,
+            summary_engine=summary,
+            endpoint=endpoint,
+        )
+        try:
+            result = await run_in_threadpool(run_ai, report, flows, options)
+        except AIUnavailableError as exc:
+            logger.warning("run_analysis_ai: module IA indisponible ({})", exc)
+            raise HTTPException(status_code=503, detail=f"Module IA : {exc}") from exc
+        except (BaselineError, TrainingSetError, WriterConfigError, ValueError) as exc:
+            logger.warning("run_analysis_ai: demande refusée ({})", exc)
+            raise HTTPException(status_code=400, detail=f"Module IA : {exc}") from exc
+        payload = _ai_result_without_paths(result, save_path, export_path)
+    payload["analysis_id"] = analysis_id
+    logger.debug("run_analysis_ai: retour {} clé(s)", len(payload))
+    return JSONResponse(payload)
+
+
+@app.get("/plugins", tags=["plugins"])
+async def get_plugins(
+    plugins: str | None = Query(
+        default=None,
+        description="Noms à marquer comme autorisés, séparés par des virgules (comme --plugins avec --list-plugins)",
+    ),
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Plugins disponibles côté serveur (équiv. ``--list-plugins``, issue #867).
+
+    Installés (entry points ``netcross.detectors`` / ``netcross.exporters``)
+    et locaux (``NETCROSS_PLUGIN_PATH``). Un plugin listé n'est exécuté que
+    s'il est nommé dans le champ ``plugins`` d'une analyse.
+    """
+    from netcross_core.plugins import list_plugins
+
+    names = [n.strip() for n in (plugins or "").split(",") if n.strip()]
+    rows = list_plugins(names, _plugin_paths())
+    known = {r["name"] for r in rows}
+    payload = {
+        "plugins": rows,
+        "unknown": [n for n in names if n not in known],
+        "plugin_path_configured": bool(_plugin_paths()),
+    }
+    logger.debug("get_plugins: retour {} plugin(s)", len(rows))
+    return JSONResponse(payload)
+
+
+# Issue #877 : paramètre répétable (liste) ; défini au niveau du module car un
+# appel de fonction en valeur par défaut d'un type mutable est refusé (B008).
+_SUPPORT_MARKER_QUERY = Query(
+    default=None,
+    description="Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex. trace_id=T-042)",
+)
+
+
 @app.post(
     "/analyses/{analysis_id}/support-ticket",
     tags=["analyses"],
@@ -1797,24 +2069,86 @@ async def create_support_ticket(
     analysis_id: str,
     consent: bool = Query(..., description="true : l'utilisateur consent à la remontée d'un ticket anonymisé"),
     kind: str = Query(default="diagnostic", description="Type de ticket (diagnostic, erreur, etc.)"),
+    scopes: str | None = Query(
+        default=None,
+        description="Portées autorisées, séparées par des virgules (équiv. --support-scope) ; toutes par défaut",
+    ),
+    marker: list[str] | None = _SUPPORT_MARKER_QUERY,
+    include_map: bool = Query(
+        default=False,
+        description=(
+            "true : renvoie aussi la table de correspondance réelle <-> pseudonyme "
+            "(équiv. --support-map), à NE PAS transmettre avec le ticket"
+        ),
+    ),
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
     """Ticket de support anonymisé (équiv. --support-ticket).
 
     Construit un ticket anonymisé en mémoire à partir des erreurs
     d'analyse. Le consentement explicite (consent=true) est obligatoire.
+    Issue #877 : ``scopes`` restreint les portées (comme
+    ``--support-scope``), ``marker`` ajoute des marqueurs (comme
+    ``--support-marker``) et ``include_map=true`` ajoute la table de
+    correspondance des rédactions sous ``support_map`` (comme
+    ``--support-map``) -- usage opérateur, jamais jointe au ticket.
     """
+    logger.debug("create_support_ticket(analysis_id={}, kind={}, scopes={})", analysis_id, kind, scopes)
     entry = store.get(analysis_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Analyse introuvable")
-    from netcross_core.support.ticket import Consent, build_ticket
+    from datetime import datetime, timezone
 
-    consent_obj = Consent(granted=consent, source="api")
+    from netcross_core.support.scrubber import TextScrubber
+    from netcross_core.support.ticket import KINDS, SCOPES, Consent, build_ticket
+
     if not consent:
         raise HTTPException(status_code=400, detail="Consentement explicite requis (consent=true)")
+    if kind not in KINDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"kind inconnu : {kind!r} (attendu parmi : {', '.join(KINDS)})",
+        )
+    granted_scopes: tuple[str, ...] = SCOPES
+    if scopes is not None:
+        demandees = tuple(s.strip() for s in scopes.split(",") if s.strip())
+        inconnues = [s for s in demandees if s not in SCOPES]
+        if inconnues or not demandees:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"scopes : portée(s) inconnue(s) {', '.join(inconnues) or '(aucune)'} "
+                    f"(attendu parmi : {', '.join(SCOPES)})"
+                ),
+            )
+        granted_scopes = demandees
+    markers: dict[str, str] = {}
+    for spec in marker or []:
+        cle, sep, valeur = spec.partition("=")
+        if not sep or not cle.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"marker : format attendu CLE=VALEUR, reçu {spec!r}",
+            )
+        markers[cle.strip()] = valeur.strip()
+
+    consent_obj = Consent(
+        granted=True,
+        scopes=granted_scopes,
+        granted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        source="api",
+    )
+    scrubber = TextScrubber()
     errors = entry.get("errors") or []
-    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors)
-    return JSONResponse({"ticket": ticket.to_dict()})
+    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors, markers=markers, scrubber=scrubber)
+    payload: dict[str, Any] = {"ticket": ticket.to_dict()}
+    if include_map:
+        payload["support_map"] = [
+            {"valeur_reelle": real, "pseudonyme": pseudo, "categorie": cat}
+            for real, pseudo, cat in scrubber.mapping_csv_rows()
+        ]
+    logger.debug("create_support_ticket: retour ticket (support_map={})", include_map)
+    return JSONResponse(payload)
 
 
 @app.post(
@@ -2273,6 +2607,211 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #872 : lots de captures (équivalent de cross_capture_batch_cli.py)
+# ---------------------------------------------------------------------------
+
+_BATCH_FILES = File(
+    description="Captures du lot (.pcap, .pcapng, .cap, .erf, .gz) ou une archive .zip "
+    "(extraite à plat, sous-dossiers compris, comme --recursive)",
+)
+_BATCH_NO_GROUP_FORM = Form(default=False, description="Aucun regroupement (équiv. --no-group)")
+_BATCH_GROUP_WINDOW_FORM = Form(
+    default=None, description="Décalage d'horloge maximal toléré, en secondes (équiv. --group-window)"
+)
+_BATCH_MIN_OVERLAP_FORM = Form(default=None, description="Recouvrement temporel minimal, ]0, 1] (équiv. --min-overlap)")
+_BATCH_MIN_COMMON_IPS_FORM = Form(default=None, description="IP communes minimales (équiv. --min-common-ips)")
+_BATCH_JOBS_FORM = Form(default=1, description="Captures inventoriées en parallèle (équiv. --jobs)")
+_BATCH_SECURITY_FORM = Form(
+    default=False, description="Analyse de sécurité dans chaque rapport (équiv. --security-report)"
+)
+
+
+def _batch_options(
+    no_group: bool,
+    group_window: float | None,
+    min_overlap: float | None,
+    min_common_ips: int | None,
+    jobs: int,
+    security_report: bool,
+) -> Any:
+    """Réglages du lot validés comme la CLI (400 sinon)."""
+    from netcross_report.batch_runner import BatchOptions, check_options
+
+    defaults = BatchOptions()
+    options = BatchOptions(
+        group=not no_group,
+        group_window=defaults.group_window if group_window is None else group_window,
+        min_overlap=defaults.min_overlap if min_overlap is None else min_overlap,
+        min_common_ips=defaults.min_common_ips if min_common_ips is None else min_common_ips,
+        jobs=jobs,
+        security_report=security_report,
+    )
+    refus = check_options(options)
+    if refus:
+        for flag in ("--group-window", "--min-overlap", "--min-common-ips", "--jobs"):
+            refus = refus.replace(flag, flag[2:].replace("-", "_"))
+        raise HTTPException(status_code=400, detail=refus)
+    if jobs > _MAX_PARALLEL_WORKERS:
+        raise HTTPException(status_code=400, detail=f"jobs doit etre <= {_MAX_PARALLEL_WORKERS}.")
+    logger.debug("_batch_options: retour {}", summarize(options, "options"))
+    return options
+
+
+def _batch_view(entry: dict) -> dict:
+    """État public d'un lot (sans répertoire de travail)."""
+    view = {k: v for k, v in entry.items() if k not in ("workdir", "index")}
+    batch_id = entry["batch_id"]
+    view["status_url"] = f"/batches/{batch_id}"
+    if entry["status"] == "completed":
+        view["index_url"] = f"/batches/{batch_id}/index"
+        view["report_url_template"] = f"/batches/{batch_id}/reports/{{name}}"
+    return view
+
+
+@app.post(
+    "/batches",
+    tags=["batches"],
+    status_code=202,
+    responses={
+        201: {"description": "Lot terminé (?wait=true)"},
+        400: {"model": ErrorResponse},
+        413: {"model": ErrorResponse},
+    },
+)
+async def create_batch(
+    files: list[UploadFile] = _BATCH_FILES,
+    no_group: bool = _BATCH_NO_GROUP_FORM,
+    group_window: float | None = _BATCH_GROUP_WINDOW_FORM,
+    min_overlap: float | None = _BATCH_MIN_OVERLAP_FORM,
+    min_common_ips: int | None = _BATCH_MIN_COMMON_IPS_FORM,
+    jobs: int = _BATCH_JOBS_FORM,
+    security_report: bool = _BATCH_SECURITY_FORM,
+    wait: bool = Query(default=False, description="Attendre la fin du lot (201) au lieu de 202"),
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Lot de captures (issue #872, équivalent de ``cross_capture_batch_cli.py``).
+
+    Inventaire de chaque capture, regroupement conservateur des captures qui
+    observent le même événement, un rapport par capture et par groupe, index
+    du lot. Une capture illisible n'arrête pas le lot (listée en échec).
+    ``--skip-existing`` n'a pas d'équivalent : chaque lot repart de zéro.
+    Avancement et résultat : ``GET /batches/{batch_id}``.
+    """
+    import shutil
+
+    from netcross_api.batches import (
+        BatchInputError,
+        batch_store,
+        extract_archive,
+        new_workdir,
+        run_batch_job,
+        safe_name,
+        unique_path,
+    )
+
+    options = _batch_options(no_group, group_window, min_overlap, min_common_ips, jobs, security_report)
+    if not files:
+        raise HTTPException(status_code=400, detail="Aucun fichier reçu")
+    if len(files) > _MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Trop de fichiers ({len(files)}, max {_MAX_FILES})")
+    workdir, captures_dir = new_workdir()
+    names: list[str] = []
+    ignored: list[str] = []
+    try:
+        for upload in files:
+            if not upload.filename:
+                raise HTTPException(status_code=400, detail="Nom de fichier manquant")
+            name = safe_name(upload.filename)
+            tmp = await _save_upload(upload, name)
+            try:
+                if name.lower().endswith(".zip"):
+                    ignored += await run_in_threadpool(
+                        extract_archive, tmp, captures_dir, _MAX_UPLOAD_BYTES * _MAX_FILES
+                    )
+                else:
+                    shutil.move(tmp, unique_path(captures_dir, name))
+            finally:
+                Path(tmp).unlink(missing_ok=True)
+            names.append(name)
+    except BatchInputError as exc:
+        logger.warning("create_batch: envoi refusé ({})", exc)
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except BaseException:
+        logger.debug("create_batch: échec de réception, répertoire {} supprimé", workdir)
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise
+    batch_id = batch_store.create(options, names, workdir)
+    status_url = f"/batches/{batch_id}"
+    if not wait:
+        _get_executor().submit(run_batch_job, batch_id, options, ignored)
+        entry = batch_store.get(batch_id)
+        assert entry is not None
+        return JSONResponse(status_code=202, content=_batch_view(entry), headers={"Location": status_url})
+    await run_in_threadpool(run_batch_job, batch_id, options, ignored)
+    entry = batch_store.get(batch_id)
+    assert entry is not None
+    if entry["status"] == "failed":
+        raise HTTPException(status_code=400, detail=entry["error"])
+    logger.debug("create_batch: lot {} terminé", batch_id)
+    return JSONResponse(status_code=201, content=_batch_view(entry), headers={"Location": status_url})
+
+
+def _batch_entry(batch_id: str, completed: bool = False) -> dict:
+    from netcross_api.batches import batch_store
+
+    entry = batch_store.get(batch_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Lot {batch_id} introuvable")
+    if completed and entry["status"] != "completed":
+        detail = entry["error"] if entry["status"] == "failed" else f"Lot {batch_id} en cours ({entry['status']})"
+        raise HTTPException(status_code=409, detail=detail)
+    return entry
+
+
+@app.get("/batches", tags=["batches"])
+async def list_batches(_auth: None = Depends(_verify_api_key)) -> JSONResponse:
+    """Lots conservés en mémoire (les plus anciens terminés sont évincés)."""
+    from netcross_api.batches import batch_store
+
+    return JSONResponse({"batches": batch_store.list()})
+
+
+@app.get("/batches/{batch_id}", tags=["batches"], responses={404: {"model": ErrorResponse}})
+async def get_batch(batch_id: str, _auth: None = Depends(_verify_api_key)) -> JSONResponse:
+    """Avancement (``progress``, lignes de la CLI) et résultat du lot :
+    groupes et justification, captures isolées et motif, échecs, rapports,
+    constats par sévérité, synthèse."""
+    return JSONResponse(_batch_view(_batch_entry(batch_id)))
+
+
+@app.get(
+    "/batches/{batch_id}/index",
+    tags=["batches"],
+    responses={200: {"content": {"text/plain": {}}}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+async def get_batch_index(batch_id: str, _auth: None = Depends(_verify_api_key)) -> PlainTextResponse:
+    """Index du lot (``index.txt`` de la CLI)."""
+    return PlainTextResponse(_batch_entry(batch_id, completed=True)["index"])
+
+
+@app.get(
+    "/batches/{batch_id}/reports/{name}",
+    tags=["batches"],
+    responses={200: {"content": {"text/plain": {}}}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+async def get_batch_report(batch_id: str, name: str, _auth: None = Depends(_verify_api_key)) -> PlainTextResponse:
+    """Rapport texte d'une capture ou d'un groupe (``rapport-*.txt``)."""
+    from netcross_api.batches import report_path
+
+    entry = _batch_entry(batch_id, completed=True)
+    path = report_path(entry, name)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"Rapport {name} introuvable dans le lot {batch_id}")
+    return PlainTextResponse(path.read_text(encoding="utf-8"))
 
 
 # Issue #874 : historique des runs (base fixée par NETCROSS_HISTORY_DB)

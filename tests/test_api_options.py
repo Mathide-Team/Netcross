@@ -85,6 +85,7 @@ def test_options_par_defaut_enregistrees():
         "duplicate_threshold_ms": 1.0,
         "history": False,
         "history_label": None,
+        "plugins": (),
     }
 
 

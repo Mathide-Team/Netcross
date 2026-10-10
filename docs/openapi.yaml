@@ -846,6 +846,120 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/ai:
+    post:
+      tags:
+      - analyses
+      summary: Run Analysis Ai
+      description: "Module IA local sur une analyse terminée (issue #866, équiv. ``--ai-*``).\n\
+        \n- ``baseline_save`` (+ ``baseline_base``, ``baseline_label``) : baseline\n\
+        \  des flux de cette analyse, rendue sous ``baseline_document`` ;\n- ``baseline``\
+        \ : anomalies de flux par rapport à cette baseline ;\n- ``training_export``\
+        \ : jeu pré-étiqueté rendu sous ``training_document`` ;\n- ``training`` :\
+        \ classification des flux (forêt aléatoire) ;\n- ``summary`` (+ ``endpoint``)\
+        \ : résumé exécutif, moteur local au serveur.\n\nMêmes validations que la\
+        \ CLI ; rien n'est conservé côté serveur (les\nfichiers joints vivent le temps\
+        \ de la requête). ``baseline`` et\n``training`` nécessitent scikit-learn (extra\
+        \ ``ai``) : sinon ``503``."
+      operationId: run_analysis_ai_analyses__analysis_id__ai_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_run_analysis_ai_analyses__analysis_id__ai_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /plugins:
+    get:
+      tags:
+      - plugins
+      summary: Get Plugins
+      description: 'Plugins disponibles côté serveur (équiv. ``--list-plugins``, issue
+        #867).
+
+
+        Installés (entry points ``netcross.detectors`` / ``netcross.exporters``)
+
+        et locaux (``NETCROSS_PLUGIN_PATH``). Un plugin listé n''est exécuté que
+
+        s''il est nommé dans le champ ``plugins`` d''une analyse.'
+      operationId: get_plugins_plugins_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: plugins
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Noms à marquer comme autorisés, séparés par des virgules (comme
+            --plugins avec --list-plugins)
+          title: Plugins
+        description: Noms à marquer comme autorisés, séparés par des virgules (comme
+          --plugins avec --list-plugins)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/support-ticket:
     post:
       tags:
@@ -856,7 +970,17 @@ paths:
 
         Construit un ticket anonymisé en mémoire à partir des erreurs
 
-        d''analyse. Le consentement explicite (consent=true) est obligatoire.'
+        d''analyse. Le consentement explicite (consent=true) est obligatoire.
+
+        Issue #877 : ``scopes`` restreint les portées (comme
+
+        ``--support-scope``), ``marker`` ajoute des marqueurs (comme
+
+        ``--support-marker``) et ``include_map=true`` ajoute la table de
+
+        correspondance des rédactions sous ``support_map`` (comme
+
+        ``--support-map``) -- usage opérateur, jamais jointe au ticket.'
       operationId: create_support_ticket_analyses__analysis_id__support_ticket_post
       security:
       - APIKeyHeader: []
@@ -884,6 +1008,43 @@ paths:
           default: diagnostic
           title: Kind
         description: Type de ticket (diagnostic, erreur, etc.)
+      - name: scopes
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Portées autorisées, séparées par des virgules (équiv. --support-scope)
+            ; toutes par défaut
+          title: Scopes
+        description: Portées autorisées, séparées par des virgules (équiv. --support-scope)
+          ; toutes par défaut
+      - name: marker
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex.
+            trace_id=T-042)
+          title: Marker
+        description: Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex.
+          trace_id=T-042)
+      - name: include_map
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: 'true : renvoie aussi la table de correspondance réelle <->
+            pseudonyme (équiv. --support-map), à NE PAS transmettre avec le ticket'
+          default: false
+          title: Include Map
+        description: 'true : renvoie aussi la table de correspondance réelle <-> pseudonyme
+          (équiv. --support-map), à NE PAS transmettre avec le ticket'
       responses:
         '200':
           description: Successful Response
@@ -1373,6 +1534,209 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /batches:
+    post:
+      tags:
+      - batches
+      summary: Create Batch
+      description: 'Lot de captures (issue #872, équivalent de ``cross_capture_batch_cli.py``).
+
+
+        Inventaire de chaque capture, regroupement conservateur des captures qui
+
+        observent le même événement, un rapport par capture et par groupe, index
+
+        du lot. Une capture illisible n''arrête pas le lot (listée en échec).
+
+        ``--skip-existing`` n''a pas d''équivalent : chaque lot repart de zéro.
+
+        Avancement et résultat : ``GET /batches/{batch_id}``.'
+      operationId: create_batch_batches_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: wait
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Attendre la fin du lot (201) au lieu de 202
+          default: false
+          title: Wait
+        description: Attendre la fin du lot (201) au lieu de 202
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_create_batch_batches_post'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '201':
+          description: Lot terminé (?wait=true)
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Content Too Large
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - batches
+      summary: List Batches
+      description: Lots conservés en mémoire (les plus anciens terminés sont évincés).
+      operationId: list_batches_batches_get
+      security:
+      - APIKeyHeader: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /batches/{batch_id}:
+    get:
+      tags:
+      - batches
+      summary: Get Batch
+      description: 'Avancement (``progress``, lignes de la CLI) et résultat du lot
+        :
+
+        groupes et justification, captures isolées et motif, échecs, rapports,
+
+        constats par sévérité, synthèse.'
+      operationId: get_batch_batches__batch_id__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /batches/{batch_id}/index:
+    get:
+      tags:
+      - batches
+      summary: Get Batch Index
+      description: Index du lot (``index.txt`` de la CLI).
+      operationId: get_batch_index_batches__batch_id__index_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/plain: {}
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /batches/{batch_id}/reports/{name}:
+    get:
+      tags:
+      - batches
+      summary: Get Batch Report
+      description: Rapport texte d'une capture ou d'un groupe (``rapport-*.txt``).
+      operationId: get_batch_report_batches__batch_id__reports__name__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Batch Id
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/plain: {}
         '404':
           content:
             application/json:
@@ -1907,6 +2271,53 @@ components:
       required:
       - file
       title: Body_convert_capture_route_tools_convert_post
+    Body_create_batch_batches_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+          description: Captures du lot (.pcap, .pcapng, .cap, .erf, .gz) ou une archive
+            .zip (extraite à plat, sous-dossiers compris, comme --recursive)
+        no_group:
+          type: boolean
+          title: No Group
+          description: Aucun regroupement (équiv. --no-group)
+          default: false
+        group_window:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Group Window
+          description: Décalage d'horloge maximal toléré, en secondes (équiv. --group-window)
+        min_overlap:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Min Overlap
+          description: Recouvrement temporel minimal, ]0, 1] (équiv. --min-overlap)
+        min_common_ips:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Min Common Ips
+          description: IP communes minimales (équiv. --min-common-ips)
+        jobs:
+          type: integer
+          title: Jobs
+          description: Captures inventoriées en parallèle (équiv. --jobs)
+          default: 1
+        security_report:
+          type: boolean
+          title: Security Report
+          description: Analyse de sécurité dans chaque rapport (équiv. --security-report)
+          default: false
+      type: object
+      required:
+      - files
+      title: Body_create_batch_batches_post
     Body_create_comparison_comparisons_post:
       properties:
         baseline_files:
@@ -2140,6 +2551,65 @@ components:
       - file
       - interface
       title: Body_replay_capture_route_tools_replay_post
+    Body_run_analysis_ai_analyses__analysis_id__ai_post:
+      properties:
+        baseline:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Baseline
+          description: Baseline JSON de référence pour la détection d'anomalies (équiv.
+            --ai-anomalies)
+        baseline_base:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Baseline Base
+          description: Baseline JSON existante à enrichir avec baseline_save (équiv.
+            fichier existant de --ai-baseline-save)
+        training:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Training
+          description: Jeu d'entraînement JSON étiqueté pour la classification (équiv.
+            --ai-classify)
+        baseline_save:
+          type: boolean
+          title: Baseline Save
+          description: 'true : renvoie la baseline construite sur les flux de cette
+            analyse, supposée normale (équiv. --ai-baseline-save), sous baseline_document'
+          default: false
+        baseline_label:
+          type: string
+          title: Baseline Label
+          description: 'Avec baseline_save : nom libre (équiv. --ai-baseline-label)'
+          default: ''
+        training_export:
+          type: boolean
+          title: Training Export
+          description: 'true : renvoie les flux pré-étiquetés par les règles FLOW-4
+            (équiv. --ai-training-export), sous training_document'
+          default: false
+        summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Summary
+          description: 'Résumé exécutif : template, ollama:MODELE ou llamacpp (équiv.
+            --ai-summary) ; modèle local au serveur'
+        endpoint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Endpoint
+          description: 'Avec summary ollama/llamacpp : point d''accès local au serveur
+            (équiv. --ai-endpoint), toute adresse hors boucle locale est refusée'
+      type: object
+      title: Body_run_analysis_ai_analyses__analysis_id__ai_post
     Body_split_capture_route_tools_split_post:
       properties:
         file:
@@ -2371,6 +2841,13 @@ components:
           - type: 'null'
           title: History Label
           description: Étiquette du run dans l'historique (équivalent de --history-label)
+        plugins:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plugins
+          description: Plugins à exécuter, séparés par des virgules (équiv. --plugins)
+            ; détecteurs uniquement, voir GET /plugins
       type: object
       required:
       - file
@@ -2586,6 +3063,13 @@ components:
           - type: 'null'
           title: History Label
           description: Étiquette du run dans l'historique (équivalent de --history-label)
+        plugins:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plugins
+          description: Plugins à exécuter, séparés par des virgules (équiv. --plugins)
+            ; détecteurs uniquement, voir GET /plugins
       type: object
       required:
       - files
