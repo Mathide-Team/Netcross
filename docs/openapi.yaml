@@ -856,7 +856,17 @@ paths:
 
         Construit un ticket anonymisé en mémoire à partir des erreurs
 
-        d''analyse. Le consentement explicite (consent=true) est obligatoire.'
+        d''analyse. Le consentement explicite (consent=true) est obligatoire.
+
+        Issue #877 : ``scopes`` restreint les portées (comme
+
+        ``--support-scope``), ``marker`` ajoute des marqueurs (comme
+
+        ``--support-marker``) et ``include_map=true`` ajoute la table de
+
+        correspondance des rédactions sous ``support_map`` (comme
+
+        ``--support-map``) -- usage opérateur, jamais jointe au ticket.'
       operationId: create_support_ticket_analyses__analysis_id__support_ticket_post
       security:
       - APIKeyHeader: []
@@ -884,6 +894,43 @@ paths:
           default: diagnostic
           title: Kind
         description: Type de ticket (diagnostic, erreur, etc.)
+      - name: scopes
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Portées autorisées, séparées par des virgules (équiv. --support-scope)
+            ; toutes par défaut
+          title: Scopes
+        description: Portées autorisées, séparées par des virgules (équiv. --support-scope)
+          ; toutes par défaut
+      - name: marker
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex.
+            trace_id=T-042)
+          title: Marker
+        description: Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex.
+          trace_id=T-042)
+      - name: include_map
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: 'true : renvoie aussi la table de correspondance réelle <->
+            pseudonyme (équiv. --support-map), à NE PAS transmettre avec le ticket'
+          default: false
+          title: Include Map
+        description: 'true : renvoie aussi la table de correspondance réelle <-> pseudonyme
+          (équiv. --support-map), à NE PAS transmettre avec le ticket'
       responses:
         '200':
           description: Successful Response
