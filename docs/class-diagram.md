@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-193 modules · 279 classes · 668 fonctions publiques de module.
+193 modules · 281 classes · 671 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -38,7 +38,7 @@ flowchart TD
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"30 imports"| netcross_report
     netcross_gtk4 -->|"4 imports"| netcross_ai
-    netcross_gtk4 -->|"105 imports"| netcross_core
+    netcross_gtk4 -->|"107 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"19 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
@@ -4747,6 +4747,17 @@ classDiagram
         +str history_message
         +tuple~tuple~str, str, str~, ...~ redaction_map
     }
+    class SupportTicketError {
+        <<ValueError>>
+    }
+    class SupportTicketResult {
+        <<dataclass, frozen>>
+        +str path
+        +int occurrences
+        +tuple~str, ...~ scopes
+        +dict~str, str~ markers
+        +Any scrubber
+    }
     class mod_netcross_gtk4_report_exports["netcross_gtk4.report_exports"] {
         <<module>>
         +record_history(report, settings, findings, tls, quic, redact) str
@@ -4754,7 +4765,10 @@ classDiagram
         +history_text(db_path, limit, label, run_type) str
         +sequence_views(flows, max_flows, flow_objects) list?
         +export_siem(report, path, fmt, context) str
-        +write_support_ticket(path, context, consent) tuple~str, int~
+        +parse_support_markers(text) dict~str, str~
+        +check_support_scopes(scopes) tuple~str, ...~
+        +write_support_ticket(path, context, consent, scopes, markers) SupportTicketResult
+        +write_support_map(scrubber, path) str
     }
 
     %% ===== netcross_gtk4.report_exports_panel =====
@@ -4762,9 +4776,11 @@ classDiagram
         <<Gtk.Box>>
         +set_context(report, security_report, context) None
         +set_redaction_map(entries) None
+        +selected_scopes() tuple~str, ...~
         +selected_siem_format() str
         +export_siem_to(path) str
         +write_ticket_to(path) str
+        +write_support_map_to(path) str
         +write_redaction_map_to(path) str
         +show_history() str
     }

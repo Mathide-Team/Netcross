@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 35 cases à cocher, 27 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 39 cases à cocher, 27 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 41 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
@@ -235,6 +235,10 @@ son équivalent CLI ou API.
 | Documents (HTTP, SMB, courriel, TFTP, FTP) | Résultats (contenus) | `--extract-kinds documents` |
 | Detail complet (--notify-detail complet) | Configuration | `--notify-detail complet` |
 | J'autorise la remontee d'un ticket anonymise (--support-consent) | Résultats (SIEM, ticket, historique) | `--support-consent` |
+| Environnement | Résultats (SIEM, ticket, historique) | `--support-scope environnement` |
+| Journal | Résultats (SIEM, ticket, historique) | `--support-scope journal` |
+| Trace d'appels | Résultats (SIEM, ticket, historique) | `--support-scope trace_appels` |
+| Marqueurs | Résultats (SIEM, ticket, historique) | `--support-scope marqueurs` |
 | Anomalies seulement | Résultats (cartographie) | aucun |
 | Dedupliquer les paquets identiques (--merge-dedup) | Fenêtre « Outils de capture » (Fusion) | `--merge-dedup` |
 | Detail complet (--full) | Fenêtre « Documentation Lua » | `netcross-lua-doc --full` |
