@@ -180,6 +180,15 @@ réelles ; avec `redact`, le rapport de sécurité n'est pas calculé
 (`security_report_absent` l'indique). Les options retenues sont
 enregistrées dans les métadonnées de l'analyse (`options`).
 
+Table de correspondance (équivalent de `--redact-map`, issue #876) :
+`GET /analyses/{id}/redact-map` et `GET /comparisons/{id}/redact-map`
+rendent le CSV `adresse_reelle,pseudonyme,type` de `--redact-map`. Une
+comparaison anonymise baseline et courant avec la même table : une adresse
+garde le même pseudonyme des deux côtés. La table n'existe qu'en mémoire du
+serveur (jamais en SQLite : 409 après redémarrage), 404 sans `redact`.
+Elle désanonymise le rapport : à conserver en privé, ne pas transmettre
+avec lui.
+
 ```bash
 curl -X POST "http://localhost:8000/captures/multi?wait=true" \
   -F "files=@lan.pcap" -F "files=@dc.pcap" -F "labels=LAN,DC" \
