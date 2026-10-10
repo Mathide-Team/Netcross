@@ -92,6 +92,8 @@ class AnalysisOptions:
     advanced: AdvancedSettings | None = None
     # Issue #674 : historique SQLite (--history-db, --history-label)
     history: HistorySettings | None = None
+    # Issue #866 : module IA local (--ai-*) ; None ou sans usage : aucun
+    ai: Any = None
 
 
 @dataclass
@@ -118,6 +120,8 @@ class AnalysisResult:
     expertise: ExpertiseExports | None = None
     # Issue #674 : bornes STIX, historique, contexte du ticket de support
     report_context: ReportContext | None = None
+    # Issue #866 : resultat JSON du module IA (meme document que --ai-report)
+    ai: dict | None = None
 
 
 def load_packets(
@@ -482,6 +486,19 @@ def _run_pipeline(
             print()
             print_security_report(security_report)
 
+    ai_result = None
+    if options.ai is not None and options.ai.requested:
+        # Issue #866 : apres l'analyse de securite, comme --ai-* de la CLI.
+        from netcross_gtk4.ai_settings import run_ai_section
+
+        _log("Module IA local...")
+        ai_result, ai_text, ai_logs = run_ai_section(options.ai, report, all_packets)
+        for line in ai_logs:
+            _log(line)
+        if ai_text:
+            with contextlib.redirect_stdout(buf):
+                print(ai_text)
+
     history = options.history or HistorySettings()
     history_message = ""
     if history.db_path:
@@ -525,6 +542,7 @@ def _run_pipeline(
         security_report=security_report,
         expertise=expertise_exports,
         report_context=report_context,
+        ai=ai_result,
     )
 
 

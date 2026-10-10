@@ -86,6 +86,28 @@ constats de sécurité à résumer.
 `summary` (moteur, texte, corrélations, recommandations, motif de repli éventuel), et les
 métadonnées de baseline / jeu d'entraînement utilisés.
 
+## Interface graphique (issue #866)
+
+Dans les options d'analyse, la ligne « Module IA local » reprend chaque
+option de la CLI :
+
+| Champ | Équivalent CLI |
+| --- | --- |
+| « Enregistrer la baseline » + « Libelle de baseline » | `--ai-baseline-save`, `--ai-baseline-label` |
+| bouton « Baseline (anomalies)... » | `--ai-anomalies` |
+| « Exporter l'entrainement » | `--ai-training-export` |
+| bouton « Jeu d'entrainement... » | `--ai-classify` |
+| « Resume » (`template`, `ollama:MODELE`, `llamacpp`) + « Point d'acces local » | `--ai-summary`, `--ai-endpoint` |
+| « Resultats JSON » | `--ai-report` |
+
+Les validations de la CLI s'appliquent au lancement (option sans usage
+d'analyse, fichier introuvable, scikit-learn absent, moteur inconnu, point
+d'accès hors boucle locale) : l'analyse n'est pas lancée et le journal dit
+pourquoi. Le module tourne après l'analyse de sécurité, sa section
+« MODULE IA LOCAL » s'ajoute au rapport texte ; une erreur du module (baseline
+trop petite, jeu d'entraînement invalide...) est journalisée sans faire
+perdre l'analyse.
+
 ## Partage de modèles et remontée hors connexion
 
 Issue #271. Les baselines (« bons états transactionnels ») et les exemples
