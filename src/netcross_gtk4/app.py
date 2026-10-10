@@ -734,6 +734,15 @@ class MainWindow(Gtk.ApplicationWindow):
 
         header = Gtk.HeaderBar()
         self.set_titlebar(header)
+        # Issues #868-#870, #886, #887 : fusion, decoupage, conversion...
+        self.capture_tools_btn = Gtk.Button(label="Outils de capture")
+        self.capture_tools_btn.set_tooltip_text(
+            "Fusion, decoupage, conversion, export filtre, recalage temporel (sans analyse)"
+        )
+        self.capture_tools_btn.connect("clicked", lambda _b: self.open_capture_tools())
+        header.pack_start(self.capture_tools_btn)
+        self.capture_tools_window = None
+
         # Issue #873 : documentation Lua hors ligne (netcross-lua-doc)
         self.lua_doc_btn = Gtk.Button(label="Documentation Lua")
         self.lua_doc_btn.set_tooltip_text("API Lua de Wireshark, hors ligne (equivalent de netcross-lua-doc)")
@@ -755,6 +764,20 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.stack.set_visible_child_name("config")
         logger.debug("MainWindow: fenêtre prête (3 pages construites)")
+
+    def open_capture_tools(self):
+        """Fenetre « Outils de capture », une seule a la fois."""
+        from netcross_gtk4.capture_tools_window import CaptureToolsWindow
+
+        if self.capture_tools_window is None:
+            self.capture_tools_window = CaptureToolsWindow(parent=self)
+            self.capture_tools_window.connect("close-request", self._on_capture_tools_closed)
+        self.capture_tools_window.present()
+        return self.capture_tools_window
+
+    def _on_capture_tools_closed(self, _win):
+        self.capture_tools_window = None
+        return False
 
     def open_lua_doc(self):
         """Fenetre « Documentation Lua » (issue #873), une seule a la fois."""

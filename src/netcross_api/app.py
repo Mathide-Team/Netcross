@@ -2214,6 +2214,11 @@ async def get_comparison_csv(
     )
 
 
+# Issues #868, #869, #870, #886, #887 : manipulation de captures
+from netcross_api import tools_routes as _tools_routes  # noqa: E402
+
+_tools_routes.register(app, _verify_api_key, _save_upload, lambda: _MAX_FILES)
+
 # Issue #873 : documentation Lua (après _verify_api_key, même authentification)
 from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
 

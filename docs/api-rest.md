@@ -68,6 +68,11 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/analyses/{id}/security` | Constats de sécurité |
 | `GET` | `/analyses/{id}/markdown` | Rapport Markdown, identique à `--md-report` (issue #864) ; liste complète des routes : [parité des surfaces](parite-surfaces.md) |
 | `GET` | `/analyses` | Liste des analyses |
+| `POST` | `/tools/merge` | Fusion (`files`, `dedup`, `format` pcapng/pcap) : `--merge`, `--merge-dedup` (issue #868) |
+| `POST` | `/tools/split` | Découpage (`file`, `split` = `time:60`, `count:N`, `size:100M`), archive zip : `--split` (issue #869) |
+| `POST` | `/tools/convert` | Conversion (`file`, `format` pcap/pcapng/erf/csv/json) : `--convert` (issue #870) |
+| `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
+| `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
 | `GET` | `/lua-doc/classes` | Classes de l'API Lua Wireshark (`netcross-lua-doc --classes --json`, issue #873) |
 | `GET` | `/lua-doc/classes/{name}` | Fiche d'une classe, insensible à la casse ; 404 avec suggestions (`--class NOM --json`) |
 | `GET` | `/lua-doc/search?q=...&limit=20&full=false` | Recherche plein texte (`netcross-lua-doc --json TERME`) ; 503 si `data/lua_api.json` est absent du serveur |

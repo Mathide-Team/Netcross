@@ -148,6 +148,7 @@ from netcross_core import (
     write_detail_csv,
     write_redaction_map_csv,
 )
+from netcross_core.capture_tools import split_label_dir
 from netcross_core.discovery import load_baseline_hosts
 from netcross_core.flow_timeline import build_flow_timelines
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
@@ -635,53 +636,26 @@ def _run_export(capture_specs, output_path, bpf_filter, time_start, time_end, en
 
 
 _SPLIT_DEFAULT_DIR = "captures_split"
-_SIZE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*([kmg])?[ob]?", re.IGNORECASE)
-_SIZE_FACTORS = {None: 1, "k": 10**3, "m": 10**6, "g": 10**9}
 
 
 def _parse_size(text):
-    """ "100M" -> 100_000_000. Unites DECIMALES (k=10^3, M=10^6, G=10^9),
-    comme `tcpdump -C` : `--split size:100M` correspond donc a `tcpdump -C
-    100`. Suffixe optionnel o/b apres l'unite (100Mo, 100MB). None si le
-    format n'est pas reconnu -- les unites binaires (MiB, Mio) sont
-    volontairement refusees plutot que lues comme des unites decimales."""
-    logger.debug("_parse_size: text={}", summarize(text, "text"))
-    m = _SIZE_RE.fullmatch(text.strip())
-    if not m:
-        logger.debug("_parse_size: si not m -> retour None")
-        return None
-    number, unit = m.groups()
-    logger.debug("_parse_size: retour int(…)")
-    return int(float(number.replace(",", ".")) * _SIZE_FACTORS[unit.lower() if unit else None])
+    """Voir netcross_core.capture_tools.parse_size (partage GUI/API, #869)."""
+    from netcross_core.capture_tools import parse_size
+
+    return parse_size(text)
 
 
 def _parse_split_spec(spec):
-    """MODE:VALEUR -> (mode, valeur) pour pcap_parser.split_capture.
-    time:60 (secondes, decimales admises) | count:10000 (paquets) |
-    size:100M (octets, voir _parse_size)."""
-    mode, sep, raw = spec.partition(":")
-    mode = mode.strip().lower()
-    raw = raw.strip()
-    err = f"Format invalide pour --split: {spec} (attendu time:SECONDES, count:PAQUETS ou size:TAILLE, ex: size:100M)"
-    if not sep or mode not in ("time", "count", "size") or not raw:
-        print(err, file=sys.stderr)
-        sys.exit(1)
+    """MODE:VALEUR -> (mode, valeur) : netcross_core.capture_tools.parse_split_spec
+    (partage avec la GUI et l'API, issue #869) ; message d'erreur puis sortie 1."""
+    from netcross_core.capture_tools import parse_split_spec
+
     try:
-        if mode == "time":
-            value = float(raw.replace(",", "."))
-        elif mode == "count":
-            value = int(raw)
-        else:
-            value = _parse_size(raw)
-    except ValueError:
-        logger.exception("échec dans _parse_split_spec")
-        value = None
-    if value is None or value <= 0:
-        hint = " (unites decimales k/M/G, ex: 100M ; MiB/Mio non supportes)" if mode == "size" else ""
-        print(f"{err} -- la valeur doit etre un nombre > 0{hint}", file=sys.stderr)
+        return parse_split_spec(spec)
+    except ValueError as e:
+        logger.exception(f"échec dans _parse_split_spec: {e}")
+        print(e, file=sys.stderr)
         sys.exit(1)
-    logger.debug("_parse_split_spec: retour tuple de 2")
-    return mode, value
 
 
 def _run_split(capture_specs, split_spec, output_dir):
@@ -696,7 +670,7 @@ def _run_split(capture_specs, split_spec, output_dir):
         label, paths = _parse_capture_spec(spec, "--capture")
         # le label sert de nom de sous-repertoire : on neutralise les
         # separateurs de chemin et les points de tete (jamais de "..")
-        label_dir = os.path.join(output_dir, re.sub(r"[^\w.-]+", "_", label).lstrip(".") or "capture")
+        label_dir = split_label_dir(output_dir, label)
         segments = []
         # OSError : capture absente / sortie deja occupee ; ValueError : mode ou format
         # invalide ; RuntimeError : parent de TsharkNotFoundError/TsharkError (editcap

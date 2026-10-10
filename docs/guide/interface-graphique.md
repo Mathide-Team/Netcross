@@ -198,6 +198,24 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
     l'**Exploration statistique** (Top-N réglable) ou l'export CSV.
     Le défaut est suivi dans le dépôt.
 
+## Outils de capture
+
+Le bouton **Outils de capture** de la barre de titre ouvre une fenêtre à
+onglets qui transforme des fichiers sans lancer d'analyse, comme les
+modes utilitaires de la CLI :
+
+| Onglet | Équivalent CLI |
+|---|---|
+| Fusion (captures, « Dedupliquer les paquets identiques ») | `--merge`, `--merge-dedup` |
+| Decoupage (durée, nombre de paquets ou taille ; dossier) | `--split`, `--split-output-dir` |
+| Conversion (pcap, pcapng, erf, csv, json) | `--convert`, `--convert-format` |
+| Export filtre (filtre Wireshark, début, fin, adresses) | `--export-pcap`, `--export-bpf`, `--export-time-*`, `--export-endpoints` |
+| Recalage temporel (décalage, t=0, alignement sur une référence) | `--adjust-time-output`, `--time-offset`, `--normalize-time`, `--align-to` |
+
+Les mêmes saisies sont refusées avec les mêmes messages que la CLI ; le
+résultat ou l'erreur s'affiche en bas de la fenêtre. Les outils Wireshark
+(`tshark`, `editcap`, `mergecap`, `reordercap`) doivent être installés.
+
 ## Documentation Lua
 
 Le bouton **Documentation Lua** de la barre de titre ouvre la
@@ -210,6 +228,6 @@ de `--json`. Aucun accès réseau ; la banque est celle de la CLI
 
 ## Ce que l'interface ne fait pas
 
-Certaines fonctions restent réservées à la ligne de commande : fusion,
-découpage, conversion et rejeu de captures, plugins,
-module IA, historique des comparaisons. Voir `--help` et les pages de la section Analyses.
+Certaines fonctions restent réservées à la ligne de commande : rejeu de
+captures, plugins, module IA, historique des comparaisons. Voir `--help`
+et les pages de la section Analyses.
