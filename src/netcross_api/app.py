@@ -18,6 +18,7 @@ Déploiement (#356), par variables d'environnement lues au démarrage :
     NETCROSS_API_MAX_FILES  nombre maximal de fichiers par requête (défaut 16)
     NETCROSS_API_WORKERS    analyses simultanées en tâche de fond (défaut 2)
     NETCROSS_DB_PATH        base SQLite : analyses conservées au redémarrage
+    NETCROSS_HISTORY_DB     historique des runs (--history-db) : GET /history, history=true
     NETCROSS_CVE_DB         base CVE complète (équiv. --cve-db) ; sans elle,
                             base minimale embarquée, comme la CLI
     NETCROSS_PLUGIN_PATH    fichiers plugins locaux (équiv. --plugin-path),
@@ -628,7 +629,8 @@ def _analyse_captures(
     order_list: list[str] | None,
     multi: bool,
     options: ApiAnalysisOptions | None = None,
-) -> tuple[dict, dict, dict, Any, Any, list, Any, Any, list | None, list | None]:
+    redactor: Any = None,
+) -> tuple[dict, dict, dict, Any, Any, list, Any, Any, list | None, list | None, Any]:
     """Analyse complète (corrélation, sécurité) ; retourne le document brut,
     le résumé, le rapport structuré (celui de ``--json-report``, issue
     #330), l'objet Report vivant, les flows, les findings, le
@@ -644,9 +646,13 @@ def _analyse_captures(
 
         all_packets, truncation_note = apply_packet_limits(all_packets, options.max_packets, options.sample_n)
         if options.redact:
-            from netcross_core.redact import redact_packets
+            from netcross_core.redact import AddressRedactor
 
-            redact_packets(all_packets)
+            # Issue #876 : un redacteur partage (comparaison baseline/courant,
+            # comme la CLI) ; sa table est rendue par /redact-map.
+            if redactor is None:
+                redactor = AddressRedactor()
+            redactor.redact(all_packets)
         # Issue #330 : détection des doublons inter-captures (même enchaînement
         # que la CLI : détection, puis retrait de la liste pour que tout l'aval
         # voie la même population).
@@ -765,7 +771,7 @@ def _analyse_captures(
         summary["points"] = list(report.points)
         summary["order_source"] = "points_order" if order_list else "auto"
         summary["segments"] = [seg.model_dump() for seg in segment_losses(report)]
-    logger.debug("_analyse_captures: retour tuple de 10")
+    logger.debug("_analyse_captures: retour tuple de 11")
     return (
         report_document(report),
         summary,
@@ -777,6 +783,7 @@ def _analyse_captures(
         tls_findings,
         quic_findings,
         all_packets,
+        redactor if options and options.redact else None,
     )
 
 
@@ -837,6 +844,7 @@ def _run_job(
             tls_findings,
             quic_findings,
             all_packets,
+            redactor,
         ) = _analyse_captures(captures, order_list, multi, options)
     except AnalysisError as exc:
         logger.warning("analyse {} en échec : {}", analysis_id, exc)
@@ -860,6 +868,7 @@ def _run_job(
             tls_findings=tls_findings,
             quic_findings=quic_findings,
             all_packets=all_packets,
+            redaction_map=redactor.entries() if redactor is not None else None,
         )
     finally:
         for _label, path in captures:
@@ -1834,6 +1843,13 @@ async def get_plugins(
     logger.debug("get_plugins: retour {} plugin(s)", len(rows))
     return JSONResponse(payload)
 
+# Issue #877 : paramètre répétable (liste) ; défini au niveau du module car un
+# appel de fonction en valeur par défaut d'un type mutable est refusé (B008).
+_SUPPORT_MARKER_QUERY = Query(
+    default=None,
+    description="Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex. trace_id=T-042)",
+)
+
 
 @app.post(
     "/analyses/{analysis_id}/support-ticket",
@@ -1844,24 +1860,86 @@ async def create_support_ticket(
     analysis_id: str,
     consent: bool = Query(..., description="true : l'utilisateur consent à la remontée d'un ticket anonymisé"),
     kind: str = Query(default="diagnostic", description="Type de ticket (diagnostic, erreur, etc.)"),
+    scopes: str | None = Query(
+        default=None,
+        description="Portées autorisées, séparées par des virgules (équiv. --support-scope) ; toutes par défaut",
+    ),
+    marker: list[str] | None = _SUPPORT_MARKER_QUERY,
+    include_map: bool = Query(
+        default=False,
+        description=(
+            "true : renvoie aussi la table de correspondance réelle <-> pseudonyme "
+            "(équiv. --support-map), à NE PAS transmettre avec le ticket"
+        ),
+    ),
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
     """Ticket de support anonymisé (équiv. --support-ticket).
 
     Construit un ticket anonymisé en mémoire à partir des erreurs
     d'analyse. Le consentement explicite (consent=true) est obligatoire.
+    Issue #877 : ``scopes`` restreint les portées (comme
+    ``--support-scope``), ``marker`` ajoute des marqueurs (comme
+    ``--support-marker``) et ``include_map=true`` ajoute la table de
+    correspondance des rédactions sous ``support_map`` (comme
+    ``--support-map``) -- usage opérateur, jamais jointe au ticket.
     """
+    logger.debug("create_support_ticket(analysis_id={}, kind={}, scopes={})", analysis_id, kind, scopes)
     entry = store.get(analysis_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Analyse introuvable")
-    from netcross_core.support.ticket import Consent, build_ticket
+    from datetime import datetime, timezone
 
-    consent_obj = Consent(granted=consent, source="api")
+    from netcross_core.support.scrubber import TextScrubber
+    from netcross_core.support.ticket import KINDS, SCOPES, Consent, build_ticket
+
     if not consent:
         raise HTTPException(status_code=400, detail="Consentement explicite requis (consent=true)")
+    if kind not in KINDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"kind inconnu : {kind!r} (attendu parmi : {', '.join(KINDS)})",
+        )
+    granted_scopes: tuple[str, ...] = SCOPES
+    if scopes is not None:
+        demandees = tuple(s.strip() for s in scopes.split(",") if s.strip())
+        inconnues = [s for s in demandees if s not in SCOPES]
+        if inconnues or not demandees:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"scopes : portée(s) inconnue(s) {', '.join(inconnues) or '(aucune)'} "
+                    f"(attendu parmi : {', '.join(SCOPES)})"
+                ),
+            )
+        granted_scopes = demandees
+    markers: dict[str, str] = {}
+    for spec in marker or []:
+        cle, sep, valeur = spec.partition("=")
+        if not sep or not cle.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"marker : format attendu CLE=VALEUR, reçu {spec!r}",
+            )
+        markers[cle.strip()] = valeur.strip()
+
+    consent_obj = Consent(
+        granted=True,
+        scopes=granted_scopes,
+        granted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        source="api",
+    )
+    scrubber = TextScrubber()
     errors = entry.get("errors") or []
-    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors)
-    return JSONResponse({"ticket": ticket.to_dict()})
+    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors, markers=markers, scrubber=scrubber)
+    payload: dict[str, Any] = {"ticket": ticket.to_dict()}
+    if include_map:
+        payload["support_map"] = [
+            {"valeur_reelle": real, "pseudonyme": pseudo, "categorie": cat}
+            for real, pseudo, cat in scrubber.mapping_csv_rows()
+        ]
+    logger.debug("create_support_ticket: retour ticket (support_map={})", include_map)
+    return JSONResponse(payload)
 
 
 @app.post(
@@ -2014,6 +2092,14 @@ _comparisons: dict[str, dict] = {}
 _LOSS_THRESHOLD_FORM = Form(default=2.0, gt=0, description="Seuil d'écart de pertes en points de % (défaut: 2.0)")
 _LATENCY_THRESHOLD_FORM = Form(default=5.0, gt=0, description="Seuil d'écart de latence en ms (défaut: 5.0)")
 _TRIAGE_TOP_N_FORM = Form(default=5, ge=1, le=50, description="Nombre de segments au triage (défaut: 5)")
+_HISTORY_FORM = Form(
+    default=False,
+    description="true : enregistre la comparaison dans l'historique du serveur (NETCROSS_HISTORY_DB), "
+    "équivalent de --history-db (issue #874)",
+)
+_HISTORY_LABEL_FORM = Form(
+    default=None, description="Étiquette du run dans l'historique (équivalent de --history-label)"
+)
 
 
 _BASELINE_FILES = File(default=..., description="Fichiers pcap baseline")
@@ -2043,6 +2129,8 @@ async def create_comparison(
     loss_threshold_pp: float = _LOSS_THRESHOLD_FORM,
     latency_threshold_ms: float = _LATENCY_THRESHOLD_FORM,
     triage_top_n: int = _TRIAGE_TOP_N_FORM,
+    history: bool = _HISTORY_FORM,
+    history_label: str | None = _HISTORY_LABEL_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -2056,6 +2144,10 @@ async def create_comparison(
     import uuid
 
     options = _options(nat_tolerant, nat_window_ms, tls, quic, redact)
+    if history:
+        _history_routes.require_history_db()
+    elif history_label:
+        raise HTTPException(status_code=400, detail="history_label necessite history=true (comme --history-db)")
     if not baseline_files or not current_files:
         raise HTTPException(status_code=400, detail="baseline_files et current_files sont requis")
     baseline_label_list = _parse_labels(baseline_labels, len(baseline_files))
@@ -2086,11 +2178,18 @@ async def create_comparison(
 
     def _run_comparison():
         try:
+            # Issue #876 : un seul redacteur pour les deux jeux (même
+            # adresse -> même pseudonyme, comme cross_capture_diff_cli).
+            shared = None
+            if options is not None and options.redact:
+                from netcross_core.redact import AddressRedactor
+
+                shared = AddressRedactor()
             _baseline_doc, baseline_summary, _, baseline_report, *_ = _analyse_captures(
-                baseline_captures, order_list, multi=True, options=options
+                baseline_captures, order_list, multi=True, options=options, redactor=shared
             )
             _current_doc, current_summary, _, current_report, *_ = _analyse_captures(
-                current_captures, order_list, multi=True, options=options
+                current_captures, order_list, multi=True, options=options, redactor=shared
             )
             from netcross_core.baseline_diff import diff_reports
             from netcross_report.triage import health_score, rank_segments
@@ -2116,7 +2215,20 @@ async def create_comparison(
                 "baseline_summary": baseline_summary,
                 "current_summary": current_summary,
             }
+            if history:
+                result.update(
+                    _history_routes.record_comparison(
+                        findings, baseline_report, current_report, history_label or None, redact
+                    )
+                )
             _comparisons[comparison_id] = {"status": COMPLETED, "result": result, "error": None}
+
+            _comparisons[comparison_id] = {
+                "status": COMPLETED,
+                "result": result,
+                "error": None,
+                "redaction_map": shared.entries() if shared is not None else None,
+            }
         except Exception as exc:
             logger.exception("comparaison {} : erreur", comparison_id)
             _comparisons[comparison_id] = {"status": FAILED, "result": None, "error": str(exc)}
@@ -2189,6 +2301,74 @@ async def get_comparison(
     return JSONResponse(content=entry["result"])
 
 
+_REDACT_MAP_WARNING = "a conserver en prive, ne pas transmettre avec le rapport"
+
+
+def _redact_map_response(entries: list | None, what: str, filename: str) -> PlainTextResponse:
+    if entries is None:
+        raise HTTPException(status_code=404, detail=f"{what} sans anonymisation (redact=true) : aucune table")
+    from netcross_core.redact import redaction_map_csv
+
+    return PlainTextResponse(
+        redaction_map_csv(entries),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Netcross-Warning": _REDACT_MAP_WARNING,
+        },
+    )
+
+
+@app.get(
+    "/analyses/{analysis_id}/redact-map",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_analysis_redact_map(
+    analysis_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Table adresse réelle -> pseudonyme d'une analyse ``redact=true``
+    (équivalent de ``--redact-map``, issue #876). Gardée en mémoire
+    seulement (jamais en SQLite) ; à conserver en privé."""
+    entry = _completed_entry(analysis_id)
+    if entry.get("redaction_map") is None and not (entry.get("metadata") or {}).get("options", {}).get("redact"):
+        raise HTTPException(
+            status_code=404, detail=f"Analyse {analysis_id} sans anonymisation (redact=true) : aucune table"
+        )
+    if entry.get("redaction_map") is None:
+        raise HTTPException(
+            status_code=409, detail=f"Analyse {analysis_id} relue après redémarrage : table non conservée"
+        )
+    return _redact_map_response(
+        entry["redaction_map"], f"Analyse {analysis_id}", f"netcross-redact-map-{analysis_id}.csv"
+    )
+
+
+@app.get(
+    "/comparisons/{comparison_id}/redact-map",
+    tags=["comparisons"],
+    responses={**_ANALYSIS_RESPONSES, 200: {"content": {"text/csv": {}}}},
+)
+async def get_comparison_redact_map(
+    comparison_id: str,
+    _auth: None = Depends(_verify_api_key),
+) -> PlainTextResponse:
+    """Table commune baseline/courant d'une comparaison ``redact=true``
+    (équivalent de ``--redact-map`` de ``netcross-diff``, issue #876)."""
+    entry = _comparisons.get(comparison_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
+    if entry["status"] == PENDING:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
+    if entry["status"] == FAILED:
+        raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    return _redact_map_response(
+        entry.get("redaction_map"), f"Comparaison {comparison_id}", f"netcross-diff-redact-map-{comparison_id}.csv"
+    )
+
+
 @app.get(
     "/comparisons/{comparison_id}/csv",
     tags=["comparisons"],
@@ -2218,3 +2398,19 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# Issue #874 : historique des runs (base fixée par NETCROSS_HISTORY_DB)
+from netcross_api import history_routes as _history_routes  # noqa: E402
+
+_history_routes.register(app, _verify_api_key)
+
+# Issues #868, #869, #870, #886, #887 : manipulation de captures
+from netcross_api import tools_routes as _tools_routes  # noqa: E402
+
+_tools_routes.register(app, _verify_api_key, _save_upload, lambda: _MAX_FILES)
+
+# Issue #873 : documentation Lua (après _verify_api_key, même authentification)
+from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
+
+_lua_doc_routes.register(app, _verify_api_key)

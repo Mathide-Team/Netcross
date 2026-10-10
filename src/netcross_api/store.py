@@ -124,6 +124,7 @@ class AnalysesStore:
             "tls_findings": None,
             "quic_findings": None,
             "all_packets": None,
+            "redaction_map": None,
         }
         with self._lock:
             self._store[analysis_id] = entry
@@ -144,6 +145,7 @@ class AnalysesStore:
         tls_findings: Any = None,
         quic_findings: Any = None,
         all_packets: Any = None,
+        redaction_map: Any = None,
     ) -> None:
         """Passe l'analyse en ``completed`` avec son document brut, son
         résumé et son rapport structuré (celui de ``--json-report``).
@@ -170,6 +172,8 @@ class AnalysesStore:
             tls_findings=tls_findings,
             quic_findings=quic_findings,
             all_packets=all_packets,
+            # Issue #876 : table d'anonymisation, en mémoire seulement
+            redaction_map=redaction_map,
         )
         logger.debug("AnalysesStore.complete: fin")
 

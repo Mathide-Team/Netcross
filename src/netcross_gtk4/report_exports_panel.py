@@ -5,7 +5,9 @@ historique » de la page Resultats (issue #674).
 - ticket de support anonymise, apres consentement explicite
   (``--support-ticket`` avec ``--support-consent``) ;
 - historique SQLite choisi dans la configuration : message
-  d'enregistrement et derniers runs (``--history-show N``).
+  d'enregistrement et derniers runs (``--history-show N``) ;
+- table d'anonymisation adresse reelle -> pseudonyme (``--redact-map``,
+  issue #876), en analyse simple comme en comparaison.
 
 Le diagramme de sequence (``--sequence-diagram``) va dans l'export PDF.
 """
@@ -42,6 +44,7 @@ class ReportExportsPanel(Gtk.Box):
         self.report: Any = None
         self.security_report: Any = None
         self.context: Any = None
+        self.redaction_map: tuple = ()
 
         siem_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         siem_row.append(Gtk.Label(label="Format SIEM :"))
@@ -80,9 +83,26 @@ class ReportExportsPanel(Gtk.Box):
         history_scroll = Gtk.ScrolledWindow(min_content_height=120)
         history_scroll.set_child(self.history_view)
 
+        redact_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.redact_map_btn = Gtk.Button(label="Table d'anonymisation (--redact-map)...")
+        self.redact_map_btn.set_tooltip_text(
+            "Correspondance adresse reelle <-> pseudonyme d'une analyse anonymisee : a conserver en prive, "
+            "ne pas transmettre avec le rapport."
+        )
+        self.redact_map_btn.connect("clicked", lambda _b: self._choose("redact_map"))
+        redact_row.append(self.redact_map_btn)
+
         self.status_label = Gtk.Label(label="", halign=Gtk.Align.START, wrap=True)
         self.status_label.set_selectable(True)
-        for widget in (siem_row, ticket_row, self.history_label, history_row, history_scroll, self.status_label):
+        for widget in (
+            siem_row,
+            ticket_row,
+            redact_row,
+            self.history_label,
+            history_row,
+            history_scroll,
+            self.status_label,
+        ):
             self.append(widget)
         self._sync()
 
@@ -96,8 +116,14 @@ class ReportExportsPanel(Gtk.Box):
         self.status_label.set_text("")
         self.history_view.get_buffer().set_text("")
         self.history_label.set_text(context.history_message if context is not None else "")
+        self.redaction_map = tuple(context.redaction_map) if context is not None else ()
         self._sync()
         logger.debug("ReportExportsPanel.set_context: {}", context is not None)
+
+    def set_redaction_map(self, entries) -> None:
+        """Table d'anonymisation seule (comparaison : pas de contexte)."""
+        self.redaction_map = tuple(entries or ())
+        self._sync()
 
     def _has_history(self) -> bool:
         return self.context is not None and bool(self.context.history.db_path)
@@ -106,6 +132,7 @@ class ReportExportsPanel(Gtk.Box):
         self.siem_btn.set_sensitive(self.security_report is not None)
         self.ticket_btn.set_sensitive(self.context is not None and self.consent_check.get_active())
         self.history_btn.set_sensitive(self._has_history())
+        self.redact_map_btn.set_sensitive(bool(self.redaction_map))
 
     def selected_siem_format(self) -> str:
         return SIEM_FORMATS[self.siem_format.get_selected()]
@@ -128,6 +155,20 @@ class ReportExportsPanel(Gtk.Box):
         )
         return written
 
+    def write_redaction_map_to(self, path) -> str:
+        """Meme fichier que ``--redact-map`` (``redaction_map_csv``)."""
+        from netcross_core.redact import redaction_map_csv
+
+        if not self.redaction_map:
+            raise ValueError("aucune table : relancez l'analyse avec « Anonymiser les adresses IP/MAC (--redact) »")
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            fh.write(redaction_map_csv(self.redaction_map))
+        self.status_label.set_text(
+            f"Correspondance adresse reelle <-> pseudonyme ecrite dans {path} "
+            "(a conserver en prive, ne pas transmettre avec le rapport)."
+        )
+        return str(path)
+
     def show_history(self) -> str:
         from netcross_report import HistoryDatabaseError
 
@@ -149,6 +190,8 @@ class ReportExportsPanel(Gtk.Box):
         if what == "siem":
             fmt = self.selected_siem_format()
             dialog.set_initial_name(f"netcross-siem.{SIEM_EXTENSIONS[fmt]}")
+        elif what == "redact_map":
+            dialog.set_initial_name("netcross-redact-map.csv")
         else:
             dialog.set_initial_name("netcross-ticket-support.json")
         root = self.get_root()
@@ -167,6 +210,8 @@ class ReportExportsPanel(Gtk.Box):
         try:
             if what == "siem":
                 self.export_siem_to(path)
+            elif what == "redact_map":
+                self.write_redaction_map_to(path)
             else:
                 self.write_ticket_to(path)
         except (OSError, ValueError, RuntimeError) as exc:

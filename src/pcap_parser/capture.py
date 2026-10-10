@@ -652,11 +652,18 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
     TcpreplayNotFoundError si tcpreplay n'est pas installe ; TcpreplayError
     si tcpreplay a demarre mais a echoue (code de retour non nul).
     """
+    _run_tcpreplay(replay_command(path, interface, speed, loop))
+
+
+def replay_command(path: str, interface: str, speed: float | str = 1.0, loop: int = 1) -> list[str]:
+    """Ligne de commande tcpreplay de ``replay_capture``, apres les memes
+    verifications (memes exceptions). Partagee avec ``start_replay``
+    (rejeu interruptible de la GUI, issue #871)."""
     if not os.path.isfile(path):
-        logger.debug("replay_capture: si not os.path.isfile(path) -> levée FileNotFoundError")
+        logger.debug("replay_command: si not os.path.isfile(path) -> levée FileNotFoundError")
         raise FileNotFoundError(f"fichier de capture introuvable : {path}")
     if loop < 1:
-        logger.debug("replay_capture: si loop < 1 -> levée ValueError")
+        logger.debug("replay_command: si loop < 1 -> levée ValueError")
         raise ValueError(f"loop doit etre >= 1 (recu {loop!r})")
 
     topspeed = isinstance(speed, str) and speed.strip().lower() == "topspeed"
@@ -669,11 +676,11 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
                 f"speed doit etre un nombre strictement positif ou la chaine 'topspeed' (recu {speed!r})"
             ) from None
         if speed <= 0:
-            logger.debug("replay_capture: si speed <= 0 -> levée ValueError")
+            logger.debug("replay_command: si speed <= 0 -> levée ValueError")
             raise ValueError(f"speed doit etre strictement positif (recu {speed!r})")
 
     logger.debug(
-        "replay_capture: {} sur {} (vitesse={} boucles={})",
+        "replay_command: {} sur {} (vitesse={} boucles={})",
         path,
         interface,
         "topspeed" if topspeed else speed,
@@ -683,7 +690,29 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
     args = [tcpreplay, f"--intf1={interface}", f"--loop={loop}"]
     args.append("--topspeed" if topspeed else f"--multiplier={speed}")
     args.append(path)
-    _run_tcpreplay(args)
+    return args
+
+
+def start_replay(path: str, interface: str, speed: float | str = 1.0, loop: int = 1) -> subprocess.Popen:
+    """Lance le rejeu sans attendre (GUI, issue #871) : ``proc.terminate()``
+    l'interrompt ; ``wait_replay(proc)`` attend la fin et leve
+    TcpreplayError comme ``replay_capture`` (sauf interruption volontaire)."""
+    args = replay_command(path, interface, speed, loop)
+    logger.debug("start_replay: {}", args)
+    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+def wait_replay(proc: subprocess.Popen, stopped: bool = False) -> None:
+    """Attend la fin d'un rejeu de ``start_replay`` ; TcpreplayError si
+    tcpreplay echoue, rien si ``stopped`` (arret demande)."""
+    _out, err = proc.communicate()
+    logger.debug("wait_replay: code {} (arret demande : {})", proc.returncode, stopped)
+    if proc.returncode != 0 and not stopped:
+        raise TcpreplayError(
+            f"tcpreplay a echoue (code {proc.returncode}) : {(err or '').strip()}",
+            returncode=proc.returncode,
+            stderr=err or "",
+        )
     logger.debug("replay_capture: fin")
 
 
