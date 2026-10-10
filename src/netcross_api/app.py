@@ -1750,6 +1750,14 @@ async def extract_contents(
     )
 
 
+# Issue #877 : paramètre répétable (liste) ; défini au niveau du module car un
+# appel de fonction en valeur par défaut d'un type mutable est refusé (B008).
+_SUPPORT_MARKER_QUERY = Query(
+    default=None,
+    description="Marqueur CLE=VALEUR, répétable (équiv. --support-marker, ex. trace_id=T-042)",
+)
+
+
 @app.post(
     "/analyses/{analysis_id}/support-ticket",
     tags=["analyses"],
@@ -1759,24 +1767,86 @@ async def create_support_ticket(
     analysis_id: str,
     consent: bool = Query(..., description="true : l'utilisateur consent à la remontée d'un ticket anonymisé"),
     kind: str = Query(default="diagnostic", description="Type de ticket (diagnostic, erreur, etc.)"),
+    scopes: str | None = Query(
+        default=None,
+        description="Portées autorisées, séparées par des virgules (équiv. --support-scope) ; toutes par défaut",
+    ),
+    marker: list[str] | None = _SUPPORT_MARKER_QUERY,
+    include_map: bool = Query(
+        default=False,
+        description=(
+            "true : renvoie aussi la table de correspondance réelle <-> pseudonyme "
+            "(équiv. --support-map), à NE PAS transmettre avec le ticket"
+        ),
+    ),
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
     """Ticket de support anonymisé (équiv. --support-ticket).
 
     Construit un ticket anonymisé en mémoire à partir des erreurs
     d'analyse. Le consentement explicite (consent=true) est obligatoire.
+    Issue #877 : ``scopes`` restreint les portées (comme
+    ``--support-scope``), ``marker`` ajoute des marqueurs (comme
+    ``--support-marker``) et ``include_map=true`` ajoute la table de
+    correspondance des rédactions sous ``support_map`` (comme
+    ``--support-map``) -- usage opérateur, jamais jointe au ticket.
     """
+    logger.debug("create_support_ticket(analysis_id={}, kind={}, scopes={})", analysis_id, kind, scopes)
     entry = store.get(analysis_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Analyse introuvable")
-    from netcross_core.support.ticket import Consent, build_ticket
+    from datetime import datetime, timezone
 
-    consent_obj = Consent(granted=consent, source="api")
+    from netcross_core.support.scrubber import TextScrubber
+    from netcross_core.support.ticket import KINDS, SCOPES, Consent, build_ticket
+
     if not consent:
         raise HTTPException(status_code=400, detail="Consentement explicite requis (consent=true)")
+    if kind not in KINDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"kind inconnu : {kind!r} (attendu parmi : {', '.join(KINDS)})",
+        )
+    granted_scopes: tuple[str, ...] = SCOPES
+    if scopes is not None:
+        demandees = tuple(s.strip() for s in scopes.split(",") if s.strip())
+        inconnues = [s for s in demandees if s not in SCOPES]
+        if inconnues or not demandees:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"scopes : portée(s) inconnue(s) {', '.join(inconnues) or '(aucune)'} "
+                    f"(attendu parmi : {', '.join(SCOPES)})"
+                ),
+            )
+        granted_scopes = demandees
+    markers: dict[str, str] = {}
+    for spec in marker or []:
+        cle, sep, valeur = spec.partition("=")
+        if not sep or not cle.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"marker : format attendu CLE=VALEUR, reçu {spec!r}",
+            )
+        markers[cle.strip()] = valeur.strip()
+
+    consent_obj = Consent(
+        granted=True,
+        scopes=granted_scopes,
+        granted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        source="api",
+    )
+    scrubber = TextScrubber()
     errors = entry.get("errors") or []
-    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors)
-    return JSONResponse({"ticket": ticket.to_dict()})
+    ticket = build_ticket(consent=consent_obj, kind=kind, errors=errors, markers=markers, scrubber=scrubber)
+    payload: dict[str, Any] = {"ticket": ticket.to_dict()}
+    if include_map:
+        payload["support_map"] = [
+            {"valeur_reelle": real, "pseudonyme": pseudo, "categorie": cat}
+            for real, pseudo, cat in scrubber.mapping_csv_rows()
+        ]
+    logger.debug("create_support_ticket: retour ticket (support_map={})", include_map)
+    return JSONResponse(payload)
 
 
 @app.post(
