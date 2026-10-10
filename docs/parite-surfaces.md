@@ -15,8 +15,9 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 37 cases à cocher, 25 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 27 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| GUI | `netcross_gtk4` : 3 pages, 35 cases à cocher, 27 réglages numériques | Analyse interactive et exploration visuelle |
+| API | 41 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -74,8 +75,8 @@ actif, non réglable.
 | Extraction des contenus | oui (panneau « Contenus (extraction) » de la page Résultats : audio, vidéo, documents, dossier vide, même manifeste et même rappel d'usage ; après une analyse de fichiers non anonymisée, issue #675) | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
 | Comparaison de postes | oui (champs « Postes a comparer » et « Reference » de la configuration, section du rapport, panneau « Comparaison de postes » de la page Résultats avec export CSV ; issue #675) | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
 | NetFlow / sFlow | oui, NetFlow v5 (panneau « NetFlow v5 (resume d'exports) » de la page Résultats : exports ajoutés, Top, même résumé texte, export JSON ; autonome comme la CLI, issue #675) | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
-| Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
-| Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | non |
+| Module IA local | oui (ligne « Module IA local » : enregistrer la baseline et son libellé, « Baseline (anomalies)... », exporter l'entraînement, « Jeu d'entrainement... », résumé, point d'accès, résultats JSON ; issue #866) | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | `POST /analyses/{analysis_id}/ai` (issue #866) : `baseline_save`, `baseline_base`, `baseline_label`, `baseline`, `training_export`, `training`, `summary`, `endpoint` ; résultat JSON de `--ai-report` dans la réponse ; `netcross-ai-models` hors API (fichiers du poste) |
+| Plugins | oui (champs « Plugins », fichiers, exports `NOM=FICHIER`, bouton « Lister (--list-plugins) » ; détecteurs avec « Rapport de securite », issue #867) | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | `GET /plugins` (équiv. `--list-plugins`), champ `plugins` de `POST /captures` et `/captures/multi` (détecteurs, rapport de sécurité) ; chemin fixé par l'administrateur (`NETCROSS_PLUGIN_PATH`), exporteurs non exécutés (issue #867) |
 
 ## Formats de sortie
 
@@ -91,7 +92,7 @@ actif, non réglable.
 | Diagramme de séquence | oui (« Diagramme de sequence » de la configuration, dans l'export PDF ; issue #674) | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
 | Export SIEM (CEF, LEEF, STIX) | oui (panneau « SIEM, ticket de support, historique » de la page Résultats, après un rapport de sécurité, même fichier ; issue #674) | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
 | Historique SQLite | oui (« Historique... » et « Etiquette » de la configuration, derniers runs dans le panneau « SIEM, ticket de support, historique » ; issue #674) | `--history-db`, `--history-label`, `--history-show` ; `netcross-history` | persistance propre (`NETCROSS_DB_PATH`), `GET /analyses` |
-| Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic » ; issue #674 ; portées, marqueurs `CLE=VALEUR` et « Correspondance du ticket (--support-map)... », issue #877) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind` |
+| Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic » ; issue #674 ; portées, marqueurs `CLE=VALEUR` et « Correspondance du ticket (--support-map)... », issue #877) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind`, `scopes`, `marker`, `include_map` (issue #877) |
 
 ### Deux JSON côté API
 
@@ -143,8 +144,8 @@ de sécurité, déjà produit par `POST /analyses`.
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
 | Exports | oui (PDF, CSV, JSON) | `--pdf-report`, `--diff-csv`, `--json-report` | `GET /comparisons/{id}/csv` (issue #669) |
-| Anonymisation partagée | oui (table commune : « Table d'anonymisation (--redact-map)... », issue #876) | `--redact`, `--redact-map` | `redact` (un seul pseudonyme par adresse pour baseline et courant), table : `GET /comparisons/{comparison_id}/redact-map` (issues #669, #876) |
-| Historique | non | `--history-db`, `--history-label`, `--history-show` | non |
+| Anonymisation partagée | oui | `--redact`, `--redact-map` | `redact` (issue #669) |
+| Historique | oui (« Historique... » et « Etiquette » de la configuration, aussi en comparaison et en comparaison en direct ; consultation : fenêtre « Historique des runs » ; issue #874) | `--history-db`, `--history-label`, `--history-show` | `history`, `history_label` (base fixée par `NETCROSS_HISTORY_DB`), consultation `GET /history` (issue #874) |
 | Code de sortie 1 sur régression | sans objet | oui | `regression: true` dans la réponse (issue #669) |
 
 Options de la CLI de comparaison reprises de l'analyse principale, avec
@@ -158,27 +159,29 @@ Paramètres de l'API de comparaison (issue #669) : `baseline_files`,
 `quic`, `redact`, `loss_threshold_pp`, `latency_threshold_ms`,
 `triage_top_n`, `wait`.
 
-## Manipulation de captures (CLI uniquement, par choix)
+## Manipulation de captures
 
-Ces options transforment des fichiers et ne lancent pas d'analyse. Elles
-n'ont pas leur place dans une interface d'analyse ni dans une API
-d'analyse.
+Ces fonctions transforment des fichiers sans lancer d'analyse. Mêmes
+validations et mêmes messages sur les trois surfaces
+(`netcross_core.capture_tools`, issues #868, #869, #870, #886, #887). GUI :
+fenêtre « Outils de capture » (bouton de la barre de titre).
 
-| Fonction | CLI |
-|---|---|
-| Fusion | `--merge`, `--merge-dedup` |
-| Découpage | `--split`, `--split-output-dir` |
-| Conversion de format | `--convert`, `--convert-format` |
-| Export d'un sous-ensemble filtré | `--export-pcap`, `--export-bpf`, `--export-time-start`, `--export-time-end`, `--export-endpoints` |
-| Recalage temporel | `--adjust-time-output`, `--time-offset`, `--normalize-time`, `--align-to` |
-| Rejeu sur une interface | `--replay`, `--replay-speed`, `--replay-loop` |
+| Fonction | GUI | CLI | API |
+|---|---|---|---|
+| Fusion | onglet « Fusion », « Dedupliquer les paquets identiques (--merge-dedup) » | `--merge`, `--merge-dedup` | `POST /tools/merge` : `files`, `dedup`, `format` |
+| Découpage | onglet « Decoupage » (critère time/count/size, dossier) | `--split`, `--split-output-dir` | `POST /tools/split` : `file`, `split` (archive zip) |
+| Conversion de format | onglet « Conversion » | `--convert`, `--convert-format` | `POST /tools/convert` : `file`, `format` |
+| Export d'un sous-ensemble filtré | onglet « Export filtre » | `--export-pcap`, `--export-bpf`, `--export-time-start`, `--export-time-end`, `--export-endpoints` | `POST /tools/export` : `file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format` |
+| Recalage temporel | onglet « Recalage temporel » | `--adjust-time-output`, `--time-offset`, `--normalize-time`, `--align-to` | `POST /tools/adjust-time` : `file`, `time_offset`, `normalize`, `align_to`, `format` |
+| Rejeu sur une interface | onglet « Rejeu » (confirmation « J'ai l'autorisation d'emettre sur cette interface », bouton « Arreter ») | `--replay`, `--replay-speed`, `--replay-loop` | `POST /tools/replay` : `file`, `interface`, `speed`, `loop` ; uniquement sur les interfaces de `NETCROSS_REPLAY_INTERFACES` (vide par défaut : 403) |
 
 ## Autres points d'entrée
 
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
-| Dossier entier de captures | non | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | non |
-| Documentation de l'API Lua de Wireshark | oui (bouton « Documentation Lua » de la barre de titre : classes, fiche, recherche, « Resultats max. », « Detail complet (--full) », JSON ; issue #873) | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | `GET /lua-doc/classes`, `/lua-doc/classes/{name}`, `/lua-doc/search` (même JSON que `--json`, issue #873) |
+| Dossier entier de captures | non | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | `POST /batches` (`files`, captures ou archive ZIP ; `no_group`, `group_window`, `min_overlap`, `min_common_ips`, `jobs`, `security_report`), `GET /batches/{batch_id}` (avancement, groupes, échecs), `/index`, `/reports/{name}` ; `--skip-existing` sans objet (issue #872) |
+| Documentation de l'API Lua de Wireshark | non | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | non |
+| Historique des runs (analyses et comparaisons) | fenêtre « Historique des runs » (bouton de la barre de titre) : base, type, étiquette, nombre (issue #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history` : `run_type`, `label`, `limit` (base du serveur `NETCROSS_HISTORY_DB`, issue #874) |
 | Historique des analyses | non | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /analyses` |
 | Mode debug | `--debug` au lancement | `--debug` (toutes les CLI) | `NETCROSS_DEBUG=1` |
 
@@ -237,7 +240,10 @@ son équivalent CLI ou API.
 | Trace d'appels | Résultats (SIEM, ticket, historique) | `--support-scope trace_appels` |
 | Marqueurs | Résultats (SIEM, ticket, historique) | `--support-scope marqueurs` |
 | Anomalies seulement | Résultats (cartographie) | aucun |
+| Dedupliquer les paquets identiques (--merge-dedup) | Fenêtre « Outils de capture » (Fusion) | `--merge-dedup` |
 | Detail complet (--full) | Fenêtre « Documentation Lua » | `netcross-lua-doc --full` |
+
+| J'ai l'autorisation d'emettre sur cette interface | Fenêtre « Outils de capture » (Rejeu) | aucun (confirmation de la GUI) |
 
 ## API : routes et réglages
 
@@ -270,10 +276,22 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `POST /comparisons` | Comparaison baseline/courant (issue #669) |
 | `GET /comparisons/{comparison_id}` | Résultat d'une comparaison (issue #669) |
 | `GET /comparisons/{comparison_id}/csv` | CSV des écarts (issue #669) |
+| `POST /batches` | Lot de captures, équivalent de `cross_capture_batch_cli.py` (issue #872) |
+| `GET /batches` | Lots conservés en mémoire (issue #872) |
+| `GET /batches/{batch_id}` | Avancement et résultat d'un lot (issue #872) |
+| `GET /batches/{batch_id}/index` | Index du lot, `index.txt` (issue #872) |
+| `GET /batches/{batch_id}/reports/{name}` | Rapport d'une capture ou d'un groupe (issue #872) |
+| `GET /history` | Historique des runs, filtres type, étiquette, nombre (issue #874) |
+| `POST /tools/merge` | Fusion de captures (issue #868) |
+| `POST /tools/split` | Découpage, archive zip (issue #869) |
+| `POST /tools/convert` | Conversion de format (issue #870) |
+| `POST /tools/export` | Export d'un sous-ensemble filtré (issue #886) |
+| `POST /tools/adjust-time` | Recalage temporel (issue #887) |
 | `GET /lua-doc/classes` | Classes de l'API Lua Wireshark (issue #873) |
 | `GET /lua-doc/classes/{name}` | Fiche d'une classe Lua (issue #873) |
 | `GET /lua-doc/search` | Recherche dans la documentation Lua, `q`, `limit`, `full` (issue #873) |
 | `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
+| `POST /tools/replay` | Rejeu sur une interface autorisée (issue #871) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,

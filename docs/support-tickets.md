@@ -180,6 +180,27 @@ Un marqueur mal formé est refusé avec le message de la CLI et aucun
 ticket n'est écrit. La correspondance est celle du dernier ticket écrit
 (même CSV que `--support-map`) ; une nouvelle analyse l'oublie.
 
+## API REST (issues #674, #877)
+
+`POST /analyses/{analysis_id}/support-ticket` construit le ticket
+« diagnostic » d'une analyse terminée, avec les mêmes réglages que la CLI :
+
+| Paramètre (query) | Équivalent CLI | Rôle |
+| --- | --- | --- |
+| `consent=true` | `--support-consent` | obligatoire, sinon `400` |
+| `kind` | — | `diagnostic` (défaut), `erreur_traitement`, `crash` ; valeur inconnue : `400` |
+| `scopes` | `--support-scope` | portées séparées par des virgules ; inconnue : `400` |
+| `marker` (répétable) | `--support-marker` | `CLE=VALEUR` ; format invalide : `400` |
+| `include_map=true` | `--support-map` | ajoute `support_map` à la réponse, **hors** du ticket |
+
+```bash
+curl -X POST "http://localhost:8000/analyses/a1b2c3d4e5f6/support-ticket?consent=true&scopes=journal,marqueurs&marker=trace_id=T-042&include_map=true"
+```
+
+Réponse : `{"ticket": {...}, "support_map": [{"valeur_reelle": "...", "pseudonyme": "...", "categorie": "..."}]}`.
+Comme le CSV de la CLI, `support_map` reste chez l'opérateur : seul `ticket`
+se transmet.
+
 ## Utilisation programmatique
 
 ```python
