@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-184 modules · 268 classes · 622 fonctions publiques de module.
+187 modules · 270 classes · 632 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -34,17 +34,17 @@ flowchart TD
     pcap_parser["pcap_parser"]
     CLI -->|"19 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
-    CLI -->|"41 imports"| netcross_core
+    CLI -->|"44 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"27 imports"| netcross_report
-    netcross_gtk4 -->|"94 imports"| netcross_core
+    netcross_gtk4 -->|"96 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
-    netcross_api -->|"33 imports"| netcross_core
-    netcross_api -->|"2 imports"| pcap_parser
+    netcross_api -->|"35 imports"| netcross_core
+    netcross_api -->|"3 imports"| pcap_parser
     netcross_report -->|"36 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
-    netcross_core -->|"18 imports"| pcap_parser
+    netcross_core -->|"19 imports"| pcap_parser
 ```
 
 ## Relations inter-modules
@@ -457,6 +457,7 @@ classDiagram
 | `netcross_core.baseline_profile` | profil de reference dynamique construit a partir de l'historique SQLite (Job 12/issue #9, section 8.5 de FEATURES.md). |
 | `netcross_core.batch` | Mode batch : inventaire d'un dossier de captures et regroupement automatique CONSERVATEUR des captures qui semblent etre plusieurs points de vue d'un meme evenement (issue #277). |
 | `netcross_core.bpf_filters` | catalogue de filtres BPF predefinis et filtres sauvegardes par l'utilisateur (Job 47 / issue #167). |
+| `netcross_core.capture_tools` | manipulation de fichiers de capture partagee par la CLI, la GUI et l'API (issues #868, #869, #870, #886, #887). |
 | `netcross_core.causality` | moteur de correlation causale (Session 3 de la section 13.3 de FEATURES.md, Job 4/issue #4). |
 | `netcross_core.client_diff` | comparaison "client vs client" : meme capture, memes points, seule la source (l'IP du poste) change. |
 | `netcross_core.compliance` | evaluateur de conformite, huitieme et neuvieme objets de contrat de la Session 0 (FEATURES.md section 13.3) : `ReferenceProfile`/`ComplianceResult` (netcross_core.expert_model). |
@@ -487,7 +488,7 @@ classDiagram
 | `netcross_core.voip` | Analyse VoIP orientee appel. |
 | `netcross_core.wireshark_expert` | Session 1 de FEATURES.md section 13.3 ("exploitation de l'expertise Wireshark/TShark") : convertit les signaux d'expertise BRUTS deja produits par le moteur de dissection de tshark (champs… |
 
-### Diagramme
+### Diagramme (1/2)
 
 ```mermaid
 classDiagram
@@ -647,6 +648,20 @@ classDiagram
         +load_bpf_filters(path) list~BPFFilter~
         +available_bpf_filters(path) list~BPFFilter~
         +upsert_bpf_filter(new, path) list~BPFFilter~
+    }
+
+    %% ===== netcross_core.capture_tools =====
+    class mod_netcross_core_capture_tools["netcross_core.capture_tools"] {
+        <<module>>
+        +parse_size(text) int?
+        +parse_split_spec(spec) tuple~str, float or int~
+        +parse_endpoints(text) list~str~?
+        +split_label_dir(output_dir, label) str
+        +merge(paths, output_path, dedup) str
+        +split(path, output_dir, spec) list~str~
+        +convert(path_in, path_out, fmt) str
+        +export_subset(path_in, path_out, bpf_filter, time_start, time_end, endpoints) str
+        +adjust_time(path_in, path_out, offset, normalize, align_to) str
     }
 
     %% ===== netcross_core.causality =====
@@ -1729,31 +1744,6 @@ classDiagram
         +print_tls_diagnostics(findings) None
     }
 
-    %% ===== netcross_core.voip =====
-    class Call {
-        <<dataclass>>
-        +str call_id
-        +tuple~str, ...~ participants
-        +list~dict~ signaling
-        +float? setup_duration_ms
-        +float? duration_ms
-        +list~dict~ rtp_streams
-        +list~dict~ events
-        +str quality
-        +str correlation_method
-        +to_dict() dict
-    }
-    class mod_netcross_core_voip["netcross_core.voip"] {
-        <<module>>
-        +build_calls(all_packets, rtp_streams) tuple~list~Call~, dict~str, int~~
-    }
-
-    %% ===== netcross_core.wireshark_expert =====
-    class mod_netcross_core_wireshark_expert["netcross_core.wireshark_expert"] {
-        <<module>>
-        +build_wireshark_expert_events(all_packets) list~ExpertEvent~
-    }
-
     %% ===== relations =====
     DiffFinding --> EvidenceLink : evidence
     CaptureGroup --> CaptureInventory : members
@@ -1790,6 +1780,38 @@ classDiagram
     Pkt --> Banner : service_banners
     Report --> ChecksumError : checksum_errors
     Report --> SequenceGap : sequence_gaps
+```
+
+### Diagramme (2/2)
+
+```mermaid
+classDiagram
+    direction LR
+
+    %% ===== netcross_core.voip =====
+    class Call {
+        <<dataclass>>
+        +str call_id
+        +tuple~str, ...~ participants
+        +list~dict~ signaling
+        +float? setup_duration_ms
+        +float? duration_ms
+        +list~dict~ rtp_streams
+        +list~dict~ events
+        +str quality
+        +str correlation_method
+        +to_dict() dict
+    }
+    class mod_netcross_core_voip["netcross_core.voip"] {
+        <<module>>
+        +build_calls(all_packets, rtp_streams) tuple~list~Call~, dict~str, int~~
+    }
+
+    %% ===== netcross_core.wireshark_expert =====
+    class mod_netcross_core_wireshark_expert["netcross_core.wireshark_expert"] {
+        <<module>>
+        +build_wireshark_expert_events(all_packets) list~ExpertEvent~
+    }
 ```
 
 ## `netcross_core.application`
@@ -3801,6 +3823,7 @@ classDiagram
 | `netcross_api.lua_doc_routes` | documentation hors ligne de l'API Lua Wireshark (issue #873), équivalent de ``netcross-lua-doc --json``. |
 | `netcross_api.models` | modèles Pydantic pour les requêtes/réponses API (issue #209). |
 | `netcross_api.store` | analyses de l'API : statut, document JSON, persistance. |
+| `netcross_api.tools_routes` | manipulation de captures (issues #868, #869, #870, #886, #887), équivalents des modes utilitaires de la CLI : |
 
 ### Diagramme
 
@@ -3967,6 +3990,12 @@ classDiagram
         +report_document(report) dict~str, Any~
     }
 
+    %% ===== netcross_api.tools_routes =====
+    class mod_netcross_api_tools_routes["netcross_api.tools_routes"] {
+        <<module>>
+        +register(app, verify, save_upload, max_files) None
+    }
+
     %% ===== relations =====
     netcross_api_models_SecurityReport --> SecurityFinding : findings
     MultiAnalysisSummary --> SegmentLoss : segments
@@ -3984,6 +4013,7 @@ classDiagram
 | `netcross_gtk4.app` | interface GTK4 pour netcross_core / netcross_report. |
 | `netcross_gtk4.bpf_panel` | Decisions du panneau de filtres BPF de la capture live, sorties de ``netcross_gtk4/app.py`` (issue #285, quatrieme lot). |
 | `netcross_gtk4.capture_list` | Enumeration, ordre et retrait des lignes des panneaux de captures, sortis de ``netcross_gtk4/app.py`` (issue #285, cinquieme lot). |
+| `netcross_gtk4.capture_tools_window` | fenetre « Outils de capture » (issues #868, #869, #870, #886, #887) : fusion, decoupage, conversion, export filtre et recalage temporel, equivalents des modes utilitaires de la CLI (``--merge``,… |
 | `netcross_gtk4.client_compare_panel` | panneau GTK « Comparaison de postes » de la page Resultats (issue #675). |
 | `netcross_gtk4.client_compare_view` | comparaison de postes dans la GUI (issue #675). |
 | `netcross_gtk4.dashboard_context` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
@@ -4159,6 +4189,7 @@ classDiagram
     }
     class MainWindow {
         <<Gtk.ApplicationWindow>>
+        +open_capture_tools()
         +open_lua_doc()
         +load_names_table(path)
         +add_capture_row(path, default_label)
@@ -4224,6 +4255,22 @@ classDiagram
         +captures_live(contenus) list~tuple~str, str, str?~~
         +deplacer_ligne(row, vers_le_haut) bool
         +retirer_ligne(row, on_change) bool
+    }
+
+    %% ===== netcross_gtk4.capture_tools_window =====
+    class PathChooser {
+        <<Gtk.Box>>
+        +set_path(path) None
+    }
+    class CaptureToolsWindow {
+        <<Gtk.Window>>
+        +set_merge_files(paths) None
+        +run_merge() str
+        +split_spec() str
+        +run_split() str
+        +run_convert() str
+        +run_export() str
+        +run_adjust() str
     }
 
     %% ===== netcross_gtk4.client_compare_panel =====

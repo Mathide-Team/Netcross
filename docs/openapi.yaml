@@ -1391,6 +1391,161 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /tools/merge:
+    post:
+      tags:
+      - tools
+      summary: Merge Captures Route
+      description: Fusion ordonnée par horodatage (équivalent de ``--merge``).
+      operationId: merge_captures_route_tools_merge_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_merge_captures_route_tools_merge_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/split:
+    post:
+      tags:
+      - tools
+      summary: Split Capture Route
+      description: 'Découpage ; réponse = archive zip des morceaux, dans l''ordre
+
+        (équivalent de ``--split`` / ``--split-output-dir``).'
+      operationId: split_capture_route_tools_split_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_split_capture_route_tools_split_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/convert:
+    post:
+      tags:
+      - tools
+      summary: Convert Capture Route
+      description: Conversion de format ou export structuré (équivalent de ``--convert``).
+      operationId: convert_capture_route_tools_convert_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_convert_capture_route_tools_convert_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/export:
+    post:
+      tags:
+      - tools
+      summary: Export Subset Route
+      description: Sous-ensemble filtré (équivalent de ``--export-pcap``).
+      operationId: export_subset_route_tools_export_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_export_subset_route_tools_export_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
+  /tools/adjust-time:
+    post:
+      tags:
+      - tools
+      summary: Adjust Time Route
+      description: 'Recalage des horodatages (équivalent de ``--adjust-time-output``)
+        ;
+
+        un seul mode parmi ``time_offset``, ``normalize``, ``align_to``.'
+      operationId: adjust_time_route_tools_adjust_time_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_adjust_time_route_tools_adjust_time_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream: {}
+        '400':
+          description: Paramètres refusés (mêmes messages que la CLI)
+        '413':
+          description: Fichier trop volumineux
+        '422':
+          description: Échec de l'outil Wireshark (capture illisible...)
+        '503':
+          description: Outils Wireshark (tshark, editcap, mergecap) absents du serveur
+      security:
+      - APIKeyHeader: []
   /lua-doc/classes:
     get:
       tags:
@@ -1589,6 +1744,56 @@ components:
       - analysis_id
       title: AnalysisSummary
       description: Résumé d'une analyse (retourné par POST /captures).
+    Body_adjust_time_route_tools_adjust_time_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à recaler
+        time_offset:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time Offset
+          description: Décalage en secondes (équivalent de --time-offset)
+        normalize:
+          type: boolean
+          title: Normalize
+          description: Premier paquet à t=0 (équivalent de --normalize-time)
+          default: false
+        align_to:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Align To
+          description: Capture de référence (équivalent de --align-to)
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_adjust_time_route_tools_adjust_time_post
+    Body_convert_capture_route_tools_convert_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à convertir
+        format:
+          type: string
+          title: Format
+          description: pcap, pcapng, erf, csv ou json (équivalent de --convert-format)
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_convert_capture_route_tools_convert_post
     Body_create_comparison_comparisons_post:
       properties:
         baseline_files:
@@ -1673,6 +1878,46 @@ components:
       - baseline_files
       - current_files
       title: Body_create_comparison_comparisons_post
+    Body_export_subset_route_tools_export_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture source
+        bpf:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bpf
+          description: Filtre d'affichage Wireshark (équivalent de --export-bpf)
+        time_start:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time Start
+          description: Début, secondes après le 1er paquet (--export-time-start)
+        time_end:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Time End
+          description: Fin, secondes après le 1er paquet (--export-time-end)
+        endpoints:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Endpoints
+          description: IP1,IP2,... en source ou destination (--export-endpoints)
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - file
+      title: Body_export_subset_route_tools_export_post
     Body_extract_contents_analyses__analysis_id__extract_post:
       properties:
         files:
@@ -1696,6 +1941,29 @@ components:
       required:
       - files
       title: Body_extract_contents_analyses__analysis_id__extract_post
+    Body_merge_captures_route_tools_merge_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+          description: Captures à fusionner (pcap/pcapng, formats mélangeables)
+        dedup:
+          type: boolean
+          title: Dedup
+          description: Supprimer les paquets identiques (équivalent de --merge-dedup)
+          default: false
+        format:
+          type: string
+          title: Format
+          description: 'Format de sortie : pcapng (défaut de mergecap) ou pcap'
+          default: pcapng
+      type: object
+      required:
+      - files
+      title: Body_merge_captures_route_tools_merge_post
     Body_netflow_summary_analyses__analysis_id__netflow_post:
       properties:
         files:
@@ -1721,6 +1989,23 @@ components:
       required:
       - files
       title: Body_netflow_summary_analyses__analysis_id__netflow_post
+    Body_split_capture_route_tools_split_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Capture à découper
+        split:
+          type: string
+          title: Split
+          description: 'MODE:VALEUR : time:60, count:10000 ou size:100M (équivalent
+            de --split)'
+      type: object
+      required:
+      - file
+      - split
+      title: Body_split_capture_route_tools_split_post
     Body_upload_capture_captures_post:
       properties:
         file:
