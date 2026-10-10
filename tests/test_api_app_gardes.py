@@ -76,6 +76,8 @@ def _options_formulaire():
         "names": None,
         "known_destinations": None,
         "known_hosts": None,
+        "history": False,
+        "history_label": None,
         "wait": False,
         "_auth": None,
     }

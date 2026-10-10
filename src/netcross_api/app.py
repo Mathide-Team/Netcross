@@ -110,6 +110,15 @@ _NOTIFY_WEBHOOK_FORM = Form(default=None, description="URL de webhook (équivale
 _NOTIFY_SLACK_FORM = Form(default=None, description="URL de webhook Slack (équivalent de --notify-slack)")
 _NOTIFY_EMAIL_FORM = Form(default=None, description="Destinataire du courriel (équivalent de --notify-email)")
 _NOTIFY_DETAIL_FORM = Form(default="resume", description="resume ou complet (équivalent de --notify-detail)")
+# Issue #890 : historique des analyses (équivalents --history-db / --history-label)
+_ANALYSIS_HISTORY_FORM = Form(
+    default=False,
+    description="true : enregistre l'analyse dans l'historique du serveur (NETCROSS_HISTORY_DB), "
+    "équivalent de --history-db (issue #890)",
+)
+_ANALYSIS_HISTORY_LABEL_FORM = Form(
+    default=None, description="Étiquette du run dans l'historique (équivalent de --history-label)"
+)
 _TEST_NET_EXTERNAL_FORM = Form(
     default=False,
     description="true : plages TEST-NET traitées comme externes (équivalent de --test-net-external)",
@@ -327,6 +336,9 @@ class ApiAnalysisOptions:
     detect_duplicates: bool = False
     exclude_duplicates: bool = False
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS
+    # Issue #890 : enregistrement dans l'historique du serveur
+    history: bool = False
+    history_label: str | None = None
 
 
 def _options_metadata(options: ApiAnalysisOptions) -> dict:
@@ -380,6 +392,8 @@ def _options(
     detect_duplicates: bool = False,
     exclude_duplicates: bool = False,
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS,
+    history: bool = False,
+    history_label: str | None = None,
 ) -> ApiAnalysisOptions:
     """Valide les options comme la CLI : ``redact`` exclut ``tls``/``quic``,
     qui relisent les fichiers d'origine (adresses réelles).
@@ -427,6 +441,12 @@ def _options(
             status_code=400,
             detail=f"{', '.join(notify_extras)} sans notify_on : aucun seuil, aucune notification",
         )
+    # Issue #890 : mêmes règles que POST /comparisons (#874)
+    history_label = (history_label or "").strip() or None
+    if history:
+        _history_routes.require_history_db()
+    elif history_label:
+        raise HTTPException(status_code=400, detail="history_label necessite history=true (comme --history-db)")
     notify = None
     if notify_on:
         notify = NotifySettings(
@@ -466,6 +486,8 @@ def _options(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        history=history,
+        history_label=history_label,
     )
     logger.debug("_options: retour options={}", summarize(options, "options"))
     return options
@@ -794,6 +816,14 @@ def _run_job(
         logger.exception("analyse {} : erreur interne", analysis_id)
         store.fail(analysis_id, f"Erreur interne: {exc}")
     else:
+        if options is not None and options.history:
+            # Issue #890 : comme --history-db, en fin de run ; une base
+            # illisible n'annule pas l'analyse (history_error dans le statut).
+            summary.update(
+                _history_routes.record_analysis(
+                    report_obj, findings, tls_findings, quic_findings, options.history_label, options.redact
+                )
+            )
         store.complete(
             analysis_id,
             document,
@@ -923,6 +953,8 @@ async def upload_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    history: bool = _ANALYSIS_HISTORY_FORM,
+    history_label: str | None = _ANALYSIS_HISTORY_LABEL_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -981,6 +1013,8 @@ async def upload_capture(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        history=history,
+        history_label=history_label,
     )
     if not file.filename:
         logger.debug("upload_capture: si not file.filename -> levée HTTPException")
@@ -1142,6 +1176,8 @@ async def upload_multi_capture(
     detect_duplicates: bool = _DETECT_DUPLICATES_FORM,
     exclude_duplicates: bool = _EXCLUDE_DUPLICATES_FORM,
     duplicate_threshold_ms: float = _DUPLICATE_THRESHOLD_FORM,
+    history: bool = _ANALYSIS_HISTORY_FORM,
+    history_label: str | None = _ANALYSIS_HISTORY_LABEL_FORM,
     wait: bool = _WAIT_QUERY,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
@@ -1198,6 +1234,8 @@ async def upload_multi_capture(
         detect_duplicates=detect_duplicates,
         exclude_duplicates=exclude_duplicates,
         duplicate_threshold_ms=duplicate_threshold_ms,
+        history=history,
+        history_label=history_label,
     )
     # Issue #474 lot 2 : avec split_interfaces, un seul pcapng multi-interfaces
     # suffit (un point ETIQUETTE:INTERFACE par interface).
