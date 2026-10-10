@@ -65,6 +65,7 @@ def test_options_par_defaut_enregistrees():
         "sample_n": None,
         "test_net_external": False,
         "parallel_workers": None,
+        "notify": None,
         "known_destinations": None,
         "known_hosts": None,
         "names_path": None,

@@ -123,7 +123,7 @@ est conservée telle quelle pour les clients existants.
 | Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
 | Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | non |
 | Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
-| Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
+| Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | `notify_on`, `notify_webhook`, `notify_slack`, `notify_email`, `notify_detail` (trace dans `security_report.notifications` de `/report`, URL jamais conservées ; issue #875) |
 
 **API : hors périmètre (issue #676).** Aucune route ne lance de capture en
 direct : elle exigerait les droits de capture sur la machine du serveur et
@@ -245,7 +245,8 @@ son équivalent CLI ou API.
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 `quic`, `redact`, `max_packets`, `sample`, `test_net_external`,
-`parallel_workers`, `names`,
+`parallel_workers`, `notify_on`, `notify_webhook`, `notify_slack`,
+`notify_email`, `notify_detail` (issue #875), `names`,
 `known_destinations`, `known_hosts` (issue #672), `rule_engine`,
 `expert_section`, `media_quality`, `tshark_stats`, `flow_timeline`,
 `flow_timeline_window` (issue #673), `bucket_ms`, `rtp_clock_rate`,
