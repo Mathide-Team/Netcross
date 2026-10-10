@@ -2342,9 +2342,11 @@ async def create_batch(
                 Path(tmp).unlink(missing_ok=True)
             names.append(name)
     except BatchInputError as exc:
+        logger.warning("create_batch: envoi refusé ({})", exc)
         shutil.rmtree(workdir, ignore_errors=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except BaseException:
+        logger.debug("create_batch: échec de réception, répertoire {} supprimé", workdir)
         shutil.rmtree(workdir, ignore_errors=True)
         raise
     batch_id = batch_store.create(options, names, workdir)

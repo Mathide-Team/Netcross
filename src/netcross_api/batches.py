@@ -88,6 +88,7 @@ def extract_archive(archive: str, directory: str, max_bytes: int) -> list[str]:
                 with zf.open(member) as src, open(unique_path(directory, name), "wb") as dst:
                     shutil.copyfileobj(src, dst)
     except zipfile.BadZipFile as exc:
+        logger.warning("extract_archive: archive illisible ({})", exc)
         raise BatchInputError(f"archive ZIP illisible : {exc}") from exc
     logger.debug("extract_archive: {} membre(s) ignoré(s)", len(ignored))
     return ignored
