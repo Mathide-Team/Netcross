@@ -57,6 +57,8 @@ from netcross_api.store import COMPLETED, FAILED, PENDING, report_document, stor
 from netcross_core import analyse, correlate, parse_capture
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
 from netcross_core.logging_config import get_logger, summarize
+from netcross_core.notify.request import NotifySettings, send_notifications
+from netcross_core.notify.request import validate_settings as validate_notify
 from netcross_core.security.findings import apply_security_findings, scan_capture_exploits
 from netcross_report.json_report import build_json_report_document
 from netcross_report.security_report import build_security_report
@@ -98,6 +100,15 @@ _PARALLEL_WORKERS_FORM = Form(
     default=None,
     description="Lecture parallèle avec N processus tshark (équivalent de --parallel --parallel-workers N)",
 )
+# Issue #875 : notifications (équivalents --notify-*)
+_NOTIFY_ON_FORM = Form(
+    default=None,
+    description="Seuil de notification : critique, elevee, moyenne ou faible (équivalent de --notify-on)",
+)
+_NOTIFY_WEBHOOK_FORM = Form(default=None, description="URL de webhook (équivalent de --notify-webhook)")
+_NOTIFY_SLACK_FORM = Form(default=None, description="URL de webhook Slack (équivalent de --notify-slack)")
+_NOTIFY_EMAIL_FORM = Form(default=None, description="Destinataire du courriel (équivalent de --notify-email)")
+_NOTIFY_DETAIL_FORM = Form(default="resume", description="resume ou complet (équivalent de --notify-detail)")
 _TEST_NET_EXTERNAL_FORM = Form(
     default=False,
     description="true : plages TEST-NET traitées comme externes (équivalent de --test-net-external)",
@@ -296,6 +307,8 @@ class ApiAnalysisOptions:
     known_destinations: frozenset[str] | None = None
     known_hosts: frozenset[str] | None = None
     parallel_workers: int | None = None
+    # Issue #875 : jamais recopié tel quel dans les métadonnées (URL secrètes)
+    notify: NotifySettings | None = None
     names_path: str | None = None
     # Issue #671 : split_interfaces (--split-interfaces)
     split_interfaces: bool = False
@@ -315,6 +328,26 @@ class ApiAnalysisOptions:
     duplicate_threshold_ms: float = DEFAULT_DUPLICATE_THRESHOLD_MS
 
 
+def _options_metadata(options: ApiAnalysisOptions) -> dict:
+    """Options enregistrées avec l'analyse. Les URL de notification
+    portent souvent un jeton (webhook Slack) : seuls le seuil, le détail et
+    les canaux demandés sont conservés (issue #875)."""
+    data = asdict(options)
+    notify = options.notify
+    data["notify"] = (
+        None
+        if notify is None
+        else {
+            "threshold": notify.threshold,
+            "detail": notify.detail,
+            "channels": [
+                n for n, v in (("webhook", notify.webhook), ("slack", notify.slack), ("email", notify.email)) if v
+            ],
+        }
+    )
+    return data
+
+
 def _options(
     nat_tolerant: bool,
     nat_window_ms: float,
@@ -328,6 +361,11 @@ def _options(
     known_hosts: frozenset[str] | None = None,
     names_path: str | None = None,
     parallel_workers: int | None = None,
+    notify_on: str | None = None,
+    notify_webhook: str | None = None,
+    notify_slack: str | None = None,
+    notify_email: str | None = None,
+    notify_detail: str = "resume",
     split_interfaces: bool = False,
     rule_engine: bool = False,
     expert_section: bool = False,
@@ -372,6 +410,34 @@ def _options(
         raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
     if parallel_workers is not None and not 1 <= parallel_workers <= _MAX_PARALLEL_WORKERS:
         raise HTTPException(status_code=400, detail=f"parallel_workers doit etre entre 1 et {_MAX_PARALLEL_WORKERS}")
+    notify_extras = [
+        name
+        for name, given in (
+            ("notify_webhook", notify_webhook),
+            ("notify_slack", notify_slack),
+            ("notify_email", notify_email),
+            ("notify_detail", notify_detail != "resume"),
+        )
+        if given
+    ]
+    if notify_extras and not notify_on:
+        # comme la CLI : jamais une option ignorée en silence
+        raise HTTPException(
+            status_code=400,
+            detail=f"{', '.join(notify_extras)} sans notify_on : aucun seuil, aucune notification",
+        )
+    notify = None
+    if notify_on:
+        notify = NotifySettings(
+            threshold=notify_on,
+            webhook=(notify_webhook or "").strip() or None,
+            slack=(notify_slack or "").strip() or None,
+            email=(notify_email or "").strip() or None,
+            detail=notify_detail,
+        )
+        errors = validate_notify(notify, not redact, "le rapport de securite n'est pas calcule avec redact=true")
+        if errors:
+            raise HTTPException(status_code=400, detail="; ".join(errors))
     options = ApiAnalysisOptions(
         nat_tolerant,
         nat_window_ms,
@@ -385,6 +451,7 @@ def _options(
         known_hosts=known_hosts,
         names_path=names_path,
         parallel_workers=parallel_workers,
+        notify=notify,
         split_interfaces=split_interfaces,
         rule_engine=rule_engine,
         expert_section=expert_section,
@@ -574,6 +641,10 @@ def _analyse_captures(
 
                     close_db(cve_conn)
             security_report = build_security_report(report)
+            if options.notify is not None:
+                # Issue #875 : trace de chaque canal dans le rapport de
+                # sécurité (section « Notifications », clé `notifications`)
+                security_report.notifications = send_notifications(report, security_report, options.notify)
         tls_findings, quic_findings = _tls_quic_findings(captures, list(report.points), options)
         # Issue #330 : même document que `netcross --json-report
         # --security-report` (constats, triage, score de santé).
@@ -764,7 +835,7 @@ async def _dispatch(
         summarize(wait, "wait"),
     )
     options = options or ApiAnalysisOptions()
-    analysis_id = store.create_pending({**metadata, "options": asdict(options)})
+    analysis_id = store.create_pending({**metadata, "options": _options_metadata(options)})
     status_url = f"/analyses/{analysis_id}/status"
     if not wait:
         _get_executor().submit(_run_job, analysis_id, captures, order_list, multi, options, extra_files)
@@ -829,6 +900,11 @@ async def upload_capture(
     sample: str | None = _SAMPLE_FORM,
     test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
     parallel_workers: int | None = _PARALLEL_WORKERS_FORM,
+    notify_on: str | None = _NOTIFY_ON_FORM,
+    notify_webhook: str | None = _NOTIFY_WEBHOOK_FORM,
+    notify_slack: str | None = _NOTIFY_SLACK_FORM,
+    notify_email: str | None = _NOTIFY_EMAIL_FORM,
+    notify_detail: str = _NOTIFY_DETAIL_FORM,
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
@@ -883,6 +959,11 @@ async def upload_capture(
         sample=sample,
         test_net_external=test_net_external,
         parallel_workers=parallel_workers,
+        notify_on=notify_on,
+        notify_webhook=notify_webhook,
+        notify_slack=notify_slack,
+        notify_email=notify_email,
+        notify_detail=notify_detail,
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
@@ -1039,6 +1120,11 @@ async def upload_multi_capture(
     sample: str | None = _SAMPLE_FORM,
     test_net_external: bool = _TEST_NET_EXTERNAL_FORM,
     parallel_workers: int | None = _PARALLEL_WORKERS_FORM,
+    notify_on: str | None = _NOTIFY_ON_FORM,
+    notify_webhook: str | None = _NOTIFY_WEBHOOK_FORM,
+    notify_slack: str | None = _NOTIFY_SLACK_FORM,
+    notify_email: str | None = _NOTIFY_EMAIL_FORM,
+    notify_detail: str = _NOTIFY_DETAIL_FORM,
     names: UploadFile | None = _NAMES_FILE,
     known_destinations: UploadFile | None = _KNOWN_DEST_FILE,
     known_hosts: UploadFile | None = _KNOWN_HOSTS_FILE,
@@ -1090,6 +1176,11 @@ async def upload_multi_capture(
         sample=sample,
         test_net_external=test_net_external,
         parallel_workers=parallel_workers,
+        notify_on=notify_on,
+        notify_webhook=notify_webhook,
+        notify_slack=notify_slack,
+        notify_email=notify_email,
+        notify_detail=notify_detail,
         known_destinations=_load_host_set(known_dest_path),
         known_hosts=_load_host_set(known_hosts_path),
         names_path=names_path,
@@ -1303,6 +1394,26 @@ async def get_analysis_text(
     return PlainTextResponse(buf.getvalue())
 
 
+def _report_with_topn(report, entry: dict, topn: int):
+    """Issue #865 : ``topn`` de la route PDF, équivalent de ``--topn-charts``.
+    La CLI passe N à ``analyse()`` ; l'API recalcule les séries Top-N sur les
+    paquets gardés en mémoire, de la même façon, dans une copie du rapport
+    (l'analyse stockée n'est pas modifiée)."""
+    import copy
+
+    from netcross_core.correlate import TOPN_DIMENSIONS, compute_topn_series
+
+    packets = entry.get("all_packets")
+    if packets is None:
+        logger.debug("_report_with_topn: pas de paquets en memoire -> series d'origine")
+        return report
+    options = (entry.get("metadata") or {}).get("options") or {}
+    bucket_seconds = float(options.get("bucket_ms", 1000.0)) / 1000.0
+    copie = copy.copy(report)
+    copie.topn_timeseries = {dim: compute_topn_series(packets, bucket_seconds, dim, topn) for dim in TOPN_DIMENSIONS}
+    return copie
+
+
 @app.get(
     "/analyses/{analysis_id}/markdown",
     tags=["analyses"],
@@ -1379,11 +1490,10 @@ async def get_analysis_pdf(
 
     from netcross_report.pdf import generate_pdf
 
+    report = _report_with_topn(report, entry, topn)
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)  # noqa: SIM115
     try:
         with tmp:
-            # Le paramètre topn est accepté pour la parité avec --topn-charts
-            # mais le PDF utilise le topn fixé au moment de analyse() (défaut 5).
             generate_pdf(
                 report,
                 tmp.name,
@@ -2102,3 +2212,9 @@ async def get_comparison_csv(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
     )
+
+
+# Issue #873 : documentation Lua (après _verify_api_key, même authentification)
+from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
+
+_lua_doc_routes.register(app, _verify_api_key)

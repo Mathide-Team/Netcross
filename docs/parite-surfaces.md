@@ -15,8 +15,8 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 32 cases à cocher, 24 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 24 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| GUI | `netcross_gtk4` : 3 pages, 33 cases à cocher, 25 réglages numériques | Analyse interactive et exploration visuelle |
+| API | 27 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -86,7 +86,7 @@ actif, non réglable.
 | JSON structuré | oui (« Exporter en JSON », mêmes clés que la CLI) | `--json-report` | `GET /analyses/{analysis_id}/report` (mêmes clés) ; `GET /analyses/{analysis_id}` sert le format brut, voir ci-dessous |
 | Markdown | oui (« Exporter en Markdown », analyse simple, même document ; issue #864) | `--md-report` | `GET /analyses/{analysis_id}/markdown` (issue #864) |
 | CSV du détail par flux | oui (« Exporter en CSV ») | `--detail-csv` | `GET /analyses/{id}/detail.csv` (issue #670) |
-| Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | non |
+| Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | `topn` de `GET /analyses/{analysis_id}/pdf` (issue #865) |
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
 | Diagramme de séquence | oui (« Diagramme de sequence » de la configuration, dans l'export PDF ; issue #674) | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
 | Export SIEM (CEF, LEEF, STIX) | oui (panneau « SIEM, ticket de support, historique » de la page Résultats, après un rapport de sécurité, même fichier ; issue #674) | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
@@ -123,7 +123,7 @@ est conservée telle quelle pour les clients existants.
 | Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
 | Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | non |
 | Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
-| Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | non |
+| Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | `notify_on`, `notify_webhook`, `notify_slack`, `notify_email`, `notify_detail` (trace dans `security_report.notifications` de `/report`, URL jamais conservées ; issue #875) |
 
 **API : hors périmètre (issue #676).** Aucune route ne lance de capture en
 direct : elle exigerait les droits de capture sur la machine du serveur et
@@ -178,7 +178,7 @@ d'analyse.
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Dossier entier de captures | non | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | non |
-| Documentation de l'API Lua de Wireshark | non | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | non |
+| Documentation de l'API Lua de Wireshark | oui (bouton « Documentation Lua » de la barre de titre : classes, fiche, recherche, « Resultats max. », « Detail complet (--full) », JSON ; issue #873) | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | `GET /lua-doc/classes`, `/lua-doc/classes/{name}`, `/lua-doc/search` (même JSON que `--json`, issue #873) |
 | Historique des analyses | non | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /analyses` |
 | Mode debug | `--debug` au lancement | `--debug` (toutes les CLI) | `NETCROSS_DEBUG=1` |
 
@@ -233,6 +233,7 @@ son équivalent CLI ou API.
 | Detail complet (--notify-detail complet) | Configuration | `--notify-detail complet` |
 | J'autorise la remontee d'un ticket anonymise (--support-consent) | Résultats (SIEM, ticket, historique) | `--support-consent` |
 | Anomalies seulement | Résultats (cartographie) | aucun |
+| Detail complet (--full) | Fenêtre « Documentation Lua » | `netcross-lua-doc --full` |
 
 ## API : routes et réglages
 
@@ -245,7 +246,8 @@ son équivalent CLI ou API.
 Options d'analyse des deux routes `POST` (champs de formulaire, sens de
 l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 `quic`, `redact`, `max_packets`, `sample`, `test_net_external`,
-`parallel_workers`, `names`,
+`parallel_workers`, `notify_on`, `notify_webhook`, `notify_slack`,
+`notify_email`, `notify_detail` (issue #875), `names`,
 `known_destinations`, `known_hosts` (issue #672), `rule_engine`,
 `expert_section`, `media_quality`, `tshark_stats`, `flow_timeline`,
 `flow_timeline_window` (issue #673), `bucket_ms`, `rtp_clock_rate`,
@@ -264,6 +266,9 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `POST /comparisons` | Comparaison baseline/courant (issue #669) |
 | `GET /comparisons/{comparison_id}` | Résultat d'une comparaison (issue #669) |
 | `GET /comparisons/{comparison_id}/csv` | CSV des écarts (issue #669) |
+| `GET /lua-doc/classes` | Classes de l'API Lua Wireshark (issue #873) |
+| `GET /lua-doc/classes/{name}` | Fiche d'une classe Lua (issue #873) |
+| `GET /lua-doc/search` | Recherche dans la documentation Lua, `q`, `limit`, `full` (issue #873) |
 | `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour

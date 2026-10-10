@@ -198,6 +198,16 @@ grisées : elles ont besoin des fichiers de capture d'une analyse simple.
     l'**Exploration statistique** (Top-N réglable) ou l'export CSV.
     Le défaut est suivi dans le dépôt.
 
+## Documentation Lua
+
+Le bouton **Documentation Lua** de la barre de titre ouvre la
+documentation hors ligne de l'API Lua de Wireshark, la même que
+`netcross-lua-doc` : liste des classes à gauche (un clic ouvre la fiche
+complète), recherche plein texte (« Resultats max. » = `--limit`,
+« Detail complet (--full) » = `--full`), bouton **JSON** pour le document
+de `--json`. Aucun accès réseau ; la banque est celle de la CLI
+(`~/.cache/netcross/lua_api.db`).
+
 ## Ce que l'interface ne fait pas
 
 Certaines fonctions restent réservées à la ligne de commande : fusion,
