@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-180 modules · 265 classes · 613 fonctions publiques de module.
+180 modules · 265 classes · 614 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -40,7 +40,7 @@ flowchart TD
     netcross_gtk4 -->|"90 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
-    netcross_api -->|"29 imports"| netcross_core
+    netcross_api -->|"32 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -3823,6 +3823,7 @@ classDiagram
         +bool detect_duplicates
         +bool exclude_duplicates
         +float duplicate_threshold_ms
+        +tuple~str, ...~ plugins
     }
     class AnalysisError {
         <<Exception>>
@@ -3830,9 +3831,9 @@ classDiagram
     class mod_netcross_api_app["netcross_api.app"] {
         <<module>>
         +health() HealthResponse
-        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_capture(file, label, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, extra_files, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, plugins, wait, _auth) JSONResponse
         +segment_losses(report) list~SegmentLoss~
-        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, wait, _auth) JSONResponse
+        +upload_multi_capture(files, labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, max_packets, sample, test_net_external, parallel_workers, notify_on, notify_webhook, notify_slack, notify_email, notify_detail, names, known_destinations, known_hosts, split_interfaces, rule_engine, expert_section, media_quality, tshark_stats, flow_timeline, flow_timeline_window, bucket_ms, rtp_clock_rate, idle_timeout_seconds, detect_duplicates, exclude_duplicates, duplicate_threshold_ms, plugins, wait, _auth) JSONResponse
         +get_analysis(analysis_id, _auth) JSONResponse
         +get_analysis_report(analysis_id, _auth) JSONResponse
         +get_security_report(analysis_id, _auth) SecurityReport
@@ -3844,6 +3845,7 @@ classDiagram
         +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
         +forensic_search(analysis_id, body, _auth) JSONResponse
         +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
+        +get_plugins(plugins, _auth) JSONResponse
         +create_support_ticket(analysis_id, consent, kind, _auth) JSONResponse
         +client_comparison(analysis_id, body, _auth) JSONResponse
         +netflow_summary(analysis_id, files, exporters, top, _auth) JSONResponse
