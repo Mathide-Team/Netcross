@@ -79,6 +79,31 @@ netcross-analyze --list-plugins --plugins telnet_clair   # installés ET non aut
   détecteurs et exporteurs ne s'exécutent que s'ils sont nommés dans `--plugins`.
 - Les détecteurs nécessitent `--security-report` (leurs constats y vivent).
 
+## API REST (issue #867)
+
+Le service REST n'accepte **jamais** de code envoyé par le client : les
+plugins exécutables sont ceux installés sur le serveur (entry points) et les
+fichiers listés par l'administrateur dans `NETCROSS_PLUGIN_PATH` (chemins
+séparés par `:`, équivalent de `--plugin-path`), lue à chaque requête.
+
+| Route / champ | Équivalent CLI | Rôle |
+| --- | --- | --- |
+| `GET /plugins?plugins=a,b` | `--list-plugins` | installés et locaux, `authorized` pour les noms passés ; `unknown` : noms introuvables |
+| champ `plugins` de `POST /captures` et `POST /captures/multi` | `--plugins` | détecteurs exécutés après les constats de sécurité ; refusé avec `redact` |
+
+Les constats d'un détecteur apparaissent dans `security_report.anomalies`
+(clés `plugin`, `detector`) de `GET /analyses/{id}/report`, et chaque plugin
+demandé y laisse une ligne dans `security_report.plugins` : `ok`, `refuse`
+(introuvable ou refusé au chargement), `erreur`, ou `ignore` pour un
+exporteur — l'API n'écrit pas de fichier côté serveur, `--plugin-export`
+reste propre à la CLI.
+
+```bash
+NETCROSS_PLUGIN_PATH=/etc/netcross/plugins/maison.py uvicorn netcross_api.app:app
+curl http://localhost:8000/plugins
+curl -F file=@lan.pcap -F label=LAN -F plugins=maison "http://localhost:8000/captures?wait=true"
+```
+
 ## Isolation
 
 - **Un plugin qui échoue ne fait pas échouer l'analyse.** L'exception est attrapée,
