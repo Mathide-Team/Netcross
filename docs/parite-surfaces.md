@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 32 cases à cocher, 24 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 24 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 25 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
 actif, non réglable.
@@ -74,7 +74,7 @@ actif, non réglable.
 | Extraction des contenus | oui (panneau « Contenus (extraction) » de la page Résultats : audio, vidéo, documents, dossier vide, même manifeste et même rappel d'usage ; après une analyse de fichiers non anonymisée, issue #675) | `--extract-contents`, `--extract-kinds` | `POST /analyses/{analysis_id}/extract` (issue #675), `kinds` |
 | Comparaison de postes | oui (champs « Postes a comparer » et « Reference » de la configuration, section du rapport, panneau « Comparaison de postes » de la page Résultats avec export CSV ; issue #675) | `--client-group`, `--client-reference`, `--client-diff-csv` | `POST /analyses/{analysis_id}/client-diff` (issue #675), `body` |
 | NetFlow / sFlow | oui, NetFlow v5 (panneau « NetFlow v5 (resume d'exports) » de la page Résultats : exports ajoutés, Top, même résumé texte, export JSON ; autonome comme la CLI, issue #675) | `--netflow`, `--netflow-top` | `POST /analyses/{analysis_id}/netflow` (issue #675), `exporters`, `top` |
-| Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | non |
+| Module IA local | non | `--ai-baseline-save`, `--ai-baseline-label`, `--ai-anomalies`, `--ai-training-export`, `--ai-classify`, `--ai-summary`, `--ai-endpoint`, `--ai-report` ; `netcross-ai-models` | `POST /analyses/{analysis_id}/ai` (issue #866) : `baseline_save`, `baseline_base`, `baseline_label`, `baseline`, `training_export`, `training`, `summary`, `endpoint` ; résultat JSON de `--ai-report` dans la réponse ; `netcross-ai-models` hors API (fichiers du poste) |
 | Plugins | non | `--plugins`, `--plugin-path`, `--plugin-export`, `--list-plugins` | non |
 
 ## Formats de sortie

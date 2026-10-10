@@ -86,6 +86,38 @@ constats de sécurité à résumer.
 `summary` (moteur, texte, corrélations, recommandations, motif de repli éventuel), et les
 métadonnées de baseline / jeu d'entraînement utilisés.
 
+## API REST (issue #866)
+
+`POST /analyses/{analysis_id}/ai` (formulaire multipart) applique les mêmes
+usages à une analyse terminée de l'API. Rien n'est conservé sur le serveur :
+les fichiers joints vivent le temps de la requête et les documents produits
+reviennent dans la réponse, que le client garde.
+
+| Champ | Équivalent CLI | Réponse |
+| --- | --- | --- |
+| `baseline_save=true` (+ `baseline_label`) | `--ai-baseline-save`, `--ai-baseline-label` | `baseline_saved.flows`, `baseline_document` |
+| fichier `baseline_base` (avec `baseline_save`) | baseline existante enrichie | idem, vecteurs cumulés |
+| fichier `baseline` | `--ai-anomalies` | `anomalies`, `baseline` (`flows`, `label`) |
+| `training_export=true` | `--ai-training-export` | `training_exported.samples`, `training_document` |
+| fichier `training` | `--ai-classify` | `classification`, `training.labels` |
+| `summary` (+ `endpoint`) | `--ai-summary`, `--ai-endpoint` | `summary` |
+
+Mêmes validations que la CLI (`400`) : au moins un usage, `baseline_label`
+et `baseline_base` sans `baseline_save`, `endpoint` sans `summary`, moteur
+inconnu, point d'accès hors boucle locale (celle du **serveur**), baseline ou
+jeu d'entraînement invalide ou trop petit. `baseline` et `training`
+nécessitent scikit-learn (extra `ai`) : `503` sinon. Une analyse relue depuis
+SQLite après redémarrage répond `409` (flux non conservés).
+
+```bash
+curl -F baseline_save=true -F baseline_label=bureau http://localhost:8000/analyses/a1b2c3d4e5f6/ai > ref.json
+jq .baseline_document ref.json > base.json
+curl -F baseline=@base.json -F summary=template http://localhost:8000/analyses/f6e5d4c3b2a1/ai
+```
+
+`netcross-ai-models` (paquets de modèles, boîte d'envoi) manipule des
+fichiers du poste et reste en CLI.
+
 ## Partage de modèles et remontée hors connexion
 
 Issue #271. Les baselines (« bons états transactionnels ») et les exemples

@@ -846,6 +846,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/ai:
+    post:
+      tags:
+      - analyses
+      summary: Run Analysis Ai
+      description: "Module IA local sur une analyse terminée (issue #866, équiv. ``--ai-*``).\n\
+        \n- ``baseline_save`` (+ ``baseline_base``, ``baseline_label``) : baseline\n\
+        \  des flux de cette analyse, rendue sous ``baseline_document`` ;\n- ``baseline``\
+        \ : anomalies de flux par rapport à cette baseline ;\n- ``training_export``\
+        \ : jeu pré-étiqueté rendu sous ``training_document`` ;\n- ``training`` :\
+        \ classification des flux (forêt aléatoire) ;\n- ``summary`` (+ ``endpoint``)\
+        \ : résumé exécutif, moteur local au serveur.\n\nMêmes validations que la\
+        \ CLI ; rien n'est conservé côté serveur (les\nfichiers joints vivent le temps\
+        \ de la requête). ``baseline`` et\n``training`` nécessitent scikit-learn (extra\
+        \ ``ai``) : sinon ``503``."
+      operationId: run_analysis_ai_analyses__analysis_id__ai_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_run_analysis_ai_analyses__analysis_id__ai_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/support-ticket:
     post:
       tags:
@@ -1600,6 +1672,65 @@ components:
       required:
       - files
       title: Body_netflow_summary_analyses__analysis_id__netflow_post
+    Body_run_analysis_ai_analyses__analysis_id__ai_post:
+      properties:
+        baseline:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Baseline
+          description: Baseline JSON de référence pour la détection d'anomalies (équiv.
+            --ai-anomalies)
+        baseline_base:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Baseline Base
+          description: Baseline JSON existante à enrichir avec baseline_save (équiv.
+            fichier existant de --ai-baseline-save)
+        training:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: 'null'
+          title: Training
+          description: Jeu d'entraînement JSON étiqueté pour la classification (équiv.
+            --ai-classify)
+        baseline_save:
+          type: boolean
+          title: Baseline Save
+          description: 'true : renvoie la baseline construite sur les flux de cette
+            analyse, supposée normale (équiv. --ai-baseline-save), sous baseline_document'
+          default: false
+        baseline_label:
+          type: string
+          title: Baseline Label
+          description: 'Avec baseline_save : nom libre (équiv. --ai-baseline-label)'
+          default: ''
+        training_export:
+          type: boolean
+          title: Training Export
+          description: 'true : renvoie les flux pré-étiquetés par les règles FLOW-4
+            (équiv. --ai-training-export), sous training_document'
+          default: false
+        summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Summary
+          description: 'Résumé exécutif : template, ollama:MODELE ou llamacpp (équiv.
+            --ai-summary) ; modèle local au serveur'
+        endpoint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Endpoint
+          description: 'Avec summary ollama/llamacpp : point d''accès local au serveur
+            (équiv. --ai-endpoint), toute adresse hors boucle locale est refusée'
+      type: object
+      title: Body_run_analysis_ai_analyses__analysis_id__ai_post
     Body_upload_capture_captures_post:
       properties:
         file:

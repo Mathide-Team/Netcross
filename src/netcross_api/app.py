@@ -1749,6 +1749,172 @@ async def extract_contents(
     )
 
 
+# Issue #866 : module IA local sur une analyse terminée (équiv. --ai-*).
+_AI_BASELINE_FILE = File(
+    default=None, description="Baseline JSON de référence pour la détection d'anomalies (équiv. --ai-anomalies)"
+)
+_AI_BASELINE_BASE_FILE = File(
+    default=None,
+    description="Baseline JSON existante à enrichir avec baseline_save (équiv. fichier existant de --ai-baseline-save)",
+)
+_AI_TRAINING_FILE = File(
+    default=None, description="Jeu d'entraînement JSON étiqueté pour la classification (équiv. --ai-classify)"
+)
+_AI_BASELINE_SAVE_FORM = Form(
+    default=False,
+    description="true : renvoie la baseline construite sur les flux de cette analyse, supposée normale "
+    "(équiv. --ai-baseline-save), sous baseline_document",
+)
+_AI_BASELINE_LABEL_FORM = Form(default="", description="Avec baseline_save : nom libre (équiv. --ai-baseline-label)")
+_AI_TRAINING_EXPORT_FORM = Form(
+    default=False,
+    description="true : renvoie les flux pré-étiquetés par les règles FLOW-4 (équiv. --ai-training-export), "
+    "sous training_document",
+)
+_AI_SUMMARY_FORM = Form(
+    default=None,
+    description="Résumé exécutif : template, ollama:MODELE ou llamacpp (équiv. --ai-summary) ; modèle local au serveur",
+)
+_AI_ENDPOINT_FORM = Form(
+    default=None,
+    description="Avec summary ollama/llamacpp : point d'accès local au serveur (équiv. --ai-endpoint), "
+    "toute adresse hors boucle locale est refusée",
+)
+
+
+async def _save_ai_json(upload: UploadFile | None, directory: str, name: str) -> str | None:
+    """Fichier JSON joint écrit dans le répertoire temporaire de la requête."""
+    if upload is None:
+        return None
+    path = os.path.join(directory, name)
+    Path(path).write_bytes(await upload.read())
+    return path
+
+
+def _ai_result_without_paths(result: dict, baseline_save: str | None, training_export: str | None) -> dict:
+    """Résultat de ``run_ai`` sans chemins du serveur ; baseline et jeu
+    d'entraînement produits rendus en ligne (le client les conserve)."""
+    import json
+
+    out = dict(result)
+    if "baseline_saved" in out and baseline_save:
+        out["baseline_saved"] = {"flows": out["baseline_saved"]["flows"]}
+        out["baseline_document"] = json.loads(Path(baseline_save).read_text(encoding="utf-8"))
+    if "training_exported" in out and training_export:
+        out["training_exported"] = {"samples": out["training_exported"]["samples"]}
+        out["training_document"] = json.loads(Path(training_export).read_text(encoding="utf-8"))
+    for key in ("baseline", "training"):
+        if isinstance(out.get(key), dict):
+            out[key] = {k: v for k, v in out[key].items() if k != "path"}
+    return out
+
+
+@app.post(
+    "/analyses/{analysis_id}/ai",
+    tags=["analyses"],
+    responses={
+        **_ANALYSIS_RESPONSES,
+        400: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+    },
+)
+async def run_analysis_ai(
+    analysis_id: str,
+    baseline: UploadFile | None = _AI_BASELINE_FILE,
+    baseline_base: UploadFile | None = _AI_BASELINE_BASE_FILE,
+    training: UploadFile | None = _AI_TRAINING_FILE,
+    baseline_save: bool = _AI_BASELINE_SAVE_FORM,
+    baseline_label: str = _AI_BASELINE_LABEL_FORM,
+    training_export: bool = _AI_TRAINING_EXPORT_FORM,
+    summary: str | None = _AI_SUMMARY_FORM,
+    endpoint: str | None = _AI_ENDPOINT_FORM,
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Module IA local sur une analyse terminée (issue #866, équiv. ``--ai-*``).
+
+    - ``baseline_save`` (+ ``baseline_base``, ``baseline_label``) : baseline
+      des flux de cette analyse, rendue sous ``baseline_document`` ;
+    - ``baseline`` : anomalies de flux par rapport à cette baseline ;
+    - ``training_export`` : jeu pré-étiqueté rendu sous ``training_document`` ;
+    - ``training`` : classification des flux (forêt aléatoire) ;
+    - ``summary`` (+ ``endpoint``) : résumé exécutif, moteur local au serveur.
+
+    Mêmes validations que la CLI ; rien n'est conservé côté serveur (les
+    fichiers joints vivent le temps de la requête). ``baseline`` et
+    ``training`` nécessitent scikit-learn (extra ``ai``) : sinon ``503``.
+    """
+    logger.debug("run_analysis_ai(analysis_id={})", analysis_id)
+    from netcross_ai.anomaly import BaselineError
+    from netcross_ai.flow_classifier import TrainingSetError
+    from netcross_ai.optional import AIUnavailableError, require_ml
+    from netcross_ai.pipeline import AIOptions, run_ai
+    from netcross_ai.report_writer import WriterConfigError, parse_engine
+
+    summary = (summary or "").strip() or None
+    endpoint = (endpoint or "").strip() or None
+    if not (baseline_save or baseline is not None or training_export or training is not None or summary):
+        raise HTTPException(
+            status_code=400,
+            detail="aucun usage demandé : baseline_save, baseline, training_export, training ou summary",
+        )
+    if baseline_label and not baseline_save:
+        raise HTTPException(status_code=400, detail="baseline_label nécessite baseline_save")
+    if baseline_base is not None and not baseline_save:
+        raise HTTPException(status_code=400, detail="baseline_base nécessite baseline_save")
+    if endpoint and not summary:
+        raise HTTPException(status_code=400, detail="endpoint nécessite summary")
+    try:
+        if baseline is not None:
+            require_ml("baseline (anomalies)")
+        if training is not None:
+            require_ml("training (classification)")
+        if summary:
+            parse_engine(summary, endpoint)
+    except AIUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=f"Module IA : {exc}") from exc
+    except WriterConfigError as exc:
+        raise HTTPException(status_code=400, detail=f"Module IA : {exc}") from exc
+
+    entry = _live_objects(analysis_id)
+    report = entry["report_obj"]
+    flows = report.flow_anomalies
+    if not flows:
+        from netcross_core.security.flow_stats import analyze_flow_stats
+
+        flows = [f.to_dict() for f in analyze_flow_stats(entry.get("all_packets") or []).flows]
+
+    with tempfile.TemporaryDirectory(prefix="netcross-ai-") as tmpdir:
+        baseline_path = await _save_ai_json(baseline, tmpdir, "baseline.json")
+        training_path = await _save_ai_json(training, tmpdir, "training.json")
+        save_path = None
+        if baseline_save:
+            save_path = await _save_ai_json(baseline_base, tmpdir, "baseline-save.json") or os.path.join(
+                tmpdir, "baseline-save.json"
+            )
+        export_path = os.path.join(tmpdir, "training-export.json") if training_export else None
+        options = AIOptions(
+            baseline_path=baseline_path,
+            baseline_save=save_path,
+            baseline_label=baseline_label,
+            training_path=training_path,
+            training_export=export_path,
+            summary_engine=summary,
+            endpoint=endpoint,
+        )
+        try:
+            result = await run_in_threadpool(run_ai, report, flows, options)
+        except AIUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=f"Module IA : {exc}") from exc
+        except (BaselineError, TrainingSetError, WriterConfigError, ValueError) as exc:
+            logger.warning("run_analysis_ai: demande refusée ({})", exc)
+            raise HTTPException(status_code=400, detail=f"Module IA : {exc}") from exc
+        payload = _ai_result_without_paths(result, save_path, export_path)
+    payload["analysis_id"] = analysis_id
+    logger.debug("run_analysis_ai: retour {} clé(s)", len(payload))
+    return JSONResponse(payload)
+
+
 @app.post(
     "/analyses/{analysis_id}/support-ticket",
     tags=["analyses"],
