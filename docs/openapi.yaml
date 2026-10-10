@@ -1839,6 +1839,19 @@ components:
           type: integer
           title: Security Finding Count
           default: 0
+        history_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: History Id
+          description: 'Id du run dans l''historique (history=true, #890)'
+        history_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Error
+          description: Enregistrement dans l'historique impossible (l'analyse reste
+            valable)
       type: object
       required:
       - analysis_id
@@ -2346,6 +2359,18 @@ components:
           description: Fenêtre de tolérance pour la détection des doublons en ms (équivalent
             de --duplicate-threshold-ms)
           default: 1.0
+        history:
+          type: boolean
+          title: History
+          description: 'true : enregistre l''analyse dans l''historique du serveur
+            (NETCROSS_HISTORY_DB), équivalent de --history-db (issue #890)'
+          default: false
+        history_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Label
+          description: Étiquette du run dans l'historique (équivalent de --history-label)
       type: object
       required:
       - file
@@ -2549,6 +2574,18 @@ components:
           description: Fenêtre de tolérance pour la détection des doublons en ms (équivalent
             de --duplicate-threshold-ms)
           default: 1.0
+        history:
+          type: boolean
+          title: History
+          description: 'true : enregistre l''analyse dans l''historique du serveur
+            (NETCROSS_HISTORY_DB), équivalent de --history-db (issue #890)'
+          default: false
+        history_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Label
+          description: Étiquette du run dans l'historique (équivalent de --history-label)
       type: object
       required:
       - files
@@ -2606,6 +2643,19 @@ components:
           type: integer
           title: Security Finding Count
           default: 0
+        history_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: History Id
+          description: 'Id du run dans l''historique (history=true, #890)'
+        history_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: History Error
+          description: Enregistrement dans l'historique impossible (l'analyse reste
+            valable)
         points:
           items:
             type: string
