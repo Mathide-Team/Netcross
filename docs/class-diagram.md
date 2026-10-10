@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-187 modules · 270 classes · 632 fonctions publiques de module.
+187 modules · 270 classes · 638 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -248,6 +248,9 @@ classDiagram
         +stop_ring_recorder(proc, timeout) str
         +merge_captures(paths, output_path, dedup) None
         +replay_capture(path, interface, speed, loop) None
+        +replay_command(path, interface, speed, loop) list~str~
+        +start_replay(path, interface, speed, loop) subprocess.Popen
+        +wait_replay(proc, stopped) None
         +split_capture(path, output_dir, by, value) list~str~
         +list_interfaces(path) list~InterfaceSlice~
         +split_by_interface(path, output_dir) list~InterfaceSlice~
@@ -662,6 +665,9 @@ classDiagram
         +convert(path_in, path_out, fmt) str
         +export_subset(path_in, path_out, bpf_filter, time_start, time_end, endpoints) str
         +adjust_time(path_in, path_out, offset, normalize, align_to) str
+        +allowed_replay_interfaces(environ) frozenset~str~
+        +replay_message(path, interface, speed, loop) str
+        +replay(path, interface, speed, loop) str
     }
 
     %% ===== netcross_core.causality =====
@@ -4271,6 +4277,8 @@ classDiagram
         +run_convert() str
         +run_export() str
         +run_adjust() str
+        +run_replay() str
+        +stop_replay() None
     }
 
     %% ===== netcross_gtk4.client_compare_panel =====
