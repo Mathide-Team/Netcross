@@ -1872,8 +1872,10 @@ async def run_analysis_ai(
         if summary:
             parse_engine(summary, endpoint)
     except AIUnavailableError as exc:
+        logger.warning("run_analysis_ai: module IA indisponible ({})", exc)
         raise HTTPException(status_code=503, detail=f"Module IA : {exc}") from exc
     except WriterConfigError as exc:
+        logger.warning("run_analysis_ai: moteur refusé ({})", exc)
         raise HTTPException(status_code=400, detail=f"Module IA : {exc}") from exc
 
     entry = _live_objects(analysis_id)
@@ -1905,6 +1907,7 @@ async def run_analysis_ai(
         try:
             result = await run_in_threadpool(run_ai, report, flows, options)
         except AIUnavailableError as exc:
+            logger.warning("run_analysis_ai: module IA indisponible ({})", exc)
             raise HTTPException(status_code=503, detail=f"Module IA : {exc}") from exc
         except (BaselineError, TrainingSetError, WriterConfigError, ValueError) as exc:
             logger.warning("run_analysis_ai: demande refusée ({})", exc)
