@@ -86,7 +86,7 @@ actif, non réglable.
 | JSON structuré | oui (« Exporter en JSON », mêmes clés que la CLI) | `--json-report` | `GET /analyses/{analysis_id}/report` (mêmes clés) ; `GET /analyses/{analysis_id}` sert le format brut, voir ci-dessous |
 | Markdown | oui (« Exporter en Markdown », analyse simple, même document ; issue #864) | `--md-report` | `GET /analyses/{analysis_id}/markdown` (issue #864) |
 | CSV du détail par flux | oui (« Exporter en CSV ») | `--detail-csv` | `GET /analyses/{id}/detail.csv` (issue #670) |
-| Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | non |
+| Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | `topn` de `GET /analyses/{analysis_id}/pdf` (issue #865) |
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
 | Diagramme de séquence | oui (« Diagramme de sequence » de la configuration, dans l'export PDF ; issue #674) | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
 | Export SIEM (CEF, LEEF, STIX) | oui (panneau « SIEM, ticket de support, historique » de la page Résultats, après un rapport de sécurité, même fichier ; issue #674) | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
