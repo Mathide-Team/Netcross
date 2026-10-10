@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-192 modules · 278 classes · 663 fonctions publiques de module.
+193 modules · 279 classes · 667 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -37,7 +37,8 @@ flowchart TD
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"30 imports"| netcross_report
-    netcross_gtk4 -->|"103 imports"| netcross_core
+    netcross_gtk4 -->|"4 imports"| netcross_ai
+    netcross_gtk4 -->|"105 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"18 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
@@ -4100,6 +4101,7 @@ classDiagram
 |---|---|
 | `netcross_gtk4` | — |
 | `netcross_gtk4.advanced_options` | options d'analyse avancees de la GUI (issue #672), sans GTK. |
+| `netcross_gtk4.ai_settings` | module IA local dans la GUI (issue #866). |
 | `netcross_gtk4.analysis_pipeline` | pipeline d'analyse extrait de MainWindow (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.annotations_panel` | panneau GTK des annotations (issue #363). |
 | `netcross_gtk4.annotations_view` | logique de presentation pour l'etiquetage/signets sur paquets (Job 40 / issue #160, section "Metadonnees et annotation"). |
@@ -4166,6 +4168,27 @@ classDiagram
         +workers_note(workers, cpu_count) str?
     }
 
+    %% ===== netcross_gtk4.ai_settings =====
+    class AISettings {
+        <<dataclass, frozen>>
+        +str? baseline_save
+        +str baseline_label
+        +str? anomalies
+        +str? training_export
+        +str? classify
+        +str? summary
+        +str? endpoint
+        +str? report
+        +requested() bool
+    }
+    class mod_netcross_gtk4_ai_settings["netcross_gtk4.ai_settings"] {
+        <<module>>
+        +settings_from_widgets(baseline_save, baseline_label, anomalies, training_export, classify, summary, endpoint, report) AISettings
+        +validate_settings(settings) list~str~
+        +to_options(settings) Any
+        +run_ai_section(settings, report, all_packets) tuple~dict?, str, list~str~~
+    }
+
     %% ===== netcross_gtk4.analysis_pipeline =====
     class AnalysisOptions {
         <<dataclass>>
@@ -4194,6 +4217,7 @@ classDiagram
         +ExpertiseSettings? expertise
         +AdvancedSettings? advanced
         +HistorySettings? history
+        +Any ai
         +Any plugins
     }
     class AnalysisResult {
@@ -4211,6 +4235,7 @@ classDiagram
         +Any client_comparison
         +ExpertiseExports? expertise
         +ReportContext? report_context
+        +dict? ai
     }
     class mod_netcross_gtk4_analysis_pipeline["netcross_gtk4.analysis_pipeline"] {
         <<module>>
@@ -4292,6 +4317,7 @@ classDiagram
         +plugin_settings() PluginSettings
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
+        +ai_settings() AISettings
         +history_settings() HistorySettings
         +advanced_settings() AdvancedSettings
         +expertise_settings() ExpertiseSettings
