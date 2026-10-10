@@ -15,7 +15,7 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 33 cases à cocher, 25 réglages numériques | Analyse interactive et exploration visuelle |
+| GUI | `netcross_gtk4` : 3 pages, 37 cases à cocher, 25 réglages numériques | Analyse interactive et exploration visuelle |
 | API | 27 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -91,7 +91,7 @@ actif, non réglable.
 | Diagramme de séquence | oui (« Diagramme de sequence » de la configuration, dans l'export PDF ; issue #674) | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
 | Export SIEM (CEF, LEEF, STIX) | oui (panneau « SIEM, ticket de support, historique » de la page Résultats, après un rapport de sécurité, même fichier ; issue #674) | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
 | Historique SQLite | oui (« Historique... » et « Etiquette » de la configuration, derniers runs dans le panneau « SIEM, ticket de support, historique » ; issue #674) | `--history-db`, `--history-label`, `--history-show` ; `netcross-history` | persistance propre (`NETCROSS_DB_PATH`), `GET /analyses` |
-| Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic », toutes portées ; issue #674) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind` |
+| Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic » ; issue #674 ; portées, marqueurs `CLE=VALEUR` et « Correspondance du ticket (--support-map)... », issue #877) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind` |
 
 ### Deux JSON côté API
 
@@ -232,6 +232,10 @@ son équivalent CLI ou API.
 | Documents (HTTP, SMB, courriel, TFTP, FTP) | Résultats (contenus) | `--extract-kinds documents` |
 | Detail complet (--notify-detail complet) | Configuration | `--notify-detail complet` |
 | J'autorise la remontee d'un ticket anonymise (--support-consent) | Résultats (SIEM, ticket, historique) | `--support-consent` |
+| Environnement | Résultats (SIEM, ticket, historique) | `--support-scope environnement` |
+| Journal | Résultats (SIEM, ticket, historique) | `--support-scope journal` |
+| Trace d'appels | Résultats (SIEM, ticket, historique) | `--support-scope trace_appels` |
+| Marqueurs | Résultats (SIEM, ticket, historique) | `--support-scope marqueurs` |
 | Anomalies seulement | Résultats (cartographie) | aucun |
 | Detail complet (--full) | Fenêtre « Documentation Lua » | `netcross-lua-doc --full` |
 
