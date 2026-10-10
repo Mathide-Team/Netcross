@@ -40,7 +40,7 @@ flowchart TD
     netcross_gtk4 -->|"94 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
-    netcross_api -->|"27 imports"| netcross_core
+    netcross_api -->|"28 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
     netcross_report -->|"33 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -3824,7 +3824,7 @@ classDiagram
         +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
         +forensic_search(analysis_id, body, _auth) JSONResponse
         +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
-        +create_support_ticket(analysis_id, consent, kind, _auth) JSONResponse
+        +create_support_ticket(analysis_id, consent, kind, scopes, marker, include_map, _auth) JSONResponse
         +client_comparison(analysis_id, body, _auth) JSONResponse
         +netflow_summary(analysis_id, files, exporters, top, _auth) JSONResponse
         +list_analyses(_auth) dict
