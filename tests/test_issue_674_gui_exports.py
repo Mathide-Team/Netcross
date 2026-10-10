@@ -96,7 +96,8 @@ def test_ticket_avec_consentement_seulement(tmp_path):
     with pytest.raises(ConsentRequiredError):
         write_support_ticket(str(tmp_path / "t.json"), ctx, consent=False)
     assert not (tmp_path / "t.json").exists()
-    chemin, occurrences = write_support_ticket(str(tmp_path / "t.json"), ctx, consent=True)
+    resultat = write_support_ticket(str(tmp_path / "t.json"), ctx, consent=True)
+    chemin, occurrences = resultat.path, resultat.occurrences
     ticket = json.loads(Path(chemin).read_text(encoding="utf-8"))
     assert ticket["consentement"]["origine"] == "gui" and ticket["consentement"]["accorde"]
     assert ticket["nature"] == "diagnostic"
