@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-181 modules · 265 classes · 622 fonctions publiques de module.
+184 modules · 268 classes · 622 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -32,17 +32,17 @@ flowchart TD
     netcross_ai["netcross_ai"]
     netcross_core["netcross_core"]
     pcap_parser["pcap_parser"]
-    CLI -->|"18 imports"| netcross_report
+    CLI -->|"19 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
-    CLI -->|"42 imports"| netcross_core
+    CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"26 imports"| netcross_report
-    netcross_gtk4 -->|"90 imports"| netcross_core
+    netcross_gtk4 -->|"27 imports"| netcross_report
+    netcross_gtk4 -->|"93 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"13 imports"| netcross_report
     netcross_api -->|"33 imports"| netcross_core
     netcross_api -->|"2 imports"| pcap_parser
-    netcross_report -->|"33 imports"| netcross_core
+    netcross_report -->|"36 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"18 imports"| pcap_parser
 ```
@@ -3341,6 +3341,7 @@ classDiagram
 | `netcross_report.history` | persiste un resume de chaque run (analyse ou diff) dans une base SQLite locale, pour observer une tendance dans le temps (score de sante, nombre de constats par severite) sur des runs successifs --… |
 | `netcross_report.json_report` | serialise un Report/DiffFinding en JSON structure, pour l'integration externe (dashboard, ticketing, pipeline CI qui veut parser un resultat sans dependre du format texte console). |
 | `netcross_report.live_html` | issue #274 : page de presentation du rapport temps reel (voir netcross_core.live_report). |
+| `netcross_report.lua_doc_text` | rendu texte de la documentation Lua Wireshark (``netcross-lua-doc``, issue #388), partage avec la fenetre « Documentation Lua » de la GUI (issue #873). |
 | `netcross_report.markdown_report` | generation d'un rapport au format Markdown (issue #761). |
 | `netcross_report.metric_charts` | API generique de graphiques : tout module d'analyse peut produire un graphique a partir d'une MetricSeries sans reimplementer son propre code matplotlib. |
 | `netcross_report.path_metrics` | metriques de qualite par segment du chemin observe (Job 16/issue #12, FEATURES.md section 6.7). |
@@ -3456,6 +3457,15 @@ classDiagram
     class mod_netcross_report_live_html["netcross_report.live_html"] {
         <<module>>
         +render_live_html(snapshot, journal, interval) str
+    }
+
+    %% ===== netcross_report.lua_doc_text =====
+    class mod_netcross_report_lua_doc_text["netcross_report.lua_doc_text"] {
+        <<module>>
+        +render_methode(m, indent) list~str~
+        +render_attribut(a, indent) list~str~
+        +render_fiche(f, version) list~str~
+        +render_resultats(conn, terme, res, full) list~str~
     }
 
     %% ===== netcross_report.markdown_report =====
@@ -3988,6 +3998,8 @@ classDiagram
 | `netcross_gtk4.forensic_view` | recherche forensic de la GUI (issue #675). |
 | `netcross_gtk4.live_capture_points` | points de capture en direct de la GUI (Job 48, issue #168) : une ligne du panneau de capture live peut porter PLUSIEURS interfaces d'une meme machine ("eth0, eth1"), chacune devenant son propre point… |
 | `netcross_gtk4.live_report_session` | rapport HTML rafraichi en continu pendant une capture en direct de la GUI (issue #676). |
+| `netcross_gtk4.lua_doc_view` | logique sans GTK de la fenetre « Documentation Lua » (issue #873), equivalent de ``netcross-lua-doc``. |
+| `netcross_gtk4.lua_doc_window` | fenetre « Documentation Lua » (issue #873) : equivalent GUI de ``netcross-lua-doc``. |
 | `netcross_gtk4.netflow_panel` | panneau GTK « NetFlow v5 » de la page Resultats (issue #675). |
 | `netcross_gtk4.netflow_view` | resume NetFlow v5 dans la GUI (issue #675). |
 | `netcross_gtk4.notifications` | notifications sortantes (webhook, Slack, courriel) apres une analyse de la GUI (issue #676). |
@@ -4147,6 +4159,7 @@ classDiagram
     }
     class MainWindow {
         <<Gtk.ApplicationWindow>>
+        +open_lua_doc()
         +load_names_table(path)
         +add_capture_row(path, default_label)
         +on_run_analysis(_btn)
@@ -4418,6 +4431,28 @@ classDiagram
         +start_live_report(labels, out_dir, interval, serve_port, render, mkdtemp, server_factory) tuple~LiveReportSession, list~str~~
     }
 
+    %% ===== netcross_gtk4.lua_doc_view =====
+    class LuaDocUnavailableError {
+        <<Exception>>
+    }
+    class LuaDocBrowser {
+        +close() None
+        +classes() list~str~
+        +classes_text() str
+        +class_text(name) str
+        +search(terme, limit, full) tuple~str, list~str~~
+        +json_text(terme, name, limit, full) str
+    }
+
+    %% ===== netcross_gtk4.lua_doc_window =====
+    class LuaDocWindow {
+        <<Gtk.Window>>
+        +text() str
+        +open_class(name) None
+        +run_search() None
+        +show_json() None
+    }
+
     %% ===== netcross_gtk4.netflow_panel =====
     class NetflowPanel {
         <<Gtk.Box>>
@@ -4670,10 +4705,6 @@ classDiagram
     %% ===== netcross_lua_doc_cli =====
     class mod_netcross_lua_doc_cli["netcross_lua_doc_cli"] {
         <<module>>
-        +render_methode(m, indent) list~str~
-        +render_attribut(a, indent) list~str~
-        +render_fiche(f, version) list~str~
-        +render_resultats(conn, terme, res, full) list~str~
         +build_parser() argparse.ArgumentParser
         +main(argv) int
     }
