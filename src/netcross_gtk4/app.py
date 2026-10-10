@@ -743,6 +743,13 @@ class MainWindow(Gtk.ApplicationWindow):
         header.pack_start(self.capture_tools_btn)
         self.capture_tools_window = None
 
+        # Issue #873 : documentation Lua hors ligne (netcross-lua-doc)
+        self.lua_doc_btn = Gtk.Button(label="Documentation Lua")
+        self.lua_doc_btn.set_tooltip_text("API Lua de Wireshark, hors ligne (equivalent de netcross-lua-doc)")
+        self.lua_doc_btn.connect("clicked", lambda _b: self.open_lua_doc())
+        header.pack_end(self.lua_doc_btn)
+        self.lua_doc_window = None
+
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.NONE)
         switcher = Gtk.StackSwitcher()
@@ -771,6 +778,18 @@ class MainWindow(Gtk.ApplicationWindow):
     def _on_capture_tools_closed(self, _win):
         self.capture_tools_window = None
         return False
+
+    def open_lua_doc(self):
+        """Fenetre « Documentation Lua » (issue #873), une seule a la fois."""
+        from netcross_gtk4.lua_doc_window import LuaDocWindow
+
+        if self.lua_doc_window is not None and self.lua_doc_window.browser is not None:
+            self.lua_doc_window.present()
+            return self.lua_doc_window
+        self.lua_doc_window = LuaDocWindow(parent=self)
+        self.lua_doc_window.present()
+        logger.debug("open_lua_doc: fenetre ouverte")
+        return self.lua_doc_window
 
     # ================= PAGE 1 : CONFIGURATION =================
 
@@ -2451,6 +2470,11 @@ class MainWindow(Gtk.ApplicationWindow):
             result.baseline_report,
             result.current_report,
             result.text,
+            None,
+            None,
+            None,
+            None,
+            result.redaction_map,
         )
         GLib.idle_add(self._reset_live_ui)
         logger.debug("MainWindow._analyze_live_diff: fin")
@@ -2661,6 +2685,7 @@ class MainWindow(Gtk.ApplicationWindow):
             result.tls_findings_current,
             result.quic_findings_baseline,
             result.quic_findings_current,
+            result.redaction_map,
         )
         logger.debug("MainWindow._run_diff_thread: fin")
 
@@ -2815,6 +2840,7 @@ class MainWindow(Gtk.ApplicationWindow):
         tls_findings_current=None,
         quic_findings_baseline=None,
         quic_findings_current=None,
+        redaction_map=(),
     ):
         logger.debug(
             "_on_diff_done: findings={} tls_base={} tls_courant={} quic_base={} quic_courant={}",
@@ -2829,6 +2855,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.client_compare_panel.set_comparison(None)  # ni de comparaison de postes
         self.expertise_panel.set_exports(None)  # ni d'exports d'expertise (issue #673)
         self.report_exports_panel.set_context(None, None, None)  # ni SIEM/ticket/historique (issue #674)
+        self.report_exports_panel.set_redaction_map(redaction_map)  # sauf la table d'anonymisation (#876)
         self._appliquer_outcome(
             diff_outcome(
                 findings,

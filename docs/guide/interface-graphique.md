@@ -182,7 +182,11 @@ Sous le rapport, plusieurs sections se déplient :
   STIX 2.1 du rapport de sécurité (même fichier que `--siem-export`) ;
   ticket de support anonymisé « diagnostic », seulement après avoir coché
   le consentement (`--support-ticket --support-consent`, rien n'est
-  envoyé) ; derniers runs de l'historique choisi (`--history-show N`).
+  envoyé) ; derniers runs de l'historique choisi (`--history-show N`) ;
+  après une analyse anonymisée (simple ou comparaison), **Table
+  d'anonymisation (--redact-map)...** écrit le CSV adresse réelle →
+  pseudonyme de `--redact-map` (une seule table pour baseline et courant).
+  Ce fichier désanonymise le rapport : gardez-le pour vous.
 
 Après une comparaison ou une capture en direct, certaines sections sont
 grisées : elles ont besoin des fichiers de capture d'une analyse simple.
@@ -217,6 +221,16 @@ L'onglet **Rejeu** émet du trafic réel : il reste inactif tant que la case
 « J'ai l'autorisation d'emettre sur cette interface » n'est pas cochée.
 Réservez-le à un banc de test isolé ; tcpreplay et les droits d'émission
 (root ou `CAP_NET_RAW`) sont nécessaires.
+
+## Documentation Lua
+
+Le bouton **Documentation Lua** de la barre de titre ouvre la
+documentation hors ligne de l'API Lua de Wireshark, la même que
+`netcross-lua-doc` : liste des classes à gauche (un clic ouvre la fiche
+complète), recherche plein texte (« Resultats max. » = `--limit`,
+« Detail complet (--full) » = `--full`), bouton **JSON** pour le document
+de `--json`. Aucun accès réseau ; la banque est celle de la CLI
+(`~/.cache/netcross/lua_api.db`).
 
 ## Ce que l'interface ne fait pas
 

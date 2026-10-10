@@ -73,6 +73,10 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/tools/convert` | Conversion (`file`, `format` pcap/pcapng/erf/csv/json) : `--convert` (issue #870) |
 | `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
 | `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
+| `GET` | `/lua-doc/classes` | Classes de l'API Lua Wireshark (`netcross-lua-doc --classes --json`, issue #873) |
+| `GET` | `/lua-doc/classes/{name}` | Fiche d'une classe, insensible à la casse ; 404 avec suggestions (`--class NOM --json`) |
+| `GET` | `/lua-doc/search?q=...&limit=20&full=false` | Recherche plein texte (`netcross-lua-doc --json TERME`) ; 503 si `data/lua_api.json` est absent du serveur |
+
 | `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
 | `GET` | `/health` | Health check |
 
@@ -182,6 +186,15 @@ car ces diagnostics relisent les fichiers d'origine avec les adresses
 réelles ; avec `redact`, le rapport de sécurité n'est pas calculé
 (`security_report_absent` l'indique). Les options retenues sont
 enregistrées dans les métadonnées de l'analyse (`options`).
+
+Table de correspondance (équivalent de `--redact-map`, issue #876) :
+`GET /analyses/{id}/redact-map` et `GET /comparisons/{id}/redact-map`
+rendent le CSV `adresse_reelle,pseudonyme,type` de `--redact-map`. Une
+comparaison anonymise baseline et courant avec la même table : une adresse
+garde le même pseudonyme des deux côtés. La table n'existe qu'en mémoire du
+serveur (jamais en SQLite : 409 après redémarrage), 404 sans `redact`.
+Elle désanonymise le rapport : à conserver en privé, ne pas transmettre
+avec lui.
 
 ```bash
 curl -X POST "http://localhost:8000/captures/multi?wait=true" \
