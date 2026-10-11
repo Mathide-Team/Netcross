@@ -180,9 +180,9 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Dossier entier de captures | oui (fenêtre « Analyse d'un dossier » : dossier, sous-dossiers, regroupement, fenêtre, recouvrement, adresses communes, tâches, reprise, sécurité, sortie ; avancement ligne à ligne ; issue #872) | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | `POST /batches` (`files`, captures ou archive ZIP ; `no_group`, `group_window`, `min_overlap`, `min_common_ips`, `jobs`, `security_report`), `GET /batches/{batch_id}` (avancement, groupes, échecs), `/index`, `/reports/{name}` ; `--skip-existing` sans objet (issue #872) |
-| Documentation de l'API Lua de Wireshark | non | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | non |
+| Documentation de l'API Lua de Wireshark | oui (fenêtre « Documentation Lua » de la barre de titre : recherche, nombre de résultats, liste des classes, détail ; issue #873) | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | `GET /lua-doc/classes`, `GET /lua-doc/classes/{name}`, `GET /lua-doc/search` (`q`, `limit`, `full`) (issue #873) |
 | Historique des runs (analyses et comparaisons) | fenêtre « Historique des runs » (bouton de la barre de titre) : base, type, étiquette, nombre (issue #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history` : `run_type`, `label`, `limit` (base du serveur `NETCROSS_HISTORY_DB`, issue #874) |
-| Historique des analyses | non | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /analyses` |
+| Historique des analyses | oui (fenêtre « Historique des runs », type « Analyses (analyse) » ; enregistrement par « Historique... » / « Etiquette », issues #674, #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history?run_type=…` ; enregistrement par `history`/`history_label` de `POST /captures` (issue #890) ; `GET /analyses` liste les analyses du serveur |
 | Mode debug | `--debug` au lancement | `--debug` (toutes les CLI) | `NETCROSS_DEBUG=1` |
 
 ## Vues propres à la GUI (sans équivalent CLI ni API)
@@ -197,7 +197,7 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 Ce sont des vues d'exploration interactives. Leur calcul vit déjà hors de
 la GUI (`netcross_report/comm_map.py`, `netcross_gtk4/stats_view.py`,
 `netcross_gtk4/dashboard_context.py`), ce qui permettrait de les exposer
-ailleurs si le besoin apparaissait.
+ailleurs : c'est l'objet de #909 à #912 (règle sans exemption, #330).
 
 ## Inventaire des cases de la GUI
 
@@ -322,6 +322,11 @@ Classés par impact pour un utilisateur :
    de comparaison, même rendu que `--triage` / `--triage-top-n`.
 5. Le reste (manipulation de captures, notifications, plugins, IA, SIEM,
    batch) relève de l'automatisation et reste en CLI **par choix**.
+   Révisé le 11/10/2026 (#330) : plus aucune exemption, toute fonction
+   doit exister en CLI, GTK4 et API. Restent : l'API de la capture en
+   direct (#902 à #908) et la CLI et l'API des vues propres à la GUI
+   (#909 cartographie, #910 annotations, #911 dashboard, #912
+   exploration statistique).
 
 Correctifs apportés à l'audit du 24/09 (commentaire de #330) :
 
