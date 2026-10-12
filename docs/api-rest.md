@@ -80,6 +80,9 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
 | `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
 | `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
+| `POST` | `/live-captures` | Capture en direct (JSON `points` : `name`, `interface`, `bpf` ; `duration` ; `points_order` ; `options` de `/captures/multi`) puis analyse ; 202. 403 si `NETCROSS_API_LIVE` n'est pas à 1, interface hors de `NETCROSS_API_LIVE_INTERFACES` ou `NETCROSS_API_TOKEN` absent ; 409 si une capture est déjà en cours (issue #902) |
+| `GET` | `/live-captures/{id}` | État (`capturing`, `analysing`, `completed`, `failed`), `bytes_captured` par point, `elapsed_seconds`, `packet_count`, `analysis_id` |
+| `POST` | `/live-captures/{id}/stop` | Arrêt anticipé ; l'analyse porte sur ce qui a été capturé |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl
