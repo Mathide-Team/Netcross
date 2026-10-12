@@ -14,9 +14,9 @@ ici fait donc échouer la CI.
 
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
-| CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
+| CLI | `cross_capture_analyzer_cli.py` (114 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 43 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 41 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 42 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -90,6 +90,7 @@ actif, non réglable.
 | Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | `topn` de `GET /analyses/{analysis_id}/pdf` (issue #865) |
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
 | Diagramme de séquence | oui (« Diagramme de sequence » de la configuration, dans l'export PDF ; issue #674) | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
+| Cartographie des communications (qui parle à qui, anomalies en rouge) | oui (vue « Cartographie » : filtres protocole, Top-N, « Anomalies seulement ») | `--comm-map FICHIER` (DOT Graphviz si `.dot`/`.gv`, JSON sinon), `--comm-map-protocol`, `--comm-map-top-n`, `--comm-map-anomalies-only` (issue #909) | `GET /analyses/{analysis_id}/comm-map` : `protocol`, `top_n`, `anomalies_only`, `format` (`json` ou `dot` ; issue #909) |
 | Export SIEM (CEF, LEEF, STIX) | oui (panneau « SIEM, ticket de support, historique » de la page Résultats, après un rapport de sécurité, même fichier ; issue #674) | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
 | Historique SQLite | oui (« Historique... » et « Etiquette » de la configuration, derniers runs dans le panneau « SIEM, ticket de support, historique » ; issue #674) | `--history-db`, `--history-label`, `--history-show` ; `netcross-history` | `history`, `history_label` de `POST /captures` et `POST /captures/multi` (base fixée par `NETCROSS_HISTORY_DB`, `history_id` ou `history_error` dans le résumé ; issue #890), consultation `GET /history` ; persistance propre des analyses (`NETCROSS_DB_PATH`), `GET /analyses` |
 | Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic », toutes portées ; issue #674) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind`, `scopes`, `marker`, `include_map` (issue #877) |
@@ -189,7 +190,6 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 
 | Vue | Rôle |
 |---|---|
-| Cartographie des communications (filtres protocole, Top-N, « Anomalies seulement ») | Qui parle à qui, anomalies en rouge |
 | Annotations / signets | Étiquettes sur des trames, enregistrées à côté de la capture |
 | Dashboard analytique | Sélection croisée segments / flux / hôtes / protocoles / événements |
 | Exploration statistique (export CSV et JSON) | Top-N, tri, regroupement, drill-down |
@@ -197,7 +197,7 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 Ce sont des vues d'exploration interactives. Leur calcul vit déjà hors de
 la GUI (`netcross_report/comm_map.py`, `netcross_gtk4/stats_view.py`,
 `netcross_gtk4/dashboard_context.py`), ce qui permettrait de les exposer
-ailleurs : c'est l'objet de #909 à #912 (règle sans exemption, #330).
+ailleurs : c'est l'objet de #910 à #912 (cartographie : #909, livrée) (règle sans exemption, #330).
 
 ## Inventaire des cases de la GUI
 
@@ -296,6 +296,7 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /lua-doc/search` | Recherche dans la documentation Lua, `q`, `limit`, `full` (issue #873) |
 | `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
 | `POST /tools/replay` | Rejeu sur une interface autorisée (issue #871) |
+| `GET /analyses/{analysis_id}/comm-map` | Cartographie des communications, JSON ou DOT (issue #909) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,
@@ -325,7 +326,7 @@ Classés par impact pour un utilisateur :
    Révisé le 11/10/2026 (#330) : plus aucune exemption, toute fonction
    doit exister en CLI, GTK4 et API. Restent : l'API de la capture en
    direct (#902 à #908) et la CLI et l'API des vues propres à la GUI
-   (#909 cartographie, #910 annotations, #911 dashboard, #912
+   (#910 annotations, #911 dashboard, #912
    exploration statistique).
 
 Correctifs apportés à l'audit du 24/09 (commentaire de #330) :

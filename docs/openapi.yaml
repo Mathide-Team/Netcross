@@ -654,6 +654,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/comm-map:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Comm Map
+      description: 'Cartographie des communications (équiv. ``--comm-map``, vue GUI
+        « Cartographie », issue #909).'
+      operationId: get_analysis_comm_map_analyses__analysis_id__comm_map_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: protocol
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: Seulement ces protocoles (répétable ou séparés par des virgules)
+          title: Protocol
+        description: Seulement ces protocoles (répétable ou séparés par des virgules)
+      - name: top_n
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          description: 'N arêtes les plus volumineuses (défaut : toutes)'
+          title: Top N
+        description: 'N arêtes les plus volumineuses (défaut : toutes)'
+      - name: anomalies_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Seulement les arêtes avec anomalies
+          default: false
+          title: Anomalies Only
+        description: Seulement les arêtes avec anomalies
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          description: json ou dot (Graphviz, anomalies en rouge)
+          default: json
+          title: Format
+        description: json ou dot (Graphviz, anomalies en rouge)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/siem:
     get:
       tags:

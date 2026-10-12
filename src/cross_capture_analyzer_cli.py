@@ -167,6 +167,7 @@ from netcross_core.support import (
     write_support_map_csv,
     write_ticket,
 )
+from netcross_report.comm_map import build_comm_map, write_comm_map
 from netcross_report.security_report import build_security_report, print_security_report
 from pcap_parser.capture import split_by_interface
 from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
@@ -1290,6 +1291,24 @@ def _run_content_extraction(captures, out_dir, kinds) -> None:
     logger.debug("_run_content_extraction: fin")
 
 
+def comm_map_protocols(values) -> list[str] | None:
+    """Protocoles de --comm-map-protocol (repetable, virgules acceptees)."""
+    protos = [p.strip() for v in values or [] for p in v.split(",") if p.strip()]
+    return protos or None
+
+
+def _check_comm_map_args(args) -> None:
+    """Validations de l'issue #909."""
+    filtres = args.comm_map_protocol or args.comm_map_top_n is not None or args.comm_map_anomalies_only
+    if filtres and not args.comm_map:
+        print("--comm-map-protocol/--comm-map-top-n/--comm-map-anomalies-only necessitent --comm-map.", file=sys.stderr)
+        sys.exit(1)
+    if args.comm_map_top_n is not None and args.comm_map_top_n < 1:
+        print("--comm-map-top-n : 1 minimum.", file=sys.stderr)
+        sys.exit(1)
+    logger.debug("_check_comm_map_args: fin")
+
+
 def _check_live_report_args(args) -> None:
     """Validations de l'issue #274."""
     logger.debug("_check_live_report_args: args={}", summarize(args, "args"))
@@ -1601,6 +1620,30 @@ def main():
     )
     ap.add_argument("--order", help="Ordre physique des points sur le chemin reseau, ex: LAN,WAN,DC")
     ap.add_argument("--detail-csv", help="Chemin de sortie pour le detail par flux (CSV)")
+    # Issue #909 : cartographie des communications (vue GUI « Cartographie »)
+    ap.add_argument(
+        "--comm-map",
+        metavar="FICHIER",
+        help="Cartographie des communications (qui parle a qui) : DOT Graphviz si FICHIER finit par .dot/.gv "
+        "(anomalies en rouge ; SVG : dot -Tsvg), JSON sinon",
+    )
+    ap.add_argument(
+        "--comm-map-protocol",
+        action="append",
+        metavar="PROTO[,PROTO...]",
+        help="Cartographie : seulement ces protocoles (repetable ou separes par des virgules)",
+    )
+    ap.add_argument(
+        "--comm-map-top-n",
+        type=int,
+        metavar="N",
+        help="Cartographie : N aretes les plus volumineuses (defaut : toutes)",
+    )
+    ap.add_argument(
+        "--comm-map-anomalies-only",
+        action="store_true",
+        help="Cartographie : seulement les aretes avec retransmissions ou signaux d'expertise",
+    )
     ap.add_argument(
         "--names",
         metavar="PATH",
@@ -2734,6 +2777,7 @@ def main():
         sys.exit(1)
     extract_kinds = _check_extraction_args(args)
     _check_live_report_args(args)
+    _check_comm_map_args(args)
     if args.redact and (args.tls or args.quic or args.client_group):
         print(
             "--redact n'est pas disponible avec --tls/--quic/--client-group : ces "
@@ -3168,6 +3212,18 @@ def main():
     if args.detail_csv:
         write_detail_csv(args.detail_csv, flows, r.points, names=names)
         print(f"\nDetail par flux ecrit dans {args.detail_csv}")
+    if args.comm_map:
+        cmap = build_comm_map(
+            flows,
+            protocols=comm_map_protocols(args.comm_map_protocol),
+            top_n=args.comm_map_top_n,
+            only_anomalies=args.comm_map_anomalies_only,
+        )
+        fmt = write_comm_map(args.comm_map, cmap)
+        print(
+            f"\nCartographie ({fmt.upper()}) ecrite dans {args.comm_map} : "
+            f"{len(cmap.edges)} arete(s) sur {cmap.total_edges}, {len(cmap.nodes)} hote(s)"
+        )
 
     # Objets de contrat de la Session 0 (FEATURES.md section 13.3) --
     # construits UNE fois ici, puis partages par la console

@@ -80,6 +80,7 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
 | `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
 | `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
+| `GET` | `/analyses/{id}/comm-map` | Cartographie des communications (qui parle à qui) : `protocol` (répétable), `top_n`, `anomalies_only`, `format=json\|dot` (DOT Graphviz, anomalies en rouge) ; équiv. `--comm-map` (issue #909) |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl

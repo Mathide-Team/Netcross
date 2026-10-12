@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-194 modules · 282 classes · 671 fonctions publiques de module.
+194 modules · 282 classes · 676 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -32,7 +32,7 @@ flowchart TD
     netcross_ai["netcross_ai"]
     netcross_core["netcross_core"]
     pcap_parser["pcap_parser"]
-    CLI -->|"20 imports"| netcross_report
+    CLI -->|"21 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"41 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
@@ -40,7 +40,7 @@ flowchart TD
     netcross_gtk4 -->|"4 imports"| netcross_ai
     netcross_gtk4 -->|"109 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
-    netcross_api -->|"19 imports"| netcross_report
+    netcross_api -->|"20 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
     netcross_api -->|"42 imports"| netcross_core
     netcross_api -->|"3 imports"| pcap_parser
@@ -3486,6 +3486,9 @@ classDiagram
         +available_protocols(flows) list~str~
         +build_comm_map(flows, protocols, top_n, only_anomalies) CommMap
         +format_comm_map(cmap, top_n) str
+        +comm_map_to_dict(cmap) dict
+        +comm_map_to_dot(cmap) str
+        +write_comm_map(path, cmap) str
     }
 
     %% ===== netcross_report.expert_events =====
@@ -3936,6 +3939,7 @@ classDiagram
         +get_analysis_pdf(analysis_id, topn, _auth) StreamingResponse
         +get_analysis_csv(analysis_id, _auth) PlainTextResponse
         +get_analysis_sequence(analysis_id, max_flows, _auth) JSONResponse
+        +get_analysis_comm_map(analysis_id, protocol, top_n, anomalies_only, format, _auth) Response
         +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
         +forensic_search(analysis_id, body, _auth) JSONResponse
         +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
@@ -4909,6 +4913,7 @@ classDiagram
     %% ===== cross_capture_analyzer_cli =====
     class mod_cross_capture_analyzer_cli["cross_capture_analyzer_cli"] {
         <<module>>
+        +comm_map_protocols(values) list~str~?
         +main()
     }
 
