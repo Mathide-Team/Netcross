@@ -654,6 +654,95 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/stats:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Stats
+      description: 'Exploration statistique (équiv. ``--stats``, vue GUI « Exploration
+        statistique », issue #912).
+
+
+        Chaque ligne porte ``flow_keys`` : les clés des flux regroupés (drill-down).'
+      operationId: get_analysis_stats_analyses__analysis_id__stats_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: group_by
+        in: query
+        required: false
+        schema:
+          type: string
+          description: endpoint, protocol, segment ou flow
+          default: endpoint
+          title: Group By
+        description: endpoint, protocol, segment ou flow
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          description: packets, bytes, duration_ms, throughput_bps, latency_ms ou
+            events
+          default: bytes
+          title: Sort
+        description: packets, bytes, duration_ms, throughput_bps, latency_ms ou events
+      - name: top_n
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          description: N premières lignes (0 = toutes)
+          default: 10
+          title: Top N
+        description: N premières lignes (0 = toutes)
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          description: json ou csv
+          default: json
+          title: Format
+        description: json ou csv
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/siem:
     get:
       tags:

@@ -156,6 +156,10 @@ from netcross_core.logging_config import add_debug_argument, apply_debug_argumen
 from netcross_core.security import close_db, connect_cve_db
 from netcross_core.security import findings as security_findings
 from netcross_core.security.cve_seed import open_seed_db
+from netcross_core.stats import EXPORT_FORMATS as STATS_EXPORT_FORMATS
+from netcross_core.stats import GROUP_BY as STATS_GROUP_BY
+from netcross_core.stats import SORT_BY as STATS_SORT_BY
+from netcross_core.stats import explore_stats, render_stats, stats_format_for
 from netcross_core.support import (
     SCOPES as SUPPORT_SCOPES,
 )
@@ -1290,6 +1294,23 @@ def _run_content_extraction(captures, out_dir, kinds) -> None:
     logger.debug("_run_content_extraction: fin")
 
 
+def _check_stats_args(args) -> None:
+    """Validations de l'issue #912."""
+    modifies = (
+        args.stats_group_by != "endpoint"
+        or args.stats_sort != "bytes"
+        or args.stats_top_n != 10
+        or args.stats_format is not None
+    )
+    if modifies and not args.stats:
+        print("--stats-group-by/--stats-sort/--stats-top-n/--stats-format necessitent --stats.", file=sys.stderr)
+        sys.exit(1)
+    if args.stats_top_n < 0:
+        print("--stats-top-n : 0 (toutes) ou plus.", file=sys.stderr)
+        sys.exit(1)
+    logger.debug("_check_stats_args: fin")
+
+
 def _check_live_report_args(args) -> None:
     """Validations de l'issue #274."""
     logger.debug("_check_live_report_args: args={}", summarize(args, "args"))
@@ -1601,6 +1622,32 @@ def main():
     )
     ap.add_argument("--order", help="Ordre physique des points sur le chemin reseau, ex: LAN,WAN,DC")
     ap.add_argument("--detail-csv", help="Chemin de sortie pour le detail par flux (CSV)")
+    # Issue #912 : exploration statistique (vue GUI « Exploration statistique »)
+    ap.add_argument(
+        "--stats",
+        metavar="FICHIER",
+        help="Exploration statistique (Top-N, tri, regroupement) : CSV si FICHIER finit par .csv, JSON sinon "
+        "(--stats-format pour forcer) ; flow_keys de chaque ligne = drill-down vers les flux",
+    )
+    ap.add_argument(
+        "--stats-group-by",
+        choices=STATS_GROUP_BY,
+        default="endpoint",
+        help="Statistiques : regroupement (defaut endpoint)",
+    )
+    ap.add_argument(
+        "--stats-sort", choices=STATS_SORT_BY, default="bytes", help="Statistiques : tri decroissant (defaut bytes)"
+    )
+    ap.add_argument(
+        "--stats-top-n",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Statistiques : N premieres lignes (defaut 10, 0 = toutes)",
+    )
+    ap.add_argument(
+        "--stats-format", choices=STATS_EXPORT_FORMATS, help="Statistiques : csv ou json (defaut : extension)"
+    )
     ap.add_argument(
         "--names",
         metavar="PATH",
@@ -2734,6 +2781,7 @@ def main():
         sys.exit(1)
     extract_kinds = _check_extraction_args(args)
     _check_live_report_args(args)
+    _check_stats_args(args)
     if args.redact and (args.tls or args.quic or args.client_group):
         print(
             "--redact n'est pas disponible avec --tls/--quic/--client-group : ces "
@@ -3168,6 +3216,24 @@ def main():
     if args.detail_csv:
         write_detail_csv(args.detail_csv, flows, r.points, names=names)
         print(f"\nDetail par flux ecrit dans {args.detail_csv}")
+    if args.stats:
+        from netcross_report import build_findings as _build_findings
+
+        rows = explore_stats(
+            flows,
+            r,
+            findings if findings is not None else _build_findings(r),
+            group_by=args.stats_group_by,
+            sort_by=args.stats_sort,
+            top_n=args.stats_top_n,
+        )
+        fmt = stats_format_for(args.stats, args.stats_format)
+        with open(args.stats, "w", encoding="utf-8", newline="") as f:
+            f.write(render_stats(rows, fmt))
+        print(
+            f"\nStatistiques ({fmt.upper()}, par {args.stats_group_by}, tri {args.stats_sort}) "
+            f"ecrites dans {args.stats} : {len(rows)} ligne(s)"
+        )
 
     # Objets de contrat de la Session 0 (FEATURES.md section 13.3) --
     # construits UNE fois ici, puis partages par la console

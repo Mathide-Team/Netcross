@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-194 modules · 282 classes · 671 fonctions publiques de module.
+194 modules · 282 classes · 676 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -32,17 +32,17 @@ flowchart TD
     netcross_ai["netcross_ai"]
     netcross_core["netcross_core"]
     pcap_parser["pcap_parser"]
-    CLI -->|"20 imports"| netcross_report
+    CLI -->|"21 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
-    CLI -->|"41 imports"| netcross_core
+    CLI -->|"45 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"31 imports"| netcross_report
     netcross_gtk4 -->|"4 imports"| netcross_ai
-    netcross_gtk4 -->|"109 imports"| netcross_core
+    netcross_gtk4 -->|"110 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"19 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
-    netcross_api -->|"42 imports"| netcross_core
+    netcross_api -->|"44 imports"| netcross_core
     netcross_api -->|"3 imports"| pcap_parser
     netcross_report -->|"40 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -1700,6 +1700,10 @@ classDiagram
         +compute_stats(flows, report, all_packets, query, events_by_segment) list~StatRow~
         +export_csv(rows) str
         +export_json(rows) list~dict~
+        +build_events_by_segment(findings) dict~str, list~
+        +explore_stats(flows, report, findings, group_by, sort_by, top_n) list~StatRow~
+        +stats_format_for(path, fmt) str
+        +render_stats(rows, fmt) str
     }
 
     %% ===== netcross_core.tls_diagnostics =====
@@ -3936,6 +3940,7 @@ classDiagram
         +get_analysis_pdf(analysis_id, topn, _auth) StreamingResponse
         +get_analysis_csv(analysis_id, _auth) PlainTextResponse
         +get_analysis_sequence(analysis_id, max_flows, _auth) JSONResponse
+        +get_analysis_stats(analysis_id, group_by, sort, top_n, format, _auth) Response
         +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
         +forensic_search(analysis_id, body, _auth) JSONResponse
         +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
