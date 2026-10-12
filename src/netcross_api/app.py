@@ -2828,3 +2828,8 @@ _tools_routes.register(app, _verify_api_key, _save_upload, lambda: _MAX_FILES)
 from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
 
 _lua_doc_routes.register(app, _verify_api_key)
+
+# Issue #910 : annotations d'une analyse (rangées dans ses métadonnées, par point)
+from netcross_api import annotations_routes as _annotations_routes  # noqa: E402
+
+_annotations_routes.register(app, _verify_api_key, _completed_entry, lambda: store)

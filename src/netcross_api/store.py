@@ -177,6 +177,18 @@ class AnalysesStore:
         )
         logger.debug("AnalysesStore.complete: fin")
 
+    def set_metadata(self, analysis_id: str, key: str, value: Any) -> None:
+        """Remplace ``metadata[key]`` (persisté en SQLite avec le reste des
+        métadonnées) ; ex. annotations saisies par l'analyste (issue #910)."""
+        with self._lock:
+            entry = self._store.get(analysis_id)
+            if entry is None:
+                logger.debug("AnalysesStore.set_metadata: analyse {} inconnue -> levée KeyError", analysis_id)
+                raise KeyError(analysis_id)
+            entry["metadata"] = {**entry["metadata"], key: value}
+            self._persist(analysis_id, entry)
+        logger.debug("AnalysesStore.set_metadata: {} mis a jour pour {}", key, analysis_id)
+
     def fail(self, analysis_id: str, error: str) -> None:
         """Passe l'analyse en ``failed`` ; ``error`` est rendu au client."""
         self._update(analysis_id, status=FAILED, error=error)
