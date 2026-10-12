@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-194 modules · 282 classes · 671 fonctions publiques de module.
+195 modules · 283 classes · 678 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -42,7 +42,7 @@ flowchart TD
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"19 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
-    netcross_api -->|"42 imports"| netcross_core
+    netcross_api -->|"45 imports"| netcross_core
     netcross_api -->|"3 imports"| pcap_parser
     netcross_report -->|"40 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -656,6 +656,7 @@ classDiagram
         +load_bpf_filters(path) list~BPFFilter~
         +available_bpf_filters(path) list~BPFFilter~
         +upsert_bpf_filter(new, path) list~BPFFilter~
+        +delete_bpf_filter(name, path) list~BPFFilter~
     }
 
     %% ===== netcross_core.capture_tools =====
@@ -3874,6 +3875,7 @@ classDiagram
 | `netcross_api` | service REST FastAPI pour exposer les analyses Netcross (issue #209). |
 | `netcross_api.app` | application FastAPI pour exposer les analyses Netcross (issues #209, #354, #356). |
 | `netcross_api.batches` | lots de captures de l'API (issue #872). |
+| `netcross_api.bpf_routes` | bibliothèque de filtres BPF enregistrés (issue #906), équivalent API de ``--bpf-library NOM`` et des boutons « Filtres… » / « Enregistrer » de la GUI. |
 | `netcross_api.history_routes` | historique SQLite des runs (issue #874). |
 | `netcross_api.lua_doc_routes` | documentation hors ligne de l'API Lua Wireshark (issue #873), équivalent de ``netcross-lua-doc --json``. |
 | `netcross_api.models` | modèles Pydantic pour les requêtes/réponses API (issue #209). |
@@ -3978,6 +3980,22 @@ classDiagram
         +run_batch_job(batch_id, options, ignored) None
         +report_path(entry, name) Path?
         +new_workdir() tuple~str, str~
+    }
+
+    %% ===== netcross_api.bpf_routes =====
+    class BPFFilterBody {
+        <<BaseModel>>
+        +str expression
+        +str description
+    }
+    class mod_netcross_api_bpf_routes["netcross_api.bpf_routes"] {
+        <<module>>
+        +filters_path() Path?
+        +list_bpf_filters() dict~str, Any~
+        +put_bpf_filter(nom, body) dict~str, Any~
+        +delete_bpf_filter(nom) dict~str, Any~
+        +resolve_bpf_library(nom) str
+        +register(app, verify) None
     }
 
     %% ===== netcross_api.history_routes =====
