@@ -2427,7 +2427,13 @@ _HISTORY_LABEL_FORM = Form(
 
 
 _BASELINE_FILES = File(default=..., description="Fichiers pcap baseline")
-_CURRENT_FILES = File(default=..., description="Fichiers pcap courant")
+_CURRENT_FILES = File(default=None, description="Fichiers pcap courant (ou current_live)")
+_CURRENT_LIVE_FORM = Form(
+    default=None,
+    description="Courant capturé en direct au lieu de current_files (équiv. --live-current, issue #908) : "
+    'JSON de POST /live-captures sans options, ex. {"points": [{"name": "LAN", "interface": "eth0"}], '
+    '"duration": 60} ; sans tls/quic ni wait',
+)
 _BASELINE_LABELS_FORM = Form(default="", description="Étiquettes baseline (séparées par virgule)")
 _CURRENT_LABELS_FORM = Form(default="", description="Étiquettes courant (séparées par virgule)")
 
@@ -2441,7 +2447,7 @@ _CURRENT_LABELS_FORM = Form(default="", description="Étiquettes courant (sépar
 )
 async def create_comparison(
     baseline_files: list[UploadFile] = _BASELINE_FILES,
-    current_files: list[UploadFile] = _CURRENT_FILES,
+    current_files: list[UploadFile] | None = _CURRENT_FILES,
     baseline_labels: str = _BASELINE_LABELS_FORM,
     current_labels: str = _CURRENT_LABELS_FORM,
     points_order: str = _POINTS_ORDER_FORM,
@@ -2456,10 +2462,12 @@ async def create_comparison(
     history: bool = _HISTORY_FORM,
     history_label: str | None = _HISTORY_LABEL_FORM,
     wait: bool = _WAIT_QUERY,
+    current_live: str | None = _CURRENT_LIVE_FORM,
     _auth: None = Depends(_verify_api_key),
 ) -> JSONResponse:
     """Compare deux jeux de captures (baseline vs courant) et remonte les
-    régressions/améliorations (issue #669).
+    régressions/améliorations (issue #669). Le courant peut être capturé en
+    direct sur le serveur (``current_live``, équiv. ``--live-current``, issue #908).
 
     Équivalent de ``cross-capture-diff --baseline LAN=lan.pcap --current
     LAN=lan2.pcap``. ``baseline_files`` et ``current_files`` sont des
@@ -2472,10 +2480,11 @@ async def create_comparison(
         _history_routes.require_history_db()
     elif history_label:
         raise HTTPException(status_code=400, detail="history_label necessite history=true (comme --history-db)")
-    if not baseline_files or not current_files:
-        raise HTTPException(status_code=400, detail="baseline_files et current_files sont requis")
+    live_req = _parse_current_live(current_live, current_files, tls, quic, wait)
+    if not baseline_files or (not current_files and live_req is None):
+        raise HTTPException(status_code=400, detail="baseline_files et current_files (ou current_live) sont requis")
     baseline_label_list = _parse_labels(baseline_labels, len(baseline_files))
-    current_label_list = _parse_labels(current_labels, len(current_files))
+    current_label_list = _parse_labels(current_labels, len(current_files or []))
     order_list = _parse_points_order(points_order, baseline_label_list)
 
     # Sauvegarder les fichiers
@@ -2486,7 +2495,7 @@ async def create_comparison(
             if not file.filename:
                 raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
             baseline_captures.append((label, await _save_upload(file, label)))
-        for file, label in zip(current_files, current_label_list, strict=True):
+        for file, label in zip(current_files or [], current_label_list, strict=True):
             if not file.filename:
                 raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
             current_captures.append((label, await _save_upload(file, label)))
@@ -2500,7 +2509,9 @@ async def create_comparison(
     _comparisons[comparison_id] = {"status": PENDING, "result": None, "error": None}
     status_url = f"/comparisons/{comparison_id}"
 
-    def _run_comparison():
+    def _run_comparison(live_captures=None):  # (point, chemin) de current_live, issue #908
+        if live_captures is not None:
+            current_captures.extend(live_captures)
         try:
             # Issue #876 : un seul redacteur pour les deux jeux (même
             # adresse -> même pseudonyme, comme cross_capture_diff_cli).
@@ -2560,6 +2571,30 @@ async def create_comparison(
             for _label, path in baseline_captures + current_captures:
                 Path(path).unlink(missing_ok=True)
 
+    def _abort_comparison(raison: str) -> None:
+        # Issue #908 : capture du courant abandonnée ou en échec -> comparaison en échec
+        _comparisons[comparison_id] = {**_comparisons[comparison_id], "status": FAILED, "error": raison}
+        for _label, path in baseline_captures:
+            Path(path).unlink(missing_ok=True)
+
+    if live_req is not None:
+        try:
+            etat = live_captures.start(
+                live_req, analyse=_run_comparison, comparison_id=comparison_id, on_abort=_abort_comparison
+            )
+        except BaseException:
+            logger.debug("create_comparison: démarrage de current_live refusé -> nettoyage du baseline")
+            _comparisons.pop(comparison_id, None)
+            for _label, path in baseline_captures:
+                Path(path).unlink(missing_ok=True)
+            raise
+        _comparisons[comparison_id]["live_capture_id"] = etat["capture_id"]
+        contenu = {
+            **AnalysisAccepted(analysis_id=comparison_id, status=PENDING, status_url=status_url).model_dump(),
+            "live_capture_id": etat["capture_id"],
+            "live_capture_url": f"/live-captures/{etat['capture_id']}",
+        }
+        return JSONResponse(status_code=202, content=contenu, headers={"Location": status_url})
     if not wait:
         _get_executor().submit(_run_comparison)
         accepted = AnalysisAccepted(analysis_id=comparison_id, status=PENDING, status_url=status_url)
@@ -2569,6 +2604,46 @@ async def create_comparison(
     if entry["status"] == FAILED:
         raise HTTPException(status_code=400, detail=entry["error"])
     return JSONResponse(status_code=201, content=entry["result"], headers={"Location": status_url})
+
+
+def _parse_current_live(current_live: str | None, current_files, tls: bool, quic: bool, wait: bool):
+    """Issue #908 : ``current_live`` -> LiveCaptureRequest, avec les limites de
+    ``--live-current`` (exclusif avec ``current_files``, sans TLS/QUIC) ; ``wait``
+    refusé (la capture dure ``duration``). Contrôles de la capture faits ici,
+    avant d'enregistrer le baseline."""
+    if current_live is None:
+        return None
+    import json as _json
+
+    from pydantic import ValidationError
+
+    from netcross_api.live_routes import LiveCaptureRequest
+
+    if current_files:
+        raise HTTPException(
+            status_code=400, detail="current_files et current_live sont exclusifs (comme --live-current)"
+        )
+    if tls or quic:
+        raise HTTPException(
+            status_code=400, detail="tls/quic ne sont pas disponibles avec current_live (comme --live-current)"
+        )
+    if wait:
+        raise HTTPException(
+            status_code=400,
+            detail="wait n'est pas disponible avec current_live : suivre status_url ou live_capture_url",
+        )
+    try:
+        brut = _json.loads(current_live)
+        if not isinstance(brut, dict):
+            raise TypeError("objet JSON attendu")
+        if brut.get("options"):
+            raise TypeError("pas d'options dans current_live : celles de la comparaison s'appliquent")
+        req = LiveCaptureRequest.model_validate(brut)
+    except (ValueError, TypeError, ValidationError) as exc:
+        logger.debug("_parse_current_live: current_live invalide ({})", exc)
+        raise HTTPException(status_code=422, detail=f"current_live invalide : {exc}") from exc
+    live_captures.check(req)
+    return req
 
 
 def _dict_as_report(doc: dict):

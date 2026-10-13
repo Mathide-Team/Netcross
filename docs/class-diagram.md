@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-200 modules · 288 classes · 706 fonctions publiques de module.
+202 modules · 292 classes · 721 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -32,19 +32,19 @@ flowchart TD
     netcross_ai["netcross_ai"]
     netcross_core["netcross_core"]
     pcap_parser["pcap_parser"]
-    CLI -->|"23 imports"| netcross_report
+    CLI -->|"24 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
     CLI -->|"50 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"31 imports"| netcross_report
+    netcross_gtk4 -->|"32 imports"| netcross_report
     netcross_gtk4 -->|"4 imports"| netcross_ai
     netcross_gtk4 -->|"110 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
-    netcross_api -->|"20 imports"| netcross_report
+    netcross_api -->|"21 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
-    netcross_api -->|"52 imports"| netcross_core
+    netcross_api -->|"54 imports"| netcross_core
     netcross_api -->|"4 imports"| pcap_parser
-    netcross_report -->|"40 imports"| netcross_core
+    netcross_report -->|"41 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"19 imports"| pcap_parser
 ```
@@ -485,6 +485,7 @@ classDiagram
 | `netcross_core.live_diff` | Capture en continu + diff en direct (Job 33, issue #33). |
 | `netcross_core.live_report` | issue #274 : export / rapport temps reel du mode ``--live``. |
 | `netcross_core.logging_config` | configuration centrale du logging (issue #245). |
+| `netcross_core.lua_dissectors` | catalogue des dissecteurs Wireshark écrits en Lua, dans la banque Lua (issue #917). |
 | `netcross_core.lua_doc` | banque SQLite locale de l'API Lua Wireshark (issue #387, rattachee a #331). |
 | `netcross_core.models` | structures de donnees partagees : un paquet normalise (Pkt) et le resultat d'analyse consolide (Report). |
 | `netcross_core.naming` | table locale de correspondance adresse/MAC -> nom logique, type, contexte (Job 18 / issue #16-bis, section 6.15 de FEATURES.md). |
@@ -1269,6 +1270,44 @@ classDiagram
         +summarize(value, name) str
     }
 
+    %% ===== netcross_core.lua_dissectors =====
+    class Dissecteur {
+        <<dataclass>>
+        +str url
+        +str depot
+        +str hebergeur
+        +str domaine
+        +str protocole
+        +int etoiles
+        +int forks
+        +str derniere_maj
+        +str date_creation
+        +str licence
+        +bool archive
+        +str topics
+        +str langage
+        +bool natif
+        +str natif_protocole
+        +str ajout
+    }
+    class CatalogueError {
+        <<ValueError>>
+    }
+    class mod_netcross_core_lua_dissectors["netcross_core.lua_dissectors"] {
+        <<module>>
+        +parse_row(row) dict~str, Any~
+        +read_csv(texte) list~dict~str, Any~~
+        +load_csv(conn, texte) int
+        +csv_candidates() list~Path~
+        +find_csv() Path?
+        +ensure_catalogue(conn, csv_path) bool
+        +search(conn, terme, domaine, non_natif, limit) tuple~int, list~Dissecteur~~
+        +domains(conn) list~tuple~str, int~~
+        +count(conn) int
+        +search_document(conn, terme, domaine, non_natif, limit) dict~str, Any~
+        +domains_document(conn) dict~str, Any~
+    }
+
     %% ===== netcross_core.lua_doc =====
     class Parametre {
         <<dataclass, frozen, slots>>
@@ -1698,31 +1737,6 @@ classDiagram
         +print_quic_diagnostics(findings) None
     }
 
-    %% ===== netcross_core.redact =====
-    class AddressRedactor {
-        +redact(packets) None
-        +entries()
-        +mapping() dict~str, str~
-    }
-    class mod_netcross_core_redact["netcross_core.redact"] {
-        <<module>>
-        +redact_packets(packets) AddressRedactor
-        +redaction_map_csv(entries) str
-        +write_redaction_map_csv(redactor, path) None
-    }
-
-    %% ===== netcross_core.report_text =====
-    class mod_netcross_core_report_text["netcross_core.report_text"] {
-        <<module>>
-        +print_report(r)
-        +print_sequence_gaps(r)
-        +print_checksum_errors(r)
-        +print_annotations(annotations)
-        +load_capture_annotations(captures) dict~str, list~PacketAnnotation~~
-        +print_capture_annotations(by_point) None
-        +write_detail_csv(path, flows, points, names)
-    }
-
     %% ===== relations =====
     DiffFinding --> EvidenceLink : evidence
     CaptureGroup --> CaptureInventory : members
@@ -1766,6 +1780,31 @@ classDiagram
 ```mermaid
 classDiagram
     direction LR
+
+    %% ===== netcross_core.redact =====
+    class AddressRedactor {
+        +redact(packets) None
+        +entries()
+        +mapping() dict~str, str~
+    }
+    class mod_netcross_core_redact["netcross_core.redact"] {
+        <<module>>
+        +redact_packets(packets) AddressRedactor
+        +redaction_map_csv(entries) str
+        +write_redaction_map_csv(redactor, path) None
+    }
+
+    %% ===== netcross_core.report_text =====
+    class mod_netcross_core_report_text["netcross_core.report_text"] {
+        <<module>>
+        +print_report(r)
+        +print_sequence_gaps(r)
+        +print_checksum_errors(r)
+        +print_annotations(annotations)
+        +load_capture_annotations(captures) dict~str, list~PacketAnnotation~~
+        +print_capture_annotations(by_point) None
+        +write_detail_csv(path, flows, points, names)
+    }
 
     %% ===== netcross_core.stats =====
     class StatRow {
@@ -3430,6 +3469,7 @@ classDiagram
 | `netcross_report.history` | persiste un resume de chaque run (analyse ou diff) dans une base SQLite locale, pour observer une tendance dans le temps (score de sante, nombre de constats par severite) sur des runs successifs --… |
 | `netcross_report.json_report` | serialise un Report/DiffFinding en JSON structure, pour l'integration externe (dashboard, ticketing, pipeline CI qui veut parser un resultat sans dependre du format texte console). |
 | `netcross_report.live_html` | issue #274 : page de presentation du rapport temps reel (voir netcross_core.live_report). |
+| `netcross_report.lua_dissectors_text` | rendu texte du catalogue des dissecteurs Lua (issue #917), partagé par ``netcross-lua-doc --dissectors`` et la fenêtre « Documentation Lua » de la GUI. |
 | `netcross_report.lua_doc_text` | rendu texte de la documentation Lua Wireshark (``netcross-lua-doc``, issue #388), partage avec la fenetre « Documentation Lua » de la GUI (issue #873). |
 | `netcross_report.markdown_report` | generation d'un rapport au format Markdown (issue #761). |
 | `netcross_report.metric_charts` | API generique de graphiques : tout module d'analyse peut produire un graphique a partir d'une MetricSeries sans reimplementer son propre code matplotlib. |
@@ -3590,6 +3630,13 @@ classDiagram
     class mod_netcross_report_live_html["netcross_report.live_html"] {
         <<module>>
         +render_live_html(snapshot, journal, interval) str
+    }
+
+    %% ===== netcross_report.lua_dissectors_text =====
+    class mod_netcross_report_lua_dissectors_text["netcross_report.lua_dissectors_text"] {
+        <<module>>
+        +render_dissecteurs(doc) list~str~
+        +render_domaines(doc) list~str~
     }
 
     %% ===== netcross_report.lua_doc_text =====
@@ -4029,7 +4076,7 @@ classDiagram
         +netflow_summary(analysis_id, files, exporters, top, _auth) JSONResponse
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
-        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, history, history_label, wait, _auth) JSONResponse
+        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, history, history_label, wait, current_live, _auth) JSONResponse
         +get_comparison(comparison_id, _auth) JSONResponse
         +get_analysis_redact_map(analysis_id, _auth) PlainTextResponse
         +get_comparison_redact_map(comparison_id, _auth) PlainTextResponse
@@ -4095,18 +4142,37 @@ classDiagram
         +str name
         +str interface
         +str? bpf
+        +str? bpf_library
+    }
+    class RingBuffer {
+        <<BaseModel>>
+        +int files
+        +float seconds
+    }
+    class LiveReport {
+        <<BaseModel>>
+        +float interval
     }
     class LiveCaptureRequest {
         <<BaseModel>>
         +list~LivePoint~ points
         +float duration
         +list~str~? points_order
+        +RingBuffer? ring_buffer
+        +LiveReport? live_report
         +dict~str, Any~ options
     }
     class _LiveCaptures {
-        +start(req) dict~str, Any~
+        +check(req) None
+        +start(req, analyse, comparison_id, on_abort) dict~str, Any~
+        +ring_files(capture_id) dict~str, Any~
+        +ring_file(capture_id, point, filename) Path
+        +purge_ring(capture_id) dict~str, Any~
+        +report_path(capture_id, name, token) Path
+        +report_response(capture_id, name, token) Response
         +get(capture_id) dict~str, Any~
         +stop(capture_id) dict~str, Any~
+        +cancel(capture_id) dict~str, Any~
         +public(entry) dict~str, Any~
     }
     class mod_netcross_api_live_routes["netcross_api.live_routes"] {
@@ -4120,6 +4186,8 @@ classDiagram
     %% ===== netcross_api.lua_doc_routes =====
     class mod_netcross_api_lua_doc_routes["netcross_api.lua_doc_routes"] {
         <<module>>
+        +get_lua_dissectors(q, domain, non_native, limit) dict~str, Any~
+        +get_lua_dissector_domains() dict~str, Any~
         +get_lua_classes() dict~str, Any~
         +get_lua_class(name) dict~str, Any~
         +search_lua_doc(q, limit, full) dict~str, Any~
@@ -4227,6 +4295,8 @@ classDiagram
 
     %% ===== relations =====
     LiveCaptureRequest --> LivePoint : points
+    LiveCaptureRequest --> LiveReport : live_report
+    LiveCaptureRequest --> RingBuffer : ring_buffer
     netcross_api_models_SecurityReport --> SecurityFinding : findings
     MultiAnalysisSummary --> SegmentLoss : segments
 ```
@@ -4736,12 +4806,17 @@ classDiagram
         +classes_text() str
         +class_text(name) str
         +search(terme, limit, full) tuple~str, list~str~~
+        +domains() list~str~
+        +domains_text() str
+        +dissectors_text(terme, domaine, non_natif, limit) str
+        +dissectors_json(terme, domaine, non_natif, limit) str
         +json_text(terme, name, limit, full) str
     }
 
     %% ===== netcross_gtk4.lua_doc_window =====
     class LuaDocWindow {
         <<Gtk.Window>>
+        +dissectors_mode() bool
         +text() str
         +open_class(name) None
         +run_search() None

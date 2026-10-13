@@ -42,6 +42,7 @@ cp "$REPO_ROOT/src/netcross_lua_doc_cli.py" "$STAGE_DIR/"
 cp "$REPO_ROOT/src/netcross_annotations_cli.py" "$STAGE_DIR/"
 mkdir -p "$STAGE_DIR/data"
 cp "$REPO_ROOT/data/lua_api.json" "$STAGE_DIR/data/"
+cp "$REPO_ROOT/data/lua_dissectors.csv" "$STAGE_DIR/data/"
 # catalogues de traduction (issue #299), toutes les locales de lang/LINGUAS
 "$REPO_ROOT/scripts/i18n-update.sh" --compile "$STAGE_DIR/locale"
 cp "$SCRIPT_DIR/wrappers/netcross-wrapper" "$STAGE_DIR/"
