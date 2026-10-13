@@ -39,6 +39,7 @@ cp "$REPO_ROOT/src/cross_history_cli.py" "$STAGE_DIR/"
 cp "$REPO_ROOT/src/cross_capture_batch_cli.py" "$STAGE_DIR/"
 cp "$REPO_ROOT/src/netcross_ai_models_cli.py" "$STAGE_DIR/"
 cp "$REPO_ROOT/src/netcross_lua_doc_cli.py" "$STAGE_DIR/"
+cp "$REPO_ROOT/src/netcross_annotations_cli.py" "$STAGE_DIR/"
 mkdir -p "$STAGE_DIR/data"
 cp "$REPO_ROOT/data/lua_api.json" "$STAGE_DIR/data/"
 # catalogues de traduction (issue #299), toutes les locales de lang/LINGUAS

@@ -1687,6 +1687,42 @@ async def get_analysis_sequence(
     return JSONResponse({"sequence_views": [asdict(v) for v in views]})
 
 
+_COMM_MAP_PROTOCOL_QUERY = Query(
+    default=None, description="Seulement ces protocoles (répétable ou séparés par des virgules)"
+)
+
+
+@app.get(
+    "/analyses/{analysis_id}/comm-map",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 404: {"model": ErrorResponse}},
+)
+async def get_analysis_comm_map(
+    analysis_id: str,
+    protocol: list[str] | None = _COMM_MAP_PROTOCOL_QUERY,
+    top_n: int | None = Query(default=None, ge=1, description="N arêtes les plus volumineuses (défaut : toutes)"),
+    anomalies_only: bool = Query(default=False, description="Seulement les arêtes avec anomalies"),
+    format: str = Query(default="json", description="json ou dot (Graphviz, anomalies en rouge)"),
+    _auth: None = Depends(_verify_api_key),
+) -> Response:
+    """Cartographie des communications (équiv. ``--comm-map``, vue GUI « Cartographie », issue #909)."""
+    from netcross_report.comm_map import build_comm_map, comm_map_to_dict, comm_map_to_dot
+
+    if format not in ("json", "dot"):
+        logger.debug("get_analysis_comm_map: format {} -> 400", format)
+        raise HTTPException(status_code=400, detail="format : json ou dot")
+    entry = _completed_entry(analysis_id)
+    flows = entry.get("flows")
+    if flows is None:
+        logger.debug("get_analysis_comm_map: pas de flux -> 404")
+        raise HTTPException(status_code=404, detail="Aucun flux disponible pour la cartographie")
+    protos = [p.strip() for v in protocol or [] for p in v.split(",") if p.strip()] or None
+    cmap = build_comm_map(flows, protocols=protos, top_n=top_n, only_anomalies=anomalies_only)
+    if format == "dot":
+        return PlainTextResponse(comm_map_to_dot(cmap), media_type="text/vnd.graphviz")
+    return JSONResponse(comm_map_to_dict(cmap))
+
+
 @app.get(
     "/analyses/{analysis_id}/stats",
     tags=["analyses"],
@@ -2869,3 +2905,45 @@ _tools_routes.register(app, _verify_api_key, _save_upload, lambda: _MAX_FILES)
 from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
 
 _lua_doc_routes.register(app, _verify_api_key)
+
+# Issue #902 : capture en direct sur des interfaces du serveur, puis analyse
+import inspect as _inspect  # noqa: E402
+
+from netcross_api import live_routes as _live_routes  # noqa: E402
+
+_LIVE_OPTION_DEFAULTS = {"nat_tolerant": False, "nat_window_ms": 200.0, "tls": False, "quic": False, "redact": False}
+
+
+def _live_make_options(**kwargs: Any) -> ApiAnalysisOptions:
+    """Options d'analyse d'une capture en direct : celles de POST /captures/multi."""
+    return _options(**{**_LIVE_OPTION_DEFAULTS, **kwargs})
+
+
+live_captures = _live_routes.register(
+    app,
+    _verify_api_key,
+    {
+        "token": lambda: _API_TOKEN,
+        "max_files": lambda: _MAX_FILES,
+        "parse_points_order": lambda order, labels: _parse_points_order(order, labels),
+        "option_names": lambda: frozenset(_inspect.signature(_options).parameters) - _live_routes._EXCLUDED_OPTIONS,
+        "make_options": _live_make_options,
+        "create_pending": lambda metadata, options: store.create_pending(
+            {**metadata, "options": _options_metadata(options)}
+        ),
+        "run_job": lambda analysis_id, captures, order, multi, options: _run_job(
+            analysis_id, captures, order, multi, options
+        ),
+        "get_analysis": lambda analysis_id: store.get(analysis_id),
+    },
+)
+
+# Issue #910 : annotations d'une analyse (rangées dans ses métadonnées, par point)
+from netcross_api import annotations_routes as _annotations_routes  # noqa: E402
+
+_annotations_routes.register(app, _verify_api_key, _completed_entry, lambda: store)
+
+# Issue #906 : bibliothèque de filtres BPF (fichier fixé par NETCROSS_API_BPF_FILTERS)
+from netcross_api import bpf_routes as _bpf_routes  # noqa: E402
+
+_bpf_routes.register(app, _verify_api_key)

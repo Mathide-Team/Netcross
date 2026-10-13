@@ -153,6 +153,7 @@ from netcross_core.discovery import load_baseline_hosts
 from netcross_core.flow_timeline import build_flow_timelines
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
 from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
+from netcross_core.report_text import load_capture_annotations, print_capture_annotations
 from netcross_core.security import close_db, connect_cve_db
 from netcross_core.security import findings as security_findings
 from netcross_core.security.cve_seed import open_seed_db
@@ -171,6 +172,7 @@ from netcross_core.support import (
     write_support_map_csv,
     write_ticket,
 )
+from netcross_report.comm_map import build_comm_map, write_comm_map
 from netcross_report.security_report import build_security_report, print_security_report
 from pcap_parser.capture import split_by_interface
 from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
@@ -1311,6 +1313,24 @@ def _check_stats_args(args) -> None:
     logger.debug("_check_stats_args: fin")
 
 
+def comm_map_protocols(values) -> list[str] | None:
+    """Protocoles de --comm-map-protocol (repetable, virgules acceptees)."""
+    protos = [p.strip() for v in values or [] for p in v.split(",") if p.strip()]
+    return protos or None
+
+
+def _check_comm_map_args(args) -> None:
+    """Validations de l'issue #909."""
+    filtres = args.comm_map_protocol or args.comm_map_top_n is not None or args.comm_map_anomalies_only
+    if filtres and not args.comm_map:
+        print("--comm-map-protocol/--comm-map-top-n/--comm-map-anomalies-only necessitent --comm-map.", file=sys.stderr)
+        sys.exit(1)
+    if args.comm_map_top_n is not None and args.comm_map_top_n < 1:
+        print("--comm-map-top-n : 1 minimum.", file=sys.stderr)
+        sys.exit(1)
+    logger.debug("_check_comm_map_args: fin")
+
+
 def _check_live_report_args(args) -> None:
     """Validations de l'issue #274."""
     logger.debug("_check_live_report_args: args={}", summarize(args, "args"))
@@ -1452,6 +1472,11 @@ def main():
         from netcross_lua_doc_cli import main as lua_doc_main
 
         sys.exit(lua_doc_main(sys.argv[2:]))
+    # `netcross annotations list|add|remove CAPTURE` : etiquettes sur trames (issue #910)
+    if sys.argv[1:2] == ["annotations"]:
+        from netcross_annotations_cli import main as annotations_main
+
+        sys.exit(annotations_main(sys.argv[2:]))
     ap = argparse.ArgumentParser(
         description="Analyse croisee de captures Wireshark multi-points",
         epilog="Documentation de l'API Lua Wireshark : netcross lua-doc --help (ou netcross-lua-doc).",
@@ -1647,6 +1672,30 @@ def main():
     )
     ap.add_argument(
         "--stats-format", choices=STATS_EXPORT_FORMATS, help="Statistiques : csv ou json (defaut : extension)"
+    )
+    # Issue #909 : cartographie des communications (vue GUI « Cartographie »)
+    ap.add_argument(
+        "--comm-map",
+        metavar="FICHIER",
+        help="Cartographie des communications (qui parle a qui) : DOT Graphviz si FICHIER finit par .dot/.gv "
+        "(anomalies en rouge ; SVG : dot -Tsvg), JSON sinon",
+    )
+    ap.add_argument(
+        "--comm-map-protocol",
+        action="append",
+        metavar="PROTO[,PROTO...]",
+        help="Cartographie : seulement ces protocoles (repetable ou separes par des virgules)",
+    )
+    ap.add_argument(
+        "--comm-map-top-n",
+        type=int,
+        metavar="N",
+        help="Cartographie : N aretes les plus volumineuses (defaut : toutes)",
+    )
+    ap.add_argument(
+        "--comm-map-anomalies-only",
+        action="store_true",
+        help="Cartographie : seulement les aretes avec retransmissions ou signaux d'expertise",
     )
     ap.add_argument(
         "--names",
@@ -2782,6 +2831,7 @@ def main():
     extract_kinds = _check_extraction_args(args)
     _check_live_report_args(args)
     _check_stats_args(args)
+    _check_comm_map_args(args)
     if args.redact and (args.tls or args.quic or args.client_group):
         print(
             "--redact n'est pas disponible avec --tls/--quic/--client-group : ces "
@@ -3038,6 +3088,9 @@ def main():
         r.truncated = True
         r.truncation_note = truncation_note
     print_report(r)
+    # Issue #910 : annotations des sidecars (GUI ou `netcross annotations`)
+    if captures:
+        print_capture_annotations(load_capture_annotations(captures))
     if r.truncated:
         print(f"\nATTENTION : {r.truncation_note}")
 
@@ -3233,6 +3286,18 @@ def main():
         print(
             f"\nStatistiques ({fmt.upper()}, par {args.stats_group_by}, tri {args.stats_sort}) "
             f"ecrites dans {args.stats} : {len(rows)} ligne(s)"
+        )
+    if args.comm_map:
+        cmap = build_comm_map(
+            flows,
+            protocols=comm_map_protocols(args.comm_map_protocol),
+            top_n=args.comm_map_top_n,
+            only_anomalies=args.comm_map_anomalies_only,
+        )
+        fmt = write_comm_map(args.comm_map, cmap)
+        print(
+            f"\nCartographie ({fmt.upper()}) ecrite dans {args.comm_map} : "
+            f"{len(cmap.edges)} arete(s) sur {cmap.total_edges}, {len(cmap.nodes)} hote(s)"
         )
 
     # Objets de contrat de la Session 0 (FEATURES.md section 13.3) --
