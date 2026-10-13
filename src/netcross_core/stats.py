@@ -405,12 +405,88 @@ def export_json(rows: list[StatRow]) -> list[dict]:
     return result
 
 
+# -- Point d'entree commun CLI / API (issue #912) ----------------------------
+
+EXPORT_FORMATS: tuple[str, ...] = ("csv", "json")
+
+
+def build_events_by_segment(findings) -> dict[str, list]:
+    """Index evenement -> segment depuis les findings (attribut ``segment``
+    ou ``pair`` ; ``"?"`` sans information). Deplace de
+    ``netcross_gtk4.stats_view`` (issue #912) pour que la CLI et l'API
+    comptent les evenements comme la GUI."""
+    if not findings:
+        logger.debug("build_events_by_segment: aucun finding")
+        return {}
+    index: dict[str, list] = {}
+    for f in findings:
+        seg = getattr(f, "segment", None) or getattr(f, "pair", None)
+        index.setdefault(str(seg) if seg is not None else "?", []).append(f)
+    logger.debug("build_events_by_segment: {} finding(s) -> {} segment(s)", len(findings), len(index))
+    return index
+
+
+def explore_stats(
+    flows,
+    report: Report,
+    findings=None,
+    *,
+    group_by: str = "endpoint",
+    sort_by: str = "bytes",
+    top_n: int | None = 10,
+) -> list[StatRow]:
+    """Exploration statistique de la GUI pour la CLI (``--stats``) et l'API
+    (``GET /analyses/{id}/stats``), issue #912.
+
+    ``flows`` : dict de ``correlate()`` ou liste de ``Flow`` deja construite.
+    ``top_n`` : None ou <= 0 = toutes les lignes. ValueError si ``group_by``
+    ou ``sort_by`` sont inconnus."""
+    if group_by not in GROUP_BY:
+        raise ValueError(f"regroupement inconnu : {group_by} (attendu : {', '.join(GROUP_BY)})")
+    if sort_by not in SORT_BY:
+        raise ValueError(f"tri inconnu : {sort_by} (attendu : {', '.join(SORT_BY)})")
+    if isinstance(flows, dict):
+        from netcross_core.correlate import build_flows
+
+        flows = build_flows(flows)
+    flows = list(flows or [])
+    if not flows or report is None:
+        logger.debug("explore_stats: aucun flux ou rapport -> []")
+        return []
+    query = StatsQuery(group_by=group_by, sort_by=sort_by, top_n=top_n if top_n and top_n > 0 else None)
+    return compute_stats(flows, report, [], query, build_events_by_segment(findings))
+
+
+def stats_format_for(path: str, fmt: str | None = None) -> str:
+    """Format d'export : ``fmt`` s'il est donne, sinon d'apres l'extension
+    (``.csv`` -> csv, tout le reste -> json)."""
+    if fmt is not None:
+        if fmt not in EXPORT_FORMATS:
+            raise ValueError(f"format inconnu : {fmt} (attendu : csv ou json)")
+        return fmt
+    return "csv" if str(path).lower().endswith(".csv") else "json"
+
+
+def render_stats(rows: list[StatRow], fmt: str) -> str:
+    """Texte de l'export ``csv`` ou ``json`` (memes colonnes que la GUI)."""
+    import json
+
+    if fmt == "csv":
+        return export_csv(rows)
+    return json.dumps(export_json(rows), ensure_ascii=False, indent=2)
+
+
 __all__ = [
+    "EXPORT_FORMATS",
     "GROUP_BY",
     "SORT_BY",
     "StatRow",
     "StatsQuery",
+    "build_events_by_segment",
     "compute_stats",
+    "explore_stats",
     "export_csv",
     "export_json",
+    "render_stats",
+    "stats_format_for",
 ]

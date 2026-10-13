@@ -19,6 +19,7 @@ from netcross_core.i18n import N_, _
 from netcross_core.logging_config import get_logger
 from netcross_core.models import Report
 from netcross_core.stats import GROUP_BY, SORT_BY, StatRow, StatsQuery, compute_stats
+from netcross_core.stats import build_events_by_segment as _core_events_by_segment
 
 logger = get_logger(__name__)
 
@@ -215,28 +216,10 @@ def build_events_by_segment(
     findings: list[Any] | None,
     flows: list[Flow] | None,
 ) -> dict[str, list[Any]]:
-    """Construit l'index evenement -> segment depuis les findings.
-
-    Les findings ont un attribut `segment` (paire de points) ou `point`.
-    On mappe chaque finding vers les segments des flux qui partagent ce
-    point. En l'absence d'information de segment, on regroupe sous "?".
-    """
-    if not findings:
-        logger.debug("build_events_by_segment: aucun finding")
-        return {}
-    index: dict[str, list[Any]] = {}
-    for f in findings:
-        seg = getattr(f, "segment", None) or getattr(f, "pair", None)
-        if seg is None:
-            seg = "?"
-        index.setdefault(str(seg), []).append(f)
-    logger.debug(
-        "build_events_by_segment: {} finding(s) -> {} segment(s), {} sans segment",
-        len(findings),
-        len(index),
-        len(index.get("?", [])),
-    )
-    return index
+    """Index evenement -> segment : voir netcross_core.stats (issue #912,
+    meme calcul pour la GUI, la CLI et l'API). ``flows`` est garde pour
+    compatibilite des appelants."""
+    return _core_events_by_segment(findings)
 
 
 __all__ = [

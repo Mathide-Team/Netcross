@@ -81,6 +81,14 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
 | `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
 | `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
+| `GET` | `/analyses/{id}/stats` | Exploration statistique : `group_by` (`endpoint`, `protocol`, `segment`, `flow`), `sort` (`packets`, `bytes`, `duration_ms`, `throughput_bps`, `latency_ms`, `events`), `top_n` (0 = toutes), `format=json\|csv` ; `flow_keys` par ligne pour le drill-down ; équiv. `--stats` (issue #912) |
+| `GET` | `/analyses/{id}/comm-map` | Cartographie des communications (qui parle à qui) : `protocol` (répétable), `top_n`, `anomalies_only`, `format=json\|dot` (DOT Graphviz, anomalies en rouge) ; équiv. `--comm-map` (issue #909) |
+| `POST` | `/live-captures` | Capture en direct (JSON `points` : `name`, `interface`, `bpf` ; `duration` ; `points_order` ; `options` de `/captures/multi`) puis analyse ; 202. 403 si `NETCROSS_API_LIVE` n'est pas à 1, interface hors de `NETCROSS_API_LIVE_INTERFACES` ou `NETCROSS_API_TOKEN` absent ; 409 si une capture est déjà en cours (issue #902) |
+| `GET` | `/live-captures/{id}` | État (`capturing`, `analysing`, `completed`, `failed`), `bytes_captured` par point, `elapsed_seconds`, `packet_count`, `analysis_id` |
+| `POST` | `/live-captures/{id}/stop` | Arrêt anticipé ; l'analyse porte sur ce qui a été capturé |
+| `GET` | `/analyses/{id}/annotations` | Annotations par point (`point`, `tag`) : même format que le sidecar `<capture>.annotations.json` de la GUI (issue #910) |
+| `POST` | `/analyses/{id}/annotations` | Ajoute une annotation (JSON `point`, `frame_number`, `tag`, `comment`, `color`) ; même trame et étiquette = mise à jour ; 404 point inconnu, 422 saisie invalide |
+| `DELETE` | `/analyses/{id}/annotations?point=&frame_number=&tag=` | Supprime une annotation ; 404 si absente |
 | `GET` | `/bpf-filters` | Bibliothèque de filtres BPF (`--bpf-library`, issue #906) : catalogue prédéfini (`predefined: true`) puis filtres enregistrés |
 | `PUT` | `/bpf-filters/{nom}` | Crée ou remplace un filtre (JSON `expression`, `description`) ; 409 pour un nom du catalogue, 422 si l'expression est vide |
 | `DELETE` | `/bpf-filters/{nom}` | Supprime un filtre enregistré ; 404 s'il est inconnu, 409 pour un nom du catalogue |

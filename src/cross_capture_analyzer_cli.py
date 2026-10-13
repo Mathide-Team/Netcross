@@ -153,9 +153,14 @@ from netcross_core.discovery import load_baseline_hosts
 from netcross_core.flow_timeline import build_flow_timelines
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
 from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
+from netcross_core.report_text import load_capture_annotations, print_capture_annotations
 from netcross_core.security import close_db, connect_cve_db
 from netcross_core.security import findings as security_findings
 from netcross_core.security.cve_seed import open_seed_db
+from netcross_core.stats import EXPORT_FORMATS as STATS_EXPORT_FORMATS
+from netcross_core.stats import GROUP_BY as STATS_GROUP_BY
+from netcross_core.stats import SORT_BY as STATS_SORT_BY
+from netcross_core.stats import explore_stats, render_stats, stats_format_for
 from netcross_core.support import (
     SCOPES as SUPPORT_SCOPES,
 )
@@ -167,6 +172,7 @@ from netcross_core.support import (
     write_support_map_csv,
     write_ticket,
 )
+from netcross_report.comm_map import build_comm_map, write_comm_map
 from netcross_report.security_report import build_security_report, print_security_report
 from pcap_parser.capture import split_by_interface
 from pcap_parser.ek_source import TsharkError, TsharkNotFoundError
@@ -1298,6 +1304,41 @@ def _check_dashboard_args(args) -> None:
     logger.debug("_check_dashboard_args: fin")
 
 
+def _check_stats_args(args) -> None:
+    """Validations de l'issue #912."""
+    modifies = (
+        args.stats_group_by != "endpoint"
+        or args.stats_sort != "bytes"
+        or args.stats_top_n != 10
+        or args.stats_format is not None
+    )
+    if modifies and not args.stats:
+        print("--stats-group-by/--stats-sort/--stats-top-n/--stats-format necessitent --stats.", file=sys.stderr)
+        sys.exit(1)
+    if args.stats_top_n < 0:
+        print("--stats-top-n : 0 (toutes) ou plus.", file=sys.stderr)
+        sys.exit(1)
+    logger.debug("_check_stats_args: fin")
+
+
+def comm_map_protocols(values) -> list[str] | None:
+    """Protocoles de --comm-map-protocol (repetable, virgules acceptees)."""
+    protos = [p.strip() for v in values or [] for p in v.split(",") if p.strip()]
+    return protos or None
+
+
+def _check_comm_map_args(args) -> None:
+    """Validations de l'issue #909."""
+    filtres = args.comm_map_protocol or args.comm_map_top_n is not None or args.comm_map_anomalies_only
+    if filtres and not args.comm_map:
+        print("--comm-map-protocol/--comm-map-top-n/--comm-map-anomalies-only necessitent --comm-map.", file=sys.stderr)
+        sys.exit(1)
+    if args.comm_map_top_n is not None and args.comm_map_top_n < 1:
+        print("--comm-map-top-n : 1 minimum.", file=sys.stderr)
+        sys.exit(1)
+    logger.debug("_check_comm_map_args: fin")
+
+
 def _check_live_report_args(args) -> None:
     """Validations de l'issue #274."""
     logger.debug("_check_live_report_args: args={}", summarize(args, "args"))
@@ -1439,6 +1480,11 @@ def main():
         from netcross_lua_doc_cli import main as lua_doc_main
 
         sys.exit(lua_doc_main(sys.argv[2:]))
+    # `netcross annotations list|add|remove CAPTURE` : etiquettes sur trames (issue #910)
+    if sys.argv[1:2] == ["annotations"]:
+        from netcross_annotations_cli import main as annotations_main
+
+        sys.exit(annotations_main(sys.argv[2:]))
     ap = argparse.ArgumentParser(
         description="Analyse croisee de captures Wireshark multi-points",
         epilog="Documentation de l'API Lua Wireshark : netcross lua-doc --help (ou netcross-lua-doc).",
@@ -1618,6 +1664,56 @@ def main():
     ap.add_argument("--dashboard-segment", metavar="POINT", help="Dashboard : filtre sur un point de capture")
     ap.add_argument("--dashboard-host", metavar="IP", help="Dashboard : filtre sur une adresse d'endpoint")
     ap.add_argument("--dashboard-protocol", metavar="PROTO", help="Dashboard : filtre sur un protocole (ex. TCP)")
+    # Issue #912 : exploration statistique (vue GUI « Exploration statistique »)
+    ap.add_argument(
+        "--stats",
+        metavar="FICHIER",
+        help="Exploration statistique (Top-N, tri, regroupement) : CSV si FICHIER finit par .csv, JSON sinon "
+        "(--stats-format pour forcer) ; flow_keys de chaque ligne = drill-down vers les flux",
+    )
+    ap.add_argument(
+        "--stats-group-by",
+        choices=STATS_GROUP_BY,
+        default="endpoint",
+        help="Statistiques : regroupement (defaut endpoint)",
+    )
+    ap.add_argument(
+        "--stats-sort", choices=STATS_SORT_BY, default="bytes", help="Statistiques : tri decroissant (defaut bytes)"
+    )
+    ap.add_argument(
+        "--stats-top-n",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Statistiques : N premieres lignes (defaut 10, 0 = toutes)",
+    )
+    ap.add_argument(
+        "--stats-format", choices=STATS_EXPORT_FORMATS, help="Statistiques : csv ou json (defaut : extension)"
+    )
+    # Issue #909 : cartographie des communications (vue GUI « Cartographie »)
+    ap.add_argument(
+        "--comm-map",
+        metavar="FICHIER",
+        help="Cartographie des communications (qui parle a qui) : DOT Graphviz si FICHIER finit par .dot/.gv "
+        "(anomalies en rouge ; SVG : dot -Tsvg), JSON sinon",
+    )
+    ap.add_argument(
+        "--comm-map-protocol",
+        action="append",
+        metavar="PROTO[,PROTO...]",
+        help="Cartographie : seulement ces protocoles (repetable ou separes par des virgules)",
+    )
+    ap.add_argument(
+        "--comm-map-top-n",
+        type=int,
+        metavar="N",
+        help="Cartographie : N aretes les plus volumineuses (defaut : toutes)",
+    )
+    ap.add_argument(
+        "--comm-map-anomalies-only",
+        action="store_true",
+        help="Cartographie : seulement les aretes avec retransmissions ou signaux d'expertise",
+    )
     ap.add_argument(
         "--names",
         metavar="PATH",
@@ -2752,6 +2848,8 @@ def main():
     extract_kinds = _check_extraction_args(args)
     _check_live_report_args(args)
     _check_dashboard_args(args)
+    _check_stats_args(args)
+    _check_comm_map_args(args)
     if args.redact and (args.tls or args.quic or args.client_group):
         print(
             "--redact n'est pas disponible avec --tls/--quic/--client-group : ces "
@@ -3008,6 +3106,9 @@ def main():
         r.truncated = True
         r.truncation_note = truncation_note
     print_report(r)
+    # Issue #910 : annotations des sidecars (GUI ou `netcross annotations`)
+    if captures:
+        print_capture_annotations(load_capture_annotations(captures))
     if r.truncated:
         print(f"\nATTENTION : {r.truncation_note}")
 
@@ -3212,6 +3313,36 @@ def main():
         print(
             f"\nDashboard ({doc['selection_summary']}) ecrit dans {args.dashboard} : "
             f"{len(doc['flows'])} flux, {len(doc['events'])} evenement(s)"
+        )
+    if args.stats:
+        from netcross_report import build_findings as _build_findings
+
+        rows = explore_stats(
+            flows,
+            r,
+            findings if findings is not None else _build_findings(r),
+            group_by=args.stats_group_by,
+            sort_by=args.stats_sort,
+            top_n=args.stats_top_n,
+        )
+        fmt = stats_format_for(args.stats, args.stats_format)
+        with open(args.stats, "w", encoding="utf-8", newline="") as f:
+            f.write(render_stats(rows, fmt))
+        print(
+            f"\nStatistiques ({fmt.upper()}, par {args.stats_group_by}, tri {args.stats_sort}) "
+            f"ecrites dans {args.stats} : {len(rows)} ligne(s)"
+        )
+    if args.comm_map:
+        cmap = build_comm_map(
+            flows,
+            protocols=comm_map_protocols(args.comm_map_protocol),
+            top_n=args.comm_map_top_n,
+            only_anomalies=args.comm_map_anomalies_only,
+        )
+        fmt = write_comm_map(args.comm_map, cmap)
+        print(
+            f"\nCartographie ({fmt.upper()}) ecrite dans {args.comm_map} : "
+            f"{len(cmap.edges)} arete(s) sur {cmap.total_edges}, {len(cmap.nodes)} hote(s)"
         )
 
     # Objets de contrat de la Session 0 (FEATURES.md section 13.3) --

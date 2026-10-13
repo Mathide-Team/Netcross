@@ -14,9 +14,9 @@ ici fait donc échouer la CI.
 
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
-| CLI | `cross_capture_analyzer_cli.py` (114 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
+| CLI | `cross_capture_analyzer_cli.py` (123 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 43 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 45 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 53 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -91,6 +91,8 @@ actif, non réglable.
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
 | Diagramme de séquence | oui (« Diagramme de sequence » de la configuration, dans l'export PDF ; issue #674) | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
 | Dashboard analytique (sélection croisée segments, flux, hôtes, protocoles, événements) | oui (onglet « Dashboard » : clic sur une vue = filtre des autres) | `--dashboard FICHIER` (JSON des six vues), filtres `--dashboard-segment`, `--dashboard-host`, `--dashboard-protocol` (issue #911) | `GET /analyses/{analysis_id}/dashboard` : `segment`, `host`, `protocol` (issue #911) |
+| Exploration statistique (Top-N, tri, regroupement, drill-down, export CSV/JSON) | oui (vue « Exploration statistique » : regroupement, tri, Top-N, sélection d'une ligne, « Exporter CSV/JSON ») | `--stats FICHIER` (CSV si `.csv`, JSON sinon), `--stats-group-by`, `--stats-sort`, `--stats-top-n`, `--stats-format` ; `flow_keys` de chaque ligne pour le drill-down (issue #912) | `GET /analyses/{analysis_id}/stats` : `group_by`, `sort`, `top_n`, `format` (`json` ou `csv` ; issue #912) |
+| Cartographie des communications (qui parle à qui, anomalies en rouge) | oui (vue « Cartographie » : filtres protocole, Top-N, « Anomalies seulement ») | `--comm-map FICHIER` (DOT Graphviz si `.dot`/`.gv`, JSON sinon), `--comm-map-protocol`, `--comm-map-top-n`, `--comm-map-anomalies-only` (issue #909) | `GET /analyses/{analysis_id}/comm-map` : `protocol`, `top_n`, `anomalies_only`, `format` (`json` ou `dot` ; issue #909) |
 | Export SIEM (CEF, LEEF, STIX) | oui (panneau « SIEM, ticket de support, historique » de la page Résultats, après un rapport de sécurité, même fichier ; issue #674) | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
 | Historique SQLite | oui (« Historique... » et « Etiquette » de la configuration, derniers runs dans le panneau « SIEM, ticket de support, historique » ; issue #674) | `--history-db`, `--history-label`, `--history-show` ; `netcross-history` | `history`, `history_label` de `POST /captures` et `POST /captures/multi` (base fixée par `NETCROSS_HISTORY_DB`, `history_id` ou `history_error` dans le résumé ; issue #890), consultation `GET /history` ; persistance propre des analyses (`NETCROSS_DB_PATH`), `GET /analyses` |
 | Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic », toutes portées ; issue #674) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind`, `scopes`, `marker`, `include_map` (issue #877) |
@@ -119,9 +121,9 @@ est conservée telle quelle pour les clients existants.
 
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
-| Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | non |
-| Durée maximale | oui | `--live-duration` | non |
-| Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | non |
+| Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | `POST /live-captures` : `points` (`name`, `interface`, `bpf`), `points_order`, `options` (mêmes options d'analyse que `POST /captures/multi`) ; état par `GET /live-captures/{capture_id}`, puis résultat sous `/analyses/{analysis_id}`. Désactivé par défaut (`NETCROSS_API_LIVE=1`), interfaces de `NETCROSS_API_LIVE_INTERFACES` seulement, `NETCROSS_API_TOKEN` exigé (issue #902) |
+| Durée maximale | oui | `--live-duration` | `duration`, bornée par `NETCROSS_API_LIVE_MAX_DURATION` (300 s par défaut ; issue #902) |
+| Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | `POST /live-captures/{capture_id}/stop` (issue #902) |
 | Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
 | Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | `GET /bpf-filters`, `PUT /bpf-filters/{nom}`, `DELETE /bpf-filters/{nom}` (même fichier, `$NETCROSS_API_BPF_FILTERS` côté serveur, issue #906) ; champ `bpf_library` par point avec #902 |
 | Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
@@ -186,18 +188,19 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 | Historique des analyses | oui (fenêtre « Historique des runs », type « Analyses (analyse) » ; enregistrement par « Historique... » / « Etiquette », issues #674, #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history?run_type=…` ; enregistrement par `history`/`history_label` de `POST /captures` (issue #890) ; `GET /analyses` liste les analyses du serveur |
 | Mode debug | `--debug` au lancement | `--debug` (toutes les CLI) | `NETCROSS_DEBUG=1` |
 
+## Annotations et signets
+
+| Fonction | GUI | CLI | API |
+|---|---|---|---|
+| Étiquettes et signets sur des trames | oui (panneau « Annotations / signets » : point, trame, étiquette, commentaire, menu contextuel, filtre par étiquette ; issue #363) | `netcross annotations list\|add\|remove CAPTURE` (`--frame`, `--tag`, `--comment`, `--color`, `--json`) : même sidecar `<capture>.annotations.json` que la GUI ; section « Annotations » du rapport texte si un sidecar existe (issue #910) | `GET`, `POST`, `DELETE /analyses/{analysis_id}/annotations` (`point`, `frame_number`, `tag`, `comment`, `color`) : rangées dans l'analyse, par point, au format du sidecar (issue #910) |
+
 ## Vues propres à la GUI (sans équivalent CLI ni API)
 
-| Vue | Rôle |
-|---|---|
-| Cartographie des communications (filtres protocole, Top-N, « Anomalies seulement ») | Qui parle à qui, anomalies en rouge |
-| Annotations / signets | Étiquettes sur des trames, enregistrées à côté de la capture |
-| Exploration statistique (export CSV et JSON) | Top-N, tri, regroupement, drill-down |
-
-Ce sont des vues d'exploration interactives. Leur calcul vit déjà hors de
-la GUI (`netcross_report/comm_map.py`, `netcross_gtk4/stats_view.py`,
-`netcross_core/dashboard.py`), ce qui permettrait de les exposer
-ailleurs : c'est l'objet de #909 à #912 (dashboard : #911, livrée) (règle sans exemption, #330).
+Il n'en reste aucune. Les quatre vues d'exploration (cartographie,
+annotations, dashboard, exploration statistique) ont leur CLI et leur API
+depuis #909 à #912, voir les tableaux plus haut. Leur calcul vit hors de la
+GUI : `netcross_report/comm_map.py`, `netcross_core/annotations.py`,
+`netcross_core/dashboard.py`, `netcross_core/stats.py`.
 
 ## Inventaire des cases de la GUI
 
@@ -297,6 +300,14 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
 | `POST /tools/replay` | Rejeu sur une interface autorisée (issue #871) |
 | `GET /analyses/{analysis_id}/dashboard` | Agrégats croisés du dashboard, filtres `segment`, `host`, `protocol` (issue #911) |
+| `GET /analyses/{analysis_id}/stats` | Exploration statistique, JSON ou CSV (issue #912) |
+| `GET /analyses/{analysis_id}/comm-map` | Cartographie des communications, JSON ou DOT (issue #909) |
+| `POST /live-captures` | Capture en direct sur des interfaces autorisées puis analyse (issue #902) |
+| `GET /live-captures/{capture_id}` | État d'une capture en direct : octets par point, durée, `analysis_id` (issue #902) |
+| `POST /live-captures/{capture_id}/stop` | Arrêt anticipé d'une capture en direct (issue #902) |
+| `GET /analyses/{analysis_id}/annotations` | Annotations de l'analyse par point, filtres `point`, `tag` (issue #910) |
+| `POST /analyses/{analysis_id}/annotations` | Ajoute ou met à jour une annotation (issue #910) |
+| `DELETE /analyses/{analysis_id}/annotations` | Supprime une annotation, `point`, `frame_number`, `tag` (issue #910) |
 | `GET /bpf-filters` | Bibliothèque de filtres BPF : catalogue puis filtres enregistrés (issue #906) |
 | `PUT /bpf-filters/{nom}` | Crée ou remplace un filtre BPF enregistré, `expression`, `description` (issue #906) |
 | `DELETE /bpf-filters/{nom}` | Supprime un filtre BPF enregistré (issue #906) |
@@ -328,9 +339,8 @@ Classés par impact pour un utilisateur :
    batch) relève de l'automatisation et reste en CLI **par choix**.
    Révisé le 11/10/2026 (#330) : plus aucune exemption, toute fonction
    doit exister en CLI, GTK4 et API. Restent : l'API de la capture en
-   direct (#902 à #908) et la CLI et l'API des vues propres à la GUI
-   (#909 cartographie, #910 annotations, #911 dashboard livrée, #912
-   exploration statistique).
+   direct (#903 à #908 ; #902 livrée). Les vues propres à la GUI ont
+   désormais leur CLI et leur API (#909 à #912, livrées).
 
 Correctifs apportés à l'audit du 24/09 (commentaire de #330) :
 

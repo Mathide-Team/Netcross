@@ -113,6 +113,56 @@ pas), `--dashboard-host` une adresse d'endpoint. Les événements sans
 protocole ni segment restent affichés quel que soit le filtre, comme dans la
 GUI. Par l'API : `GET /analyses/{id}/dashboard?segment=&host=&protocol=`.
 
+## L'exploration statistique
+
+La vue « Exploration statistique » de la GUI (Top-N, tri, regroupement)
+s'exporte aussi en ligne de commande, en CSV ou en JSON :
+
+```bash
+netcross --capture LAN=lan.pcapng --capture WAN=wan.pcapng --stats stats.csv \
+  --stats-group-by protocol --stats-sort throughput_bps --stats-top-n 20
+netcross --capture LAN=lan.pcapng --stats stats.json      # 10 hôtes les plus volumineux
+```
+
+Regroupements : `endpoint`, `protocol`, `segment`, `flow`. Tris (décroissants) :
+`packets`, `bytes`, `duration_ms`, `throughput_bps`, `latency_ms`, `events`.
+`--stats-top-n 0` garde toutes les lignes. La colonne `flow_keys` liste les
+flux de chaque ligne, pour descendre au détail comme en cliquant une ligne
+dans la GUI. Par l'API : `GET /analyses/{id}/stats` avec les mêmes paramètres.
+
+## La cartographie des communications
+
+La vue « Cartographie » de la GUI (qui parle à qui, anomalies en rouge)
+s'exporte aussi en ligne de commande :
+
+```bash
+netcross --capture LAN=lan.pcapng --capture WAN=wan.pcapng --comm-map carte.dot --comm-map-anomalies-only
+dot -Tsvg carte.dot -o carte.svg        # rendu SVG avec Graphviz
+netcross --capture LAN=lan.pcapng --comm-map carte.json --comm-map-protocol TCP,DNS --comm-map-top-n 20
+```
+
+Un nom en `.dot` ou `.gv` donne un graphe Graphviz, tout autre nom un JSON
+(nœuds, arêtes orientées, volumes, protocoles, anomalies). Les arêtes sont
+orientées : un échange TCP en donne deux, ce qui montre un sens sans réponse.
+Par l'API : `GET /analyses/{id}/comm-map` avec les mêmes filtres.
+
+## Les annotations
+
+Les étiquettes et signets posés sur des trames (panneau « Annotations /
+signets » de la GUI, ou `netcross annotations`) sont rangés à côté de la
+capture, dans `<capture>.annotations.json`. Si ce fichier existe, le rapport
+texte de la CLI se termine par une section « Annotations », un bloc par point.
+
+```bash
+netcross annotations add point-A.pcapng --frame 42 --tag suspect --comment "RST inattendu"
+netcross annotations list point-A.pcapng          # ou --json
+netcross annotations remove point-A.pcapng --frame 42 --tag suspect
+```
+
+Reposer la même trame avec la même étiquette met à jour le commentaire.
+Par l'API, les annotations d'une analyse se gèrent avec
+`GET`, `POST` et `DELETE /analyses/{id}/annotations` (voir [l'API](api.md)).
+
 ## Les autres formats
 
 - **PDF** (`--pdf-report`) : destiné à être transmis. Il s'ouvre sur « Par
