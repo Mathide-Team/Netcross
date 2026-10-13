@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-200 modules · 288 classes · 706 fonctions publiques de module.
+200 modules · 289 classes · 706 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -4097,15 +4097,24 @@ classDiagram
         +str? bpf
         +str? bpf_library
     }
+    class RingBuffer {
+        <<BaseModel>>
+        +int files
+        +float seconds
+    }
     class LiveCaptureRequest {
         <<BaseModel>>
         +list~LivePoint~ points
         +float duration
         +list~str~? points_order
+        +RingBuffer? ring_buffer
         +dict~str, Any~ options
     }
     class _LiveCaptures {
         +start(req) dict~str, Any~
+        +ring_files(capture_id) dict~str, Any~
+        +ring_file(capture_id, point, filename) Path
+        +purge_ring(capture_id) dict~str, Any~
         +get(capture_id) dict~str, Any~
         +stop(capture_id) dict~str, Any~
         +cancel(capture_id) dict~str, Any~
@@ -4229,6 +4238,7 @@ classDiagram
 
     %% ===== relations =====
     LiveCaptureRequest --> LivePoint : points
+    LiveCaptureRequest --> RingBuffer : ring_buffer
     netcross_api_models_SecurityReport --> SecurityFinding : findings
     MultiAnalysisSummary --> SegmentLoss : segments
 ```
