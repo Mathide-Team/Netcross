@@ -25,6 +25,7 @@ cp -r "$REPO_ROOT/src" "$BUILD_DIR/src"
 # API Lua Wireshark pour netcross-lua-doc (issues #386/#388)
 mkdir -p "$BUILD_DIR/data"
 cp "$REPO_ROOT/data/lua_api.json" "$BUILD_DIR/data/"
+cp "$REPO_ROOT/data/lua_dissectors.csv" "$BUILD_DIR/data/"
 cp -r "$SCRIPT_DIR/debian" "$BUILD_DIR/debian"
 cp -r "$SCRIPT_DIR/wrappers" "$BUILD_DIR/wrappers"
 

@@ -15,8 +15,8 @@ ici fait donc échouer la CI.
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (123 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 43 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 60 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| GUI | `netcross_gtk4` : 3 pages, 44 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
+| API | 62 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -184,6 +184,7 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 |---|---|---|---|
 | Dossier entier de captures | oui (fenêtre « Analyse d'un dossier » : dossier, sous-dossiers, regroupement, fenêtre, recouvrement, adresses communes, tâches, reprise, sécurité, sortie ; avancement ligne à ligne ; issue #872) | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | `POST /batches` (`files`, captures ou archive ZIP ; `no_group`, `group_window`, `min_overlap`, `min_common_ips`, `jobs`, `security_report`), `GET /batches/{batch_id}` (avancement, groupes, échecs), `/index`, `/reports/{name}` ; `--skip-existing` sans objet (issue #872) |
 | Documentation de l'API Lua de Wireshark | oui (fenêtre « Documentation Lua » de la barre de titre : recherche, nombre de résultats, liste des classes, détail ; issue #873) | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | `GET /lua-doc/classes`, `GET /lua-doc/classes/{name}`, `GET /lua-doc/search` (`q`, `limit`, `full`) (issue #873) |
+| Catalogue des dissecteurs Wireshark en Lua (recensement wireshark-lua, `data/lua_dissectors.csv`) | oui (fenêtre « Documentation Lua », liste « Dissecteurs Lua » : recherche, domaine, « Sans dissecteur natif », nombre de résultats, liste des domaines à gauche, JSON ; issue #917) | `netcross-lua-doc` `--dissectors` (avec un TERME ; `--domain`, `--non-native`, `--limit`, `--json`, `--catalog`), `--domains` | `GET /lua-doc/dissectors` (`q`, `domain`, `non_native`, `limit`), `GET /lua-doc/dissectors/domains` (issue #917) |
 | Historique des runs (analyses et comparaisons) | fenêtre « Historique des runs » (bouton de la barre de titre) : base, type, étiquette, nombre (issue #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history` : `run_type`, `label`, `limit` (base du serveur `NETCROSS_HISTORY_DB`, issue #874) |
 | Historique des analyses | oui (fenêtre « Historique des runs », type « Analyses (analyse) » ; enregistrement par « Historique... » / « Etiquette », issues #674, #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history?run_type=…` ; enregistrement par `history`/`history_label` de `POST /captures` (issue #890) ; `GET /analyses` liste les analyses du serveur |
 | Mode debug | `--debug` au lancement | `--debug` (toutes les CLI) | `NETCROSS_DEBUG=1` |
@@ -249,6 +250,7 @@ son équivalent CLI ou API.
 | Reprendre un lot interrompu (--skip-existing) | Fenêtre « Analyse d'un dossier » | `--skip-existing` |
 | Analyse de securite dans chaque rapport (--security-report) | Fenêtre « Analyse d'un dossier » | `--security-report` |
 | Detail complet (--full) | Fenêtre « Documentation Lua » | `netcross-lua-doc --full` |
+| Sans dissecteur natif (--non-native) | Fenêtre « Documentation Lua » (Dissecteurs Lua) | `netcross-lua-doc --dissectors --non-native` |
 
 | J'ai l'autorisation d'emettre sur cette interface | Fenêtre « Outils de capture » (Rejeu) | aucun (confirmation de la GUI) |
 
@@ -297,6 +299,8 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /lua-doc/classes` | Classes de l'API Lua Wireshark (issue #873) |
 | `GET /lua-doc/classes/{name}` | Fiche d'une classe Lua (issue #873) |
 | `GET /lua-doc/search` | Recherche dans la documentation Lua, `q`, `limit`, `full` (issue #873) |
+| `GET /lua-doc/dissectors` | Catalogue des dissecteurs Lua, `q`, `domain`, `non_native`, `limit` (issue #917) |
+| `GET /lua-doc/dissectors/domains` | Domaines du catalogue des dissecteurs Lua (issue #917) |
 | `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
 | `POST /tools/replay` | Rejeu sur une interface autorisée (issue #871) |
 | `GET /analyses/{analysis_id}/dashboard` | Agrégats croisés du dashboard, filtres `segment`, `host`, `protocol` (issue #911) |

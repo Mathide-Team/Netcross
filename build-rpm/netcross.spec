@@ -69,6 +69,7 @@ cp netcross_lua_doc_cli.py %{buildroot}%{_datadir}/netcross/
 cp netcross_annotations_cli.py %{buildroot}%{_datadir}/netcross/
 mkdir -p %{buildroot}%{_datadir}/netcross/data
 cp data/lua_api.json %{buildroot}%{_datadir}/netcross/data/
+cp data/lua_dissectors.csv %{buildroot}%{_datadir}/netcross/data/
 mkdir -p %{buildroot}%{_datadir}/locale
 cp -r locale/* %{buildroot}%{_datadir}/locale/
 

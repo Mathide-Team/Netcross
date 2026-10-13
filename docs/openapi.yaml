@@ -2295,7 +2295,8 @@ paths:
         '404':
           description: Classe inconnue (avec suggestions)
         '503':
-          description: JSON de l'API Lua introuvable sur le serveur
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
       security:
       - APIKeyHeader: []
   /lua-doc/classes/{name}:
@@ -2329,7 +2330,8 @@ paths:
         '404':
           description: Classe inconnue (avec suggestions)
         '503':
-          description: JSON de l'API Lua introuvable sur le serveur
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
         '422':
           description: Validation Error
           content:
@@ -2390,13 +2392,114 @@ paths:
         '404':
           description: Classe inconnue (avec suggestions)
         '503':
-          description: JSON de l'API Lua introuvable sur le serveur
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /lua-doc/dissectors:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Dissectors
+      description: 'Catalogue des dissecteurs Wireshark en Lua (équivalent de
+
+        ``netcross-lua-doc --dissectors --json``), triés par étoiles ; ``total``
+
+        compte toutes les correspondances. Aucun résultat : liste vide (200).'
+      operationId: get_lua_dissectors_lua_doc_dissectors_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Recherche plein texte : dépôt, protocole, domaine, topics
+            (tous les mots)'
+          default: ''
+          title: Q
+        description: 'Recherche plein texte : dépôt, protocole, domaine, topics (tous
+          les mots)'
+      - name: domain
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Domaine contenant ce texte, sans accents ni casse (--domain)
+          title: Domain
+        description: Domaine contenant ce texte, sans accents ni casse (--domain)
+      - name: non_native
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Seulement sans dissecteur natif dans Wireshark (--non-native)
+          default: false
+          title: Non Native
+        description: Seulement sans dissecteur natif dans Wireshark (--non-native)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 2000
+          minimum: 1
+          description: Nombre maximal de résultats (--limit)
+          default: 20
+          title: Limit
+        description: Nombre maximal de résultats (--limit)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Lua Dissectors Lua Doc Dissectors Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /lua-doc/dissectors/domains:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Dissector Domains
+      description: Domaines du catalogue et leur nombre de dissecteurs (``--domains
+        --json``).
+      operationId: get_lua_dissector_domains_lua_doc_dissectors_domains_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Lua Dissector Domains Lua Doc Dissectors Domains
+                  Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
+      security:
+      - APIKeyHeader: []
   /live-captures:
     post:
       tags:
