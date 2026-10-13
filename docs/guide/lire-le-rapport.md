@@ -96,6 +96,23 @@ présentes.
 Quand Netcross ne peut pas conclure, il l'écrit (« indéterminé »,
 « impossible de conclure ») plutôt que de deviner. C'est volontaire.
 
+## L'exploration statistique
+
+La vue « Exploration statistique » de la GUI (Top-N, tri, regroupement)
+s'exporte aussi en ligne de commande, en CSV ou en JSON :
+
+```bash
+netcross --capture LAN=lan.pcapng --capture WAN=wan.pcapng --stats stats.csv \
+  --stats-group-by protocol --stats-sort throughput_bps --stats-top-n 20
+netcross --capture LAN=lan.pcapng --stats stats.json      # 10 hôtes les plus volumineux
+```
+
+Regroupements : `endpoint`, `protocol`, `segment`, `flow`. Tris (décroissants) :
+`packets`, `bytes`, `duration_ms`, `throughput_bps`, `latency_ms`, `events`.
+`--stats-top-n 0` garde toutes les lignes. La colonne `flow_keys` liste les
+flux de chaque ligne, pour descendre au détail comme en cliquant une ligne
+dans la GUI. Par l'API : `GET /analyses/{id}/stats` avec les mêmes paramètres.
+
 ## La cartographie des communications
 
 La vue « Cartographie » de la GUI (qui parle à qui, anomalies en rouge)

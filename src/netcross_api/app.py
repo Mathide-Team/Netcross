@@ -1724,6 +1724,47 @@ async def get_analysis_comm_map(
 
 
 @app.get(
+    "/analyses/{analysis_id}/stats",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 404: {"model": ErrorResponse}, 200: {"content": {"text/csv": {}}}},
+)
+async def get_analysis_stats(
+    analysis_id: str,
+    group_by: str = Query(default="endpoint", description="endpoint, protocol, segment ou flow"),
+    sort: str = Query(default="bytes", description="packets, bytes, duration_ms, throughput_bps, latency_ms ou events"),
+    top_n: int = Query(default=10, ge=0, description="N premières lignes (0 = toutes)"),
+    format: str = Query(default="json", description="json ou csv"),
+    _auth: None = Depends(_verify_api_key),
+) -> Response:
+    """Exploration statistique (équiv. ``--stats``, vue GUI « Exploration statistique », issue #912).
+
+    Chaque ligne porte ``flow_keys`` : les clés des flux regroupés (drill-down)."""
+    from netcross_core.stats import explore_stats, render_stats, stats_format_for
+
+    try:
+        fmt = stats_format_for("", format)
+    except ValueError as exc:
+        logger.debug("get_analysis_stats: format invalide ({})", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    entry = _completed_entry(analysis_id)
+    flows = entry.get("flows")
+    report_obj = entry.get("report_obj")
+    if flows is None or report_obj is None:
+        logger.debug("get_analysis_stats: pas de flux ou de rapport -> 404")
+        raise HTTPException(status_code=404, detail="Aucun flux disponible pour les statistiques")
+    try:
+        rows = explore_stats(flows, report_obj, entry.get("findings"), group_by=group_by, sort_by=sort, top_n=top_n)
+    except ValueError as exc:
+        logger.debug("get_analysis_stats: paramètre invalide ({})", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if fmt == "csv":
+        return PlainTextResponse(render_stats(rows, "csv"), media_type="text/csv")
+    from netcross_core.stats import export_json
+
+    return JSONResponse({"group_by": group_by, "sort": sort, "rows": export_json(rows)})
+
+
+@app.get(
     "/analyses/{analysis_id}/siem",
     tags=["analyses"],
     responses={**_ANALYSIS_RESPONSES, 404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}},
