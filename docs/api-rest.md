@@ -84,6 +84,7 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/bpf-filters` | Bibliothèque de filtres BPF (`--bpf-library`, issue #906) : catalogue prédéfini (`predefined: true`) puis filtres enregistrés |
 | `PUT` | `/bpf-filters/{nom}` | Crée ou remplace un filtre (JSON `expression`, `description`) ; 409 pour un nom du catalogue, 422 si l'expression est vide |
 | `DELETE` | `/bpf-filters/{nom}` | Supprime un filtre enregistré ; 404 s'il est inconnu, 409 pour un nom du catalogue |
+| `GET` | `/analyses/{id}/dashboard` | Dashboard : timeline, segments, flux, endpoints, protocoles, événements ; filtres `segment` (point de capture), `host` (adresse), `protocol` ; 400 si le point est inconnu ; équiv. `--dashboard` (issue #911) |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl

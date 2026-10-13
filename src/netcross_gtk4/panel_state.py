@@ -36,8 +36,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from netcross_core.logging_config import get_logger
-from netcross_gtk4.dashboard_context import (
+from netcross_core.dashboard import (
     select_bucket,
     select_endpoint,
     select_event,
@@ -45,6 +44,7 @@ from netcross_gtk4.dashboard_context import (
     select_point,
     select_protocol,
 )
+from netcross_core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
