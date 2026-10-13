@@ -35,6 +35,7 @@ CLIS = {
     "cross_history_cli": False,
     "netcross_lua_doc_cli": True,
     "netcross_ai_models_cli": True,
+    "netcross_annotations_cli": True,
 }
 
 

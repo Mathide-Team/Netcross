@@ -153,6 +153,7 @@ from netcross_core.discovery import load_baseline_hosts
 from netcross_core.flow_timeline import build_flow_timelines
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates
 from netcross_core.logging_config import add_debug_argument, apply_debug_argument, get_logger, summarize
+from netcross_core.report_text import load_capture_annotations, print_capture_annotations
 from netcross_core.security import close_db, connect_cve_db
 from netcross_core.security import findings as security_findings
 from netcross_core.security.cve_seed import open_seed_db
@@ -1431,6 +1432,11 @@ def main():
         from netcross_lua_doc_cli import main as lua_doc_main
 
         sys.exit(lua_doc_main(sys.argv[2:]))
+    # `netcross annotations list|add|remove CAPTURE` : etiquettes sur trames (issue #910)
+    if sys.argv[1:2] == ["annotations"]:
+        from netcross_annotations_cli import main as annotations_main
+
+        sys.exit(annotations_main(sys.argv[2:]))
     ap = argparse.ArgumentParser(
         description="Analyse croisee de captures Wireshark multi-points",
         epilog="Documentation de l'API Lua Wireshark : netcross lua-doc --help (ou netcross-lua-doc).",
@@ -2990,6 +2996,9 @@ def main():
         r.truncated = True
         r.truncation_note = truncation_note
     print_report(r)
+    # Issue #910 : annotations des sidecars (GUI ou `netcross annotations`)
+    if captures:
+        print_capture_annotations(load_capture_annotations(captures))
     if r.truncated:
         print(f"\nATTENTION : {r.truncation_note}")
 

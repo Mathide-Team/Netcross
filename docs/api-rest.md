@@ -81,6 +81,9 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
 | `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
 | `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
+| `GET` | `/analyses/{id}/annotations` | Annotations par point (`point`, `tag`) : même format que le sidecar `<capture>.annotations.json` de la GUI (issue #910) |
+| `POST` | `/analyses/{id}/annotations` | Ajoute une annotation (JSON `point`, `frame_number`, `tag`, `comment`, `color`) ; même trame et étiquette = mise à jour ; 404 point inconnu, 422 saisie invalide |
+| `DELETE` | `/analyses/{id}/annotations?point=&frame_number=&tag=` | Supprime une annotation ; 404 si absente |
 | `GET` | `/bpf-filters` | Bibliothèque de filtres BPF (`--bpf-library`, issue #906) : catalogue prédéfini (`predefined: true`) puis filtres enregistrés |
 | `PUT` | `/bpf-filters/{nom}` | Crée ou remplace un filtre (JSON `expression`, `description`) ; 409 pour un nom du catalogue, 422 si l'expression est vide |
 | `DELETE` | `/bpf-filters/{nom}` | Supprime un filtre enregistré ; 404 s'il est inconnu, 409 pour un nom du catalogue |

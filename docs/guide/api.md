@@ -88,3 +88,18 @@ La comparaison avant/après et les exports PDF, CSV ou SIEM ne sont pas
 encore disponibles par l'API. Utilisez pour cela la ligne de commande
 (voir [Comparer deux situations](comparer.md)). Le tableau complet des
 écarts entre surfaces est dans [Parité GUI / CLI / API](../parite-surfaces.md).
+
+## Annoter une analyse
+
+```bash
+curl -X POST -H "X-API-Key: $NETCROSS_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"point": "point-A", "frame_number": 42, "tag": "suspect", "comment": "RST inattendu"}' \
+  http://localhost:8000/analyses/$ID/annotations
+curl -H "X-API-Key: $NETCROSS_API_TOKEN" "http://localhost:8000/analyses/$ID/annotations?tag=suspect"
+```
+
+Le serveur ne garde pas les captures téléversées : les annotations sont
+rangées dans l'analyse, par point, au format du fichier
+`<capture>.annotations.json` de la GUI. Recopier une liste dans ce fichier,
+à côté de votre capture, la fait apparaître dans la GUI et dans
+`netcross annotations`.
