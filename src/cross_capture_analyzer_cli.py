@@ -1296,6 +1296,14 @@ def _run_content_extraction(captures, out_dir, kinds) -> None:
     logger.debug("_run_content_extraction: fin")
 
 
+def _check_dashboard_args(args) -> None:
+    """Validations de l'issue #911."""
+    if (args.dashboard_segment or args.dashboard_host or args.dashboard_protocol) and not args.dashboard:
+        print("--dashboard-segment/--dashboard-host/--dashboard-protocol necessitent --dashboard.", file=sys.stderr)
+        sys.exit(1)
+    logger.debug("_check_dashboard_args: fin")
+
+
 def _check_stats_args(args) -> None:
     """Validations de l'issue #912."""
     modifies = (
@@ -1647,6 +1655,15 @@ def main():
     )
     ap.add_argument("--order", help="Ordre physique des points sur le chemin reseau, ex: LAN,WAN,DC")
     ap.add_argument("--detail-csv", help="Chemin de sortie pour le detail par flux (CSV)")
+    # Issue #911 : dashboard analytique (vue GUI « Dashboard »)
+    ap.add_argument(
+        "--dashboard",
+        metavar="FICHIER",
+        help="Agregats croises du dashboard en JSON : timeline, segments, flux, endpoints, protocoles, evenements",
+    )
+    ap.add_argument("--dashboard-segment", metavar="POINT", help="Dashboard : filtre sur un point de capture")
+    ap.add_argument("--dashboard-host", metavar="IP", help="Dashboard : filtre sur une adresse d'endpoint")
+    ap.add_argument("--dashboard-protocol", metavar="PROTO", help="Dashboard : filtre sur un protocole (ex. TCP)")
     # Issue #912 : exploration statistique (vue GUI « Exploration statistique »)
     ap.add_argument(
         "--stats",
@@ -2830,6 +2847,7 @@ def main():
         sys.exit(1)
     extract_kinds = _check_extraction_args(args)
     _check_live_report_args(args)
+    _check_dashboard_args(args)
     _check_stats_args(args)
     _check_comm_map_args(args)
     if args.redact and (args.tls or args.quic or args.client_group):
@@ -3269,6 +3287,33 @@ def main():
     if args.detail_csv:
         write_detail_csv(args.detail_csv, flows, r.points, names=names)
         print(f"\nDetail par flux ecrit dans {args.detail_csv}")
+    if args.dashboard:
+        import json as _json
+
+        from netcross_core.dashboard import dashboard_document
+        from netcross_report import build_findings as _build_findings
+
+        try:
+            doc = dashboard_document(
+                r,
+                flows,
+                findings if findings is not None else _build_findings(r),
+                tls_findings,
+                quic_findings,
+                segment=args.dashboard_segment,
+                host=args.dashboard_host,
+                protocol=args.dashboard_protocol,
+            )
+        except ValueError as exc:
+            logger.debug("--dashboard: filtre invalide ({})", exc)
+            print(f"--dashboard-segment : {exc}", file=sys.stderr)
+            sys.exit(1)
+        with open(args.dashboard, "w", encoding="utf-8") as f:
+            _json.dump(doc, f, ensure_ascii=False, indent=2)
+        print(
+            f"\nDashboard ({doc['selection_summary']}) ecrit dans {args.dashboard} : "
+            f"{len(doc['flows'])} flux, {len(doc['events'])} evenement(s)"
+        )
     if args.stats:
         from netcross_report import build_findings as _build_findings
 

@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-199 modules · 288 classes · 704 fonctions publiques de module.
+200 modules · 288 classes · 706 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -32,9 +32,9 @@ flowchart TD
     netcross_ai["netcross_ai"]
     netcross_core["netcross_core"]
     pcap_parser["pcap_parser"]
-    CLI -->|"22 imports"| netcross_report
+    CLI -->|"23 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
-    CLI -->|"49 imports"| netcross_core
+    CLI -->|"50 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
     netcross_gtk4 -->|"31 imports"| netcross_report
     netcross_gtk4 -->|"4 imports"| netcross_ai
@@ -42,7 +42,7 @@ flowchart TD
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"20 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
-    netcross_api -->|"51 imports"| netcross_core
+    netcross_api -->|"52 imports"| netcross_core
     netcross_api -->|"4 imports"| pcap_parser
     netcross_report -->|"40 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -473,6 +473,7 @@ classDiagram
 | `netcross_core.config` | chargement de configuration depuis .netcross.toml (issue #170). |
 | `netcross_core.content` | Extraction des objets applicatifs HTTP/1.x sans conservation du corps. |
 | `netcross_core.correlate` | correlation des paquets entre points de capture (par 5-tuple strict ou par hash de payload en mode NAT-tolerant) et calcul du debit par fenetre temporelle. |
+| `netcross_core.dashboard` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
 | `netcross_core.expert_model` | objets de contrat partages entre netcross_core et netcross_report ("Session 0" de FEATURES.md section 13.3 : stabiliser les objets communs avant de batir le moteur d'expertise vise par la comparaison… |
 | `netcross_core.expert_rules` | bibliotheque de regles d'expertise reseau DECLARATIVE (FEATURES.md section 6.2), dernier chantier de la Session 2 de la section 13.3 ("moteur d'evenements d'expertise") apres la cloture cote… |
 | `netcross_core.exploit_signatures` | detection PASSIVE de signatures d'exploits CVE connus (Log4Shell, Shellshock, Heartbleed, EternalBlue, compression TLS/CRIME) dans la charge utile brute des paquets. |
@@ -816,6 +817,40 @@ classDiagram
         +build_conversations(flow_list) list~Conversation~
         +compute_throughput(all_packets, bucket_seconds)
         +compute_topn_series(all_packets, bucket_seconds, dimension, top_n)
+    }
+
+    %% ===== netcross_core.dashboard =====
+    class DashboardSelection {
+        <<dataclass>>
+        +str? point
+        +str? endpoint
+        +str? protocol
+        +tuple? flow_key
+        +tuple~str, str~? pair
+        +int? bucket
+        +int? event_id
+    }
+    class DashboardSnapshot {
+        <<dataclass, frozen>>
+        +list~dict~ timeline_rows
+        +list~dict~ segment_rows
+        +list~dict~ flow_rows
+        +list~dict~ endpoint_rows
+        +list~dict~ protocol_rows
+        +list~dict~ event_rows
+        +str selection_summary
+    }
+    class mod_netcross_core_dashboard["netcross_core.dashboard"] {
+        <<module>>
+        +clear_selection(selection) DashboardSelection
+        +select_flow(selection, flow) DashboardSelection
+        +select_endpoint(selection, endpoint) DashboardSelection
+        +select_protocol(selection, protocol) DashboardSelection
+        +select_point(selection, point) DashboardSelection
+        +select_bucket(selection, bucket) DashboardSelection
+        +select_event(selection, event_id, events) DashboardSelection
+        +build_dashboard_snapshot(report, flows, findings, tls_findings, quic_findings, wireshark_expert_events, selection) DashboardSnapshot
+        +dashboard_document(report, flows, findings, tls_findings, quic_findings, wireshark_expert_events, segment, host, protocol) dict
     }
 
     %% ===== netcross_core.expert_model =====
@@ -1688,40 +1723,6 @@ classDiagram
         +write_detail_csv(path, flows, points, names)
     }
 
-    %% ===== netcross_core.stats =====
-    class StatRow {
-        <<dataclass, frozen>>
-        +str label
-        +str group_by
-        +int packets
-        +int bytes
-        +float duration_ms
-        +float throughput_bps
-        +float? latency_ms
-        +int events
-        +list~tuple~ flow_keys
-        +duration_s() float
-    }
-    class StatsQuery {
-        <<dataclass, frozen>>
-        +str group_by
-        +str sort_by
-        +int? top_n
-        +float? time_start
-        +float? time_end
-        +str? segment
-    }
-    class mod_netcross_core_stats["netcross_core.stats"] {
-        <<module>>
-        +compute_stats(flows, report, all_packets, query, events_by_segment) list~StatRow~
-        +export_csv(rows) str
-        +export_json(rows) list~dict~
-        +build_events_by_segment(findings) dict~str, list~
-        +explore_stats(flows, report, findings, group_by, sort_by, top_n) list~StatRow~
-        +stats_format_for(path, fmt) str
-        +render_stats(rows, fmt) str
-    }
-
     %% ===== relations =====
     DiffFinding --> EvidenceLink : evidence
     CaptureGroup --> CaptureInventory : members
@@ -1765,6 +1766,40 @@ classDiagram
 ```mermaid
 classDiagram
     direction LR
+
+    %% ===== netcross_core.stats =====
+    class StatRow {
+        <<dataclass, frozen>>
+        +str label
+        +str group_by
+        +int packets
+        +int bytes
+        +float duration_ms
+        +float throughput_bps
+        +float? latency_ms
+        +int events
+        +list~tuple~ flow_keys
+        +duration_s() float
+    }
+    class StatsQuery {
+        <<dataclass, frozen>>
+        +str group_by
+        +str sort_by
+        +int? top_n
+        +float? time_start
+        +float? time_end
+        +str? segment
+    }
+    class mod_netcross_core_stats["netcross_core.stats"] {
+        <<module>>
+        +compute_stats(flows, report, all_packets, query, events_by_segment) list~StatRow~
+        +export_csv(rows) str
+        +export_json(rows) list~dict~
+        +build_events_by_segment(findings) dict~str, list~
+        +explore_stats(flows, report, findings, group_by, sort_by, top_n) list~StatRow~
+        +stats_format_for(path, fmt) str
+        +render_stats(rows, fmt) str
+    }
 
     %% ===== netcross_core.tls_diagnostics =====
     class TlsEvent {
@@ -3983,6 +4018,7 @@ classDiagram
         +get_analysis_sequence(analysis_id, max_flows, _auth) JSONResponse
         +get_analysis_comm_map(analysis_id, protocol, top_n, anomalies_only, format, _auth) Response
         +get_analysis_stats(analysis_id, group_by, sort, top_n, format, _auth) Response
+        +get_analysis_dashboard(analysis_id, segment, host, protocol, _auth) JSONResponse
         +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
         +forensic_search(analysis_id, body, _auth) JSONResponse
         +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
@@ -4212,7 +4248,7 @@ classDiagram
 | `netcross_gtk4.capture_tools_window` | fenetre « Outils de capture » (issues #868, #869, #870, #886, #887) : fusion, decoupage, conversion, export filtre et recalage temporel, equivalents des modes utilitaires de la CLI (``--merge``,… |
 | `netcross_gtk4.client_compare_panel` | panneau GTK « Comparaison de postes » de la page Resultats (issue #675). |
 | `netcross_gtk4.client_compare_view` | comparaison de postes dans la GUI (issue #675). |
-| `netcross_gtk4.dashboard_context` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
+| `netcross_gtk4.dashboard_context` | alias de netcross_core.dashboard. |
 | `netcross_gtk4.diff_pipeline` | pipeline de comparaison baseline/courant extrait de MainWindow._run_diff_thread (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.duplicate_view` | Presentation helpers for cross-capture duplicate detection (Job 41). |
 | `netcross_gtk4.expertise_panel` | panneau « Expertise (exports JSON) » de la page Resultats (issue #673). |
@@ -4526,39 +4562,6 @@ classDiagram
         +parse_client_groups(text) dict~str, set~str~~
         +validate_client_settings(groups, reference, redact) list~str~
         +comparison_summary(comparison) str
-    }
-
-    %% ===== netcross_gtk4.dashboard_context =====
-    class DashboardSelection {
-        <<dataclass>>
-        +str? point
-        +str? endpoint
-        +str? protocol
-        +tuple? flow_key
-        +tuple~str, str~? pair
-        +int? bucket
-        +int? event_id
-    }
-    class DashboardSnapshot {
-        <<dataclass, frozen>>
-        +list~dict~ timeline_rows
-        +list~dict~ segment_rows
-        +list~dict~ flow_rows
-        +list~dict~ endpoint_rows
-        +list~dict~ protocol_rows
-        +list~dict~ event_rows
-        +str selection_summary
-    }
-    class mod_netcross_gtk4_dashboard_context["netcross_gtk4.dashboard_context"] {
-        <<module>>
-        +clear_selection(selection) DashboardSelection
-        +select_flow(selection, flow) DashboardSelection
-        +select_endpoint(selection, endpoint) DashboardSelection
-        +select_protocol(selection, protocol) DashboardSelection
-        +select_point(selection, point) DashboardSelection
-        +select_bucket(selection, bucket) DashboardSelection
-        +select_event(selection, event_id, events) DashboardSelection
-        +build_dashboard_snapshot(report, flows, findings, tls_findings, quic_findings, wireshark_expert_events, selection) DashboardSnapshot
     }
 
     %% ===== netcross_gtk4.diff_pipeline =====

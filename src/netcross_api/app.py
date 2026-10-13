@@ -1765,6 +1765,44 @@ async def get_analysis_stats(
 
 
 @app.get(
+    "/analyses/{analysis_id}/dashboard",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+async def get_analysis_dashboard(
+    analysis_id: str,
+    segment: str | None = Query(default=None, description="Filtre sur un point de capture"),
+    host: str | None = Query(default=None, description="Filtre sur une adresse d'endpoint"),
+    protocol: str | None = Query(default=None, description="Filtre sur un protocole (ex. TCP)"),
+    _auth: None = Depends(_verify_api_key),
+) -> JSONResponse:
+    """Agrégats croisés du dashboard (équiv. ``--dashboard``, vue GUI « Dashboard », issue #911) :
+    timeline, segments, flux, endpoints, protocoles et événements, filtrés comme une sélection GUI."""
+    from netcross_core.dashboard import dashboard_document
+
+    entry = _completed_entry(analysis_id)
+    report_obj = entry.get("report_obj")
+    if report_obj is None:
+        logger.debug("get_analysis_dashboard: pas de rapport -> 404")
+        raise HTTPException(status_code=404, detail="Aucun rapport disponible pour le dashboard")
+    try:
+        doc = dashboard_document(
+            report_obj,
+            entry.get("flows"),
+            entry.get("findings"),
+            entry.get("tls_findings"),
+            entry.get("quic_findings"),
+            segment=segment,
+            host=host,
+            protocol=protocol,
+        )
+    except ValueError as exc:
+        logger.debug("get_analysis_dashboard: filtre invalide ({})", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(doc)
+
+
+@app.get(
     "/analyses/{analysis_id}/siem",
     tags=["analyses"],
     responses={**_ANALYSIS_RESPONSES, 404: {"model": ErrorResponse}, 400: {"model": ErrorResponse}},

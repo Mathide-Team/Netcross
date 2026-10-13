@@ -96,6 +96,23 @@ présentes.
 Quand Netcross ne peut pas conclure, il l'écrit (« indéterminé »,
 « impossible de conclure ») plutôt que de deviner. C'est volontaire.
 
+## Le dashboard hors de la GUI
+
+Les six vues de l'onglet « Dashboard » (timeline, segments, flux, endpoints,
+protocoles, événements) s'exportent en JSON, avec les mêmes filtres qu'un
+clic dans la GUI :
+
+```bash
+netcross --capture LAN=lan.pcapng --capture WAN=wan.pcapng --dashboard dashboard.json
+netcross --capture LAN=lan.pcapng --capture WAN=wan.pcapng --dashboard dashboard.json \
+  --dashboard-segment WAN --dashboard-host 10.0.0.5 --dashboard-protocol TCP
+```
+
+`--dashboard-segment` prend le nom d'un point de capture (refusé s'il n'existe
+pas), `--dashboard-host` une adresse d'endpoint. Les événements sans
+protocole ni segment restent affichés quel que soit le filtre, comme dans la
+GUI. Par l'API : `GET /analyses/{id}/dashboard?segment=&host=&protocol=`.
+
 ## L'exploration statistique
 
 La vue « Exploration statistique » de la GUI (Top-N, tri, regroupement)

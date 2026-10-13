@@ -831,6 +831,92 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/dashboard:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Dashboard
+      description: 'Agrégats croisés du dashboard (équiv. ``--dashboard``, vue GUI
+        « Dashboard », issue #911) :
+
+        timeline, segments, flux, endpoints, protocoles et événements, filtrés comme
+        une sélection GUI.'
+      operationId: get_analysis_dashboard_analyses__analysis_id__dashboard_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: segment
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filtre sur un point de capture
+          title: Segment
+        description: Filtre sur un point de capture
+      - name: host
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filtre sur une adresse d'endpoint
+          title: Host
+        description: Filtre sur une adresse d'endpoint
+      - name: protocol
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filtre sur un protocole (ex. TCP)
+          title: Protocol
+        description: Filtre sur un protocole (ex. TCP)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/siem:
     get:
       tags:
