@@ -142,7 +142,7 @@ de sécurité, déjà produit par `POST /analyses`.
 | Fonction | GUI | CLI (`cross_capture_diff_cli.py`) | API |
 |---|---|---|---|
 | Baseline et courant en fichiers | oui (case « Mode comparaison ») | `--baseline`, `--current` | `POST /comparisons` (issue #669) |
-| Courant capturé en direct | oui (« Mode comparaison » + « Capture en direct » : le panneau live remplace le courant en fichiers, durée maximale ; sans TLS/QUIC ni lecture parallèle du courant, issue #676) | `--live-current`, `--live-duration` | non |
+| Courant capturé en direct | oui (« Mode comparaison » + « Capture en direct » : le panneau live remplace le courant en fichiers, durée maximale ; sans TLS/QUIC ni lecture parallèle du courant, issue #676) | `--live-current`, `--live-duration` | `current_live` de `POST /comparisons` (JSON de `POST /live-captures`, sans `options`) au lieu de `current_files` ; mêmes limites (sans TLS/QUIC), `wait` refusé ; la capture se suit et s'arrête par `live_capture_id` (`/live-captures/{capture_id}`, `/stop`, `DELETE`) ; issue #908 |
 | Seuils de régression | oui (pertes, latence) | `--loss-threshold-pp`, `--latency-threshold-ms` | `loss_threshold_pp`, `latency_threshold_ms` (issue #669) |
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
@@ -345,8 +345,8 @@ Classés par impact pour un utilisateur :
 5. Le reste (manipulation de captures, notifications, plugins, IA, SIEM,
    batch) relève de l'automatisation et reste en CLI **par choix**.
    Révisé le 11/10/2026 (#330) : plus aucune exemption, toute fonction
-   doit exister en CLI, GTK4 et API. Restent : l'API de la capture en
-   direct (#908 ; #902 à #907 livrées). Les vues propres à la GUI ont
+   doit exister en CLI, GTK4 et API. L'API de la capture en direct
+   est complète (#902 à #908, livrées). Les vues propres à la GUI ont
    désormais leur CLI et leur API (#909 à #912, livrées).
 
 Correctifs apportés à l'audit du 24/09 (commentaire de #330) :

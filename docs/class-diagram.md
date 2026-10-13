@@ -4029,7 +4029,7 @@ classDiagram
         +netflow_summary(analysis_id, files, exporters, top, _auth) JSONResponse
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
-        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, history, history_label, wait, _auth) JSONResponse
+        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, history, history_label, wait, current_live, _auth) JSONResponse
         +get_comparison(comparison_id, _auth) JSONResponse
         +get_analysis_redact_map(analysis_id, _auth) PlainTextResponse
         +get_comparison_redact_map(comparison_id, _auth) PlainTextResponse
@@ -4116,7 +4116,8 @@ classDiagram
         +dict~str, Any~ options
     }
     class _LiveCaptures {
-        +start(req) dict~str, Any~
+        +check(req) None
+        +start(req, analyse, comparison_id, on_abort) dict~str, Any~
         +ring_files(capture_id) dict~str, Any~
         +ring_file(capture_id, point, filename) Path
         +purge_ring(capture_id) dict~str, Any~

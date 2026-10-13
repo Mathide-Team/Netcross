@@ -30,7 +30,10 @@ résultat consultable sous ``/analyses/{analysis_id}``.
   ``GET /live-captures/{capture_id}/report`` le sert avec la clé API et un
   en-tête ``Refresh`` ; ``report_url`` (jeton propre à la capture, lecture
   seule) l'ouvre dans un navigateur sans exposer la clé, comme
-  ``--live-report-serve``.
+  ``--live-report-serve`` ;
+- ``POST /comparisons`` avec ``current_live`` (issue #908, équiv. ``--live-current``) :
+  même capture, puis comparaison au baseline au lieu d'une analyse simple
+  (``start(..., analyse=...)``) ; l'état donne alors ``comparison_id``.
 
 Sécurité : capturer demande des privilèges (``CAP_NET_RAW``) sur le
 serveur. Désactivé par défaut (``NETCROSS_API_LIVE=1`` pour l'activer),
@@ -224,6 +227,7 @@ class _LiveCaptures:
                 if p.bpf:
                     raise HTTPException(status_code=400, detail=f"{p.name} : bpf et bpf_library sont exclusifs")
                 p.bpf = self._deps["resolve_bpf_library"](p.bpf_library)
+                p.bpf_library = None  # résolu : un second contrôle (check puis start) ne le refuse pas
                 logger.debug("live: point {} : filtre {!r} de la bibliothèque", p.name, p.bpf_library)
         if req.ring_buffer is not None:
             for p in req.points:
@@ -249,7 +253,26 @@ class _LiveCaptures:
 
     # -- cycle de vie ------------------------------------------------------------------
 
-    def start(self, req: LiveCaptureRequest) -> dict[str, Any]:
+    def check(self, req: LiveCaptureRequest) -> None:
+        """Contrôles de ``POST /live-captures`` sans démarrer (``POST /comparisons``
+        les fait avant d'enregistrer le baseline, issue #908)."""
+        self._check_security(req)
+        self._check_request(req)
+        if any(e["status"] == CAPTURING for e in self._entries.values()):
+            logger.debug("live: capture déjà en cours -> 409")
+            raise HTTPException(status_code=409, detail="une capture en direct est déjà en cours sur ce serveur")
+
+    def start(
+        self,
+        req: LiveCaptureRequest,
+        analyse: Callable[[list[tuple[str, str]]], None] | None = None,
+        comparison_id: str | None = None,
+        on_abort: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Démarre la capture. ``analyse`` (issue #908) remplace l'analyse
+        simple : appelée avec les fichiers ``(point, chemin)`` à la fin de la
+        capture ; une exception la passe en ``failed``. ``on_abort`` est
+        appelé avec la raison si la capture est abandonnée ou échoue avant."""
         self._check_security(req)
         noms, order, options = self._check_request(req)
         with self._lock:
@@ -288,6 +311,9 @@ class _LiveCaptures:
                 "live_report": req.live_report.model_dump() if req.live_report is not None else None,
                 "_report_dir": tempfile.mkdtemp(prefix="netcross-live-report-") if req.live_report else None,
                 "_report_token": secrets.token_urlsafe(24) if req.live_report else None,
+                "_analyse": analyse,
+                "_on_abort": on_abort,
+                "comparison_id": comparison_id,
             }
             self._entries[capture_id] = entry
         threading.Thread(target=self._run, args=(entry, order, options), daemon=True).start()
@@ -377,6 +403,7 @@ class _LiveCaptures:
         if entry["_abort"]:
             logger.info("capture en direct {} abandonnée sans analyse", entry["capture_id"])
             entry["status"] = CANCELLED
+            self._notify_abort(entry, "capture en direct abandonnée (DELETE)")
             shutil.rmtree(entry["_workdir"], ignore_errors=True)
             self._purge_ring(entry)
             if entry.get("_report_dir"):
@@ -391,8 +418,12 @@ class _LiveCaptures:
         if entry["error"] is not None:
             logger.warning("capture en direct {} en échec : {}", entry["capture_id"], entry["error"])
             entry["status"] = FAILED
+            self._notify_abort(entry, f"capture en direct en échec : {entry['error']}")
             shutil.rmtree(entry["_workdir"], ignore_errors=True)
             entry["_handoff"].set()
+            return
+        if entry["_analyse"] is not None:
+            self._run_custom(entry, captures)
             return
         multi = len(entry["points"]) > 1
         metadata = {
@@ -414,6 +445,32 @@ class _LiveCaptures:
         else:
             entry["status"] = FAILED
             entry["error"] = analyse.get("error") or "analyse en échec"
+        logger.info("capture en direct {} : {}", entry["capture_id"], entry["status"])
+
+    @staticmethod
+    def _notify_abort(entry: dict[str, Any], raison: str) -> None:
+        if entry.get("_on_abort") is None:
+            return
+        try:
+            entry["_on_abort"](raison)
+        except Exception:  # noqa: BLE001 -- tâche de fond : ne doit pas bloquer la fin de capture
+            logger.exception("capture en direct {} : on_abort en échec", entry["capture_id"])
+
+    @staticmethod
+    def _run_custom(entry: dict[str, Any], captures: list[tuple[str, str]]) -> None:
+        """Fin de capture d'un ``--live-current`` (issue #908) : la comparaison."""
+        entry["status"] = ANALYSING
+        entry["_handoff"].set()
+        try:
+            entry["_analyse"](captures)
+        except Exception as exc:  # noqa: BLE001 -- tâche de fond : l'erreur va dans l'état
+            logger.exception("capture en direct {} : comparaison en échec", entry["capture_id"])
+            entry["status"] = FAILED
+            entry["error"] = str(exc)
+        else:
+            entry["status"] = COMPLETED
+        finally:
+            shutil.rmtree(entry["_workdir"], ignore_errors=True)
         logger.info("capture en direct {} : {}", entry["capture_id"], entry["status"])
 
     # -- fichiers du ring buffer (issue #905) --------------------------------------------
@@ -570,6 +627,8 @@ class _LiveCaptures:
             "ring_buffer": entry.get("ring_buffer"),
             "files_url": f"/live-captures/{entry['capture_id']}/files" if entry.get("ring_buffer") else None,
             "live_report": entry.get("live_report"),
+            "comparison_id": entry.get("comparison_id"),
+            "comparison_url": f"/comparisons/{entry['comparison_id']}" if entry.get("comparison_id") else None,
             "report_url": (
                 f"/live-captures/{entry['capture_id']}/report/{entry['_report_token']}/"
                 if entry.get("_report_token")
