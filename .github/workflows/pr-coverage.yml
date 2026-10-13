@@ -46,7 +46,10 @@ jobs:
           uv sync --extra dev
           uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
           uv sync --extra dev --extra ai
-          uv run pytest --cov --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
+          # Seconde mesure (avec l'extra ai) : sans seuil non plus. Le seuil bloquant
+          # reste celui de ci.yml, qui installe aussi l'extra api ; ici les tests de
+          # l'API sont sautés, et toute PR qui ajoute du code d'API passait sous 80 %.
+          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
 
       - name: Couverture de la base (SHA de dev)
         run: |
