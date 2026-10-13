@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (123 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 43 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 53 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 60 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -122,11 +122,11 @@ est conservée telle quelle pour les clients existants.
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | `POST /live-captures` : `points` (`name`, `interface`, `bpf`), `points_order`, `options` (mêmes options d'analyse que `POST /captures/multi`) ; état par `GET /live-captures/{capture_id}`, puis résultat sous `/analyses/{analysis_id}`. Désactivé par défaut (`NETCROSS_API_LIVE=1`), interfaces de `NETCROSS_API_LIVE_INTERFACES` seulement, `NETCROSS_API_TOKEN` exigé (issue #902) |
-| Durée maximale | oui | `--live-duration` | `duration`, bornée par `NETCROSS_API_LIVE_MAX_DURATION` (300 s par défaut ; issue #902) |
-| Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | `POST /live-captures/{capture_id}/stop` (issue #902) |
-| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
-| Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | `GET /bpf-filters`, `PUT /bpf-filters/{nom}`, `DELETE /bpf-filters/{nom}` (même fichier, `$NETCROSS_API_BPF_FILTERS` côté serveur, issue #906) ; champ `bpf_library` par point avec #902 |
-| Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
+| Durée maximale | oui | `--live-duration` | `duration`, bornée par `NETCROSS_API_LIVE_MAX_DURATION` (300 s par défaut), refus 400 au-delà (issues #902, #903) |
+| Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | `POST /live-captures/{capture_id}/stop`, la réponse donne l'`analysis_id` ; abandon sans analyse : `DELETE /live-captures/{capture_id}` (issues #902, #904) |
+| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | `ring_buffer` (`files`, `seconds`) de `POST /live-captures`, refusé avec `pipe://` ; fichiers conservés après l'analyse : `GET /live-captures/{capture_id}/files`, téléchargement `GET /live-captures/{capture_id}/files/{point}/{filename}`, suppression `DELETE /live-captures/{capture_id}/files` (issue #905) |
+| Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | `GET /bpf-filters`, `PUT /bpf-filters/{nom}`, `DELETE /bpf-filters/{nom}` (même fichier, `$NETCROSS_API_BPF_FILTERS` côté serveur, issue #906) ; champ `bpf_library` de chaque point de `POST /live-captures`, exclusif avec `bpf` (issue #904) |
+| Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | `live_report` (`interval`) de `POST /live-captures` ; `GET /live-captures/{capture_id}/report` (en-tête `Refresh` pendant la capture) ; équivalent de `--live-report-serve` : `report_url`, jeton propre à la capture, sans clé API (`GET /live-captures/{capture_id}/report/{token}/`, `live.json`, `live.jsonl` ; issue #907) |
 | Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | `notify_on`, `notify_webhook`, `notify_slack`, `notify_email`, `notify_detail` (trace dans `security_report.notifications` de `/report`, URL jamais conservées ; issue #875) |
 
 **API : hors périmètre (issue #676).** Aucune route ne lance de capture en
@@ -142,7 +142,7 @@ de sécurité, déjà produit par `POST /analyses`.
 | Fonction | GUI | CLI (`cross_capture_diff_cli.py`) | API |
 |---|---|---|---|
 | Baseline et courant en fichiers | oui (case « Mode comparaison ») | `--baseline`, `--current` | `POST /comparisons` (issue #669) |
-| Courant capturé en direct | oui (« Mode comparaison » + « Capture en direct » : le panneau live remplace le courant en fichiers, durée maximale ; sans TLS/QUIC ni lecture parallèle du courant, issue #676) | `--live-current`, `--live-duration` | non |
+| Courant capturé en direct | oui (« Mode comparaison » + « Capture en direct » : le panneau live remplace le courant en fichiers, durée maximale ; sans TLS/QUIC ni lecture parallèle du courant, issue #676) | `--live-current`, `--live-duration` | `current_live` de `POST /comparisons` (JSON de `POST /live-captures`, sans `options`) au lieu de `current_files` ; mêmes limites (sans TLS/QUIC), `wait` refusé ; la capture se suit et s'arrête par `live_capture_id` (`/live-captures/{capture_id}`, `/stop`, `DELETE`) ; issue #908 |
 | Seuils de régression | oui (pertes, latence) | `--loss-threshold-pp`, `--latency-threshold-ms` | `loss_threshold_pp`, `latency_threshold_ms` (issue #669) |
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
@@ -304,7 +304,14 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /analyses/{analysis_id}/comm-map` | Cartographie des communications, JSON ou DOT (issue #909) |
 | `POST /live-captures` | Capture en direct sur des interfaces autorisées puis analyse (issue #902) |
 | `GET /live-captures/{capture_id}` | État d'une capture en direct : octets par point, durée, `analysis_id` (issue #902) |
-| `POST /live-captures/{capture_id}/stop` | Arrêt anticipé d'une capture en direct (issue #902) |
+| `POST /live-captures/{capture_id}/stop` | Arrêt anticipé d'une capture en direct, renvoie l'`analysis_id` (issues #902, #904) |
+| `DELETE /live-captures/{capture_id}` | Abandon d'une capture en direct sans analyse (issue #904) |
+| `GET /live-captures/{capture_id}/files` | Fichiers pcapng conservés par le `ring_buffer`, par point (issue #905) |
+| `GET /live-captures/{capture_id}/files/{point}/{filename}` | Téléchargement d'un fichier du `ring_buffer` (issue #905) |
+| `DELETE /live-captures/{capture_id}/files` | Suppression des fichiers du `ring_buffer` (issue #905) |
+| `GET /live-captures/{capture_id}/report` | Rapport HTML en continu d'une capture en direct, en-tête `Refresh` (issue #907) |
+| `GET /live-captures/{capture_id}/report/{token}/` | Même page par `report_url`, jeton de lecture sans clé API (issue #907) |
+| `GET /live-captures/{capture_id}/report/{token}/{name}` | `index.html`, `live.json` ou `live.jsonl` du rapport en continu (issue #907) |
 | `GET /analyses/{analysis_id}/annotations` | Annotations de l'analyse par point, filtres `point`, `tag` (issue #910) |
 | `POST /analyses/{analysis_id}/annotations` | Ajoute ou met à jour une annotation (issue #910) |
 | `DELETE /analyses/{analysis_id}/annotations` | Supprime une annotation, `point`, `frame_number`, `tag` (issue #910) |
@@ -338,8 +345,8 @@ Classés par impact pour un utilisateur :
 5. Le reste (manipulation de captures, notifications, plugins, IA, SIEM,
    batch) relève de l'automatisation et reste en CLI **par choix**.
    Révisé le 11/10/2026 (#330) : plus aucune exemption, toute fonction
-   doit exister en CLI, GTK4 et API. Restent : l'API de la capture en
-   direct (#903 à #908 ; #902 livrée). Les vues propres à la GUI ont
+   doit exister en CLI, GTK4 et API. L'API de la capture en direct
+   est complète (#902 à #908, livrées). Les vues propres à la GUI ont
    désormais leur CLI et leur API (#909 à #912, livrées).
 
 Correctifs apportés à l'audit du 24/09 (commentaire de #330) :
