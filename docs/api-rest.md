@@ -24,6 +24,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
 | `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, sur `/captures` et `/captures/multi` l'analyse (#890), `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
+| `NETCROSS_API_BPF_FILTERS` | `~/.netcross/bpf_filters.json` | Fichier de la bibliothèque de filtres BPF (`/bpf-filters`, issue #906), même format que la GUI et `--bpf-library`. Le client ne choisit jamais le chemin. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
 | `NETCROSS_API_MAX_BATCHES` | 20 | Lots conservés en mémoire avec leurs rapports (issue #872) ; au-delà, les plus anciens lots terminés sont supprimés. |
 | `NETCROSS_PLUGIN_PATH` | absent | Fichiers plugins locaux, séparés par `:` (équivalent de `--plugin-path`, issue #867). Fixés par l'administrateur : le client ne fait que nommer un plugin dans le champ `plugins`. Voir [plugins](plugins.md#api-rest-issue-867). |
@@ -80,6 +81,9 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
 | `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
 | `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
+| `GET` | `/bpf-filters` | Bibliothèque de filtres BPF (`--bpf-library`, issue #906) : catalogue prédéfini (`predefined: true`) puis filtres enregistrés |
+| `PUT` | `/bpf-filters/{nom}` | Crée ou remplace un filtre (JSON `expression`, `description`) ; 409 pour un nom du catalogue, 422 si l'expression est vide |
+| `DELETE` | `/bpf-filters/{nom}` | Supprime un filtre enregistré ; 404 s'il est inconnu, 409 pour un nom du catalogue |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl
