@@ -24,6 +24,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
 | `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, sur `/captures` et `/captures/multi` l'analyse (#890), `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
+| `NETCROSS_API_BPF_FILTERS` | `~/.netcross/bpf_filters.json` | Fichier de la bibliothèque de filtres BPF (`/bpf-filters`, issue #906), même format que la GUI et `--bpf-library`. Le client ne choisit jamais le chemin. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
 | `NETCROSS_API_MAX_BATCHES` | 20 | Lots conservés en mémoire avec leurs rapports (issue #872) ; au-delà, les plus anciens lots terminés sont supprimés. |
 | `NETCROSS_PLUGIN_PATH` | absent | Fichiers plugins locaux, séparés par `:` (équivalent de `--plugin-path`, issue #867). Fixés par l'administrateur : le client ne fait que nommer un plugin dans le champ `plugins`. Voir [plugins](plugins.md#api-rest-issue-867). |
@@ -81,6 +82,15 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
 | `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
 | `GET` | `/analyses/{id}/comm-map` | Cartographie des communications (qui parle à qui) : `protocol` (répétable), `top_n`, `anomalies_only`, `format=json\|dot` (DOT Graphviz, anomalies en rouge) ; équiv. `--comm-map` (issue #909) |
+| `POST` | `/live-captures` | Capture en direct (JSON `points` : `name`, `interface`, `bpf` ; `duration` ; `points_order` ; `options` de `/captures/multi`) puis analyse ; 202. 403 si `NETCROSS_API_LIVE` n'est pas à 1, interface hors de `NETCROSS_API_LIVE_INTERFACES` ou `NETCROSS_API_TOKEN` absent ; 409 si une capture est déjà en cours (issue #902) |
+| `GET` | `/live-captures/{id}` | État (`capturing`, `analysing`, `completed`, `failed`), `bytes_captured` par point, `elapsed_seconds`, `packet_count`, `analysis_id` |
+| `POST` | `/live-captures/{id}/stop` | Arrêt anticipé ; l'analyse porte sur ce qui a été capturé |
+| `GET` | `/analyses/{id}/annotations` | Annotations par point (`point`, `tag`) : même format que le sidecar `<capture>.annotations.json` de la GUI (issue #910) |
+| `POST` | `/analyses/{id}/annotations` | Ajoute une annotation (JSON `point`, `frame_number`, `tag`, `comment`, `color`) ; même trame et étiquette = mise à jour ; 404 point inconnu, 422 saisie invalide |
+| `DELETE` | `/analyses/{id}/annotations?point=&frame_number=&tag=` | Supprime une annotation ; 404 si absente |
+| `GET` | `/bpf-filters` | Bibliothèque de filtres BPF (`--bpf-library`, issue #906) : catalogue prédéfini (`predefined: true`) puis filtres enregistrés |
+| `PUT` | `/bpf-filters/{nom}` | Crée ou remplace un filtre (JSON `expression`, `description`) ; 409 pour un nom du catalogue, 422 si l'expression est vide |
+| `DELETE` | `/bpf-filters/{nom}` | Supprime un filtre enregistré ; 404 s'il est inconnu, 409 pour un nom du catalogue |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl

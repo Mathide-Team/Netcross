@@ -2864,3 +2864,45 @@ _tools_routes.register(app, _verify_api_key, _save_upload, lambda: _MAX_FILES)
 from netcross_api import lua_doc_routes as _lua_doc_routes  # noqa: E402
 
 _lua_doc_routes.register(app, _verify_api_key)
+
+# Issue #902 : capture en direct sur des interfaces du serveur, puis analyse
+import inspect as _inspect  # noqa: E402
+
+from netcross_api import live_routes as _live_routes  # noqa: E402
+
+_LIVE_OPTION_DEFAULTS = {"nat_tolerant": False, "nat_window_ms": 200.0, "tls": False, "quic": False, "redact": False}
+
+
+def _live_make_options(**kwargs: Any) -> ApiAnalysisOptions:
+    """Options d'analyse d'une capture en direct : celles de POST /captures/multi."""
+    return _options(**{**_LIVE_OPTION_DEFAULTS, **kwargs})
+
+
+live_captures = _live_routes.register(
+    app,
+    _verify_api_key,
+    {
+        "token": lambda: _API_TOKEN,
+        "max_files": lambda: _MAX_FILES,
+        "parse_points_order": lambda order, labels: _parse_points_order(order, labels),
+        "option_names": lambda: frozenset(_inspect.signature(_options).parameters) - _live_routes._EXCLUDED_OPTIONS,
+        "make_options": _live_make_options,
+        "create_pending": lambda metadata, options: store.create_pending(
+            {**metadata, "options": _options_metadata(options)}
+        ),
+        "run_job": lambda analysis_id, captures, order, multi, options: _run_job(
+            analysis_id, captures, order, multi, options
+        ),
+        "get_analysis": lambda analysis_id: store.get(analysis_id),
+    },
+)
+
+# Issue #910 : annotations d'une analyse (rangées dans ses métadonnées, par point)
+from netcross_api import annotations_routes as _annotations_routes  # noqa: E402
+
+_annotations_routes.register(app, _verify_api_key, _completed_entry, lambda: store)
+
+# Issue #906 : bibliothèque de filtres BPF (fichier fixé par NETCROSS_API_BPF_FILTERS)
+from netcross_api import bpf_routes as _bpf_routes  # noqa: E402
+
+_bpf_routes.register(app, _verify_api_key)

@@ -112,6 +112,23 @@ Un nom en `.dot` ou `.gv` donne un graphe Graphviz, tout autre nom un JSON
 orientées : un échange TCP en donne deux, ce qui montre un sens sans réponse.
 Par l'API : `GET /analyses/{id}/comm-map` avec les mêmes filtres.
 
+## Les annotations
+
+Les étiquettes et signets posés sur des trames (panneau « Annotations /
+signets » de la GUI, ou `netcross annotations`) sont rangés à côté de la
+capture, dans `<capture>.annotations.json`. Si ce fichier existe, le rapport
+texte de la CLI se termine par une section « Annotations », un bloc par point.
+
+```bash
+netcross annotations add point-A.pcapng --frame 42 --tag suspect --comment "RST inattendu"
+netcross annotations list point-A.pcapng          # ou --json
+netcross annotations remove point-A.pcapng --frame 42 --tag suspect
+```
+
+Reposer la même trame avec la même étiquette met à jour le commentaire.
+Par l'API, les annotations d'une analyse se gèrent avec
+`GET`, `POST` et `DELETE /analyses/{id}/annotations` (voir [l'API](api.md)).
+
 ## Les autres formats
 
 - **PDF** (`--pdf-report`) : destiné à être transmis. Il s'ouvre sur « Par

@@ -23,6 +23,30 @@ Les erreurs (champ vide, nom déjà pris par le catalogue, fichier illisible,
 erreur d'écriture) s'affichent dans la fenêtre de sauvegarde ; rien n'est
 écrit dans ces cas.
 
+## Par l'API
+
+Issue #906. La bibliothèque est aussi gérée par l'API REST, sur le même
+fichier (celui du serveur : `$NETCROSS_API_BPF_FILTERS` s'il est défini,
+sinon `~/.netcross/bpf_filters.json` du compte qui exécute l'API) :
+
+```bash
+# catalogue prédéfini puis filtres enregistrés ("predefined": true/false)
+curl -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/bpf-filters
+
+# enregistrer (ou remplacer) un filtre
+curl -X PUT -H "X-API-Key: $NETCROSS_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"expression": "host 10.0.0.1 and tcp", "description": "Serveur web"}' \
+  "http://localhost:8000/bpf-filters/Serveur%20web"
+
+# supprimer
+curl -X DELETE -H "X-API-Key: $NETCROSS_API_TOKEN" "http://localhost:8000/bpf-filters/Serveur%20web"
+```
+
+Mêmes règles qu'en GUI : un nom du catalogue est refusé (409), une
+expression vide aussi (422), un fichier illisible n'est jamais écrasé (500,
+fichier intact). Un filtre enregistré par l'API est aussitôt utilisable par
+`--bpf-library NOM` et apparaît dans le menu « Filtres… » de la GUI.
+
 ## Catalogue prédéfini
 
 | Nom | Expression BPF |
