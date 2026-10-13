@@ -119,3 +119,18 @@ curl -X POST -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-capt
 L'état passe de `capturing` à `analysing` puis `completed` ; il donne alors
 `analysis_id`, et le résultat se lit sous `/analyses/{analysis_id}` comme
 pour des fichiers envoyés. Une seule capture à la fois par serveur.
+
+## Annoter une analyse
+
+```bash
+curl -X POST -H "X-API-Key: $NETCROSS_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"point": "point-A", "frame_number": 42, "tag": "suspect", "comment": "RST inattendu"}' \
+  http://localhost:8000/analyses/$ID/annotations
+curl -H "X-API-Key: $NETCROSS_API_TOKEN" "http://localhost:8000/analyses/$ID/annotations?tag=suspect"
+```
+
+Le serveur ne garde pas les captures téléversées : les annotations sont
+rangées dans l'analyse, par point, au format du fichier
+`<capture>.annotations.json` de la GUI. Recopier une liste dans ce fichier,
+à côté de votre capture, la fait apparaître dans la GUI et dans
+`netcross annotations`.

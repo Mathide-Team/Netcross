@@ -96,6 +96,23 @@ présentes.
 Quand Netcross ne peut pas conclure, il l'écrit (« indéterminé »,
 « impossible de conclure ») plutôt que de deviner. C'est volontaire.
 
+## Les annotations
+
+Les étiquettes et signets posés sur des trames (panneau « Annotations /
+signets » de la GUI, ou `netcross annotations`) sont rangés à côté de la
+capture, dans `<capture>.annotations.json`. Si ce fichier existe, le rapport
+texte de la CLI se termine par une section « Annotations », un bloc par point.
+
+```bash
+netcross annotations add point-A.pcapng --frame 42 --tag suspect --comment "RST inattendu"
+netcross annotations list point-A.pcapng          # ou --json
+netcross annotations remove point-A.pcapng --frame 42 --tag suspect
+```
+
+Reposer la même trame avec la même étiquette met à jour le commentaire.
+Par l'API, les annotations d'une analyse se gèrent avec
+`GET`, `POST` et `DELETE /analyses/{id}/annotations` (voir [l'API](api.md)).
+
 ## Les autres formats
 
 - **PDF** (`--pdf-report`) : destiné à être transmis. Il s'ouvre sur « Par
