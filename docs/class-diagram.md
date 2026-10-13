@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-198 modules · 285 classes · 690 fonctions publiques de module.
+199 modules · 288 classes · 694 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -42,8 +42,8 @@ flowchart TD
     netcross_gtk4 -->|"6 imports"| pcap_parser
     netcross_api -->|"19 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
-    netcross_api -->|"48 imports"| netcross_core
-    netcross_api -->|"3 imports"| pcap_parser
+    netcross_api -->|"49 imports"| netcross_core
+    netcross_api -->|"4 imports"| pcap_parser
     netcross_report -->|"40 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"19 imports"| pcap_parser
@@ -3893,6 +3893,7 @@ classDiagram
 | `netcross_api.batches` | lots de captures de l'API (issue #872). |
 | `netcross_api.bpf_routes` | bibliothèque de filtres BPF enregistrés (issue #906), équivalent API de ``--bpf-library NOM`` et des boutons « Filtres… » / « Enregistrer » de la GUI. |
 | `netcross_api.history_routes` | historique SQLite des runs (issue #874). |
+| `netcross_api.live_routes` | capture en direct sur des interfaces du serveur, puis analyse (issue #902), équivalent API de ``--live`` et de la case « Capture en direct » de la GUI. |
 | `netcross_api.lua_doc_routes` | documentation hors ligne de l'API Lua Wireshark (issue #873), équivalent de ``netcross-lua-doc --json``. |
 | `netcross_api.models` | modèles Pydantic pour les requêtes/réponses API (issue #209). |
 | `netcross_api.store` | analyses de l'API : statut, document JSON, persistance. |
@@ -4043,6 +4044,34 @@ classDiagram
         +register(app, verify) None
     }
 
+    %% ===== netcross_api.live_routes =====
+    class LivePoint {
+        <<BaseModel>>
+        +str name
+        +str interface
+        +str? bpf
+    }
+    class LiveCaptureRequest {
+        <<BaseModel>>
+        +list~LivePoint~ points
+        +float duration
+        +list~str~? points_order
+        +dict~str, Any~ options
+    }
+    class _LiveCaptures {
+        +start(req) dict~str, Any~
+        +get(capture_id) dict~str, Any~
+        +stop(capture_id) dict~str, Any~
+        +public(entry) dict~str, Any~
+    }
+    class mod_netcross_api_live_routes["netcross_api.live_routes"] {
+        <<module>>
+        +live_enabled(environ) bool
+        +allowed_interfaces(environ) frozenset~str~
+        +max_duration(environ) float
+        +register(app, verify, deps) _LiveCaptures
+    }
+
     %% ===== netcross_api.lua_doc_routes =====
     class mod_netcross_api_lua_doc_routes["netcross_api.lua_doc_routes"] {
         <<module>>
@@ -4152,6 +4181,7 @@ classDiagram
     }
 
     %% ===== relations =====
+    LiveCaptureRequest --> LivePoint : points
     netcross_api_models_SecurityReport --> SecurityFinding : findings
     MultiAnalysisSummary --> SegmentLoss : segments
 ```

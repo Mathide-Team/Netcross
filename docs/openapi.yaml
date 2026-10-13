@@ -2131,6 +2131,120 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures:
+    post:
+      tags:
+      - live
+      summary: Start Live Capture
+      description: Démarre une capture en direct puis son analyse (équiv. ``--live``
+        + ``--live-duration``).
+      operationId: start_live_capture_live_captures_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveCaptureRequest'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - APIKeyHeader: []
+  /live-captures/{capture_id}:
+    get:
+      tags:
+      - live
+      summary: Get Live Capture
+      description: 'État : capturing, analysing, completed ou failed ; octets par
+        point ; analysis_id.'
+      operationId: get_live_capture_live_captures__capture_id__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Live Capture Live Captures  Capture Id  Get
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/stop:
+    post:
+      tags:
+      - live
+      summary: Stop Live Capture
+      description: Arrête la capture avant la fin de ``duration`` ; l'analyse porte
+        sur ce qui a été capturé.
+      operationId: stop_live_capture_live_captures__capture_id__stop_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Stop Live Capture Live Captures  Capture Id  Stop
+                  Post
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/annotations:
     get:
       tags:
@@ -3408,6 +3522,61 @@ components:
       type: object
       title: HealthResponse
       description: Réponse du health check.
+    LiveCaptureRequest:
+      properties:
+        points:
+          items:
+            $ref: '#/components/schemas/LivePoint'
+          type: array
+          title: Points
+          description: Points à capturer simultanément (au moins 1)
+        duration:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Duration
+          description: Durée de capture en secondes (bornée par NETCROSS_API_LIVE_MAX_DURATION)
+        points_order:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Points Order
+          description: Ordre amont -> aval (sinon déduit du trafic)
+        options:
+          additionalProperties: true
+          type: object
+          title: Options
+          description: 'Options d''analyse de POST /captures/multi (mêmes noms : tls,
+            nat_tolerant, max_packets...)'
+      type: object
+      required:
+      - points
+      - duration
+      title: LiveCaptureRequest
+      description: Corps de ``POST /live-captures``.
+    LivePoint:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Nom du point (devient le point de capture de l'analyse)
+        interface:
+          type: string
+          title: Interface
+          description: Interface du serveur (autorisée par NETCROSS_API_LIVE_INTERFACES)
+        bpf:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bpf
+          description: Filtre BPF de capture de ce point (ex. 'tcp port 443')
+      type: object
+      required:
+      - name
+      - interface
+      title: LivePoint
+      description: 'Un point de capture : nom, interface du serveur, filtre BPF propre.'
     MultiAnalysisSummary:
       properties:
         analysis_id:

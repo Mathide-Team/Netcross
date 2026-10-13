@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 43 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 47 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 50 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -118,9 +118,9 @@ est conservée telle quelle pour les clients existants.
 
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
-| Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | non |
-| Durée maximale | oui | `--live-duration` | non |
-| Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | non |
+| Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | `POST /live-captures` : `points` (`name`, `interface`, `bpf`), `points_order`, `options` (mêmes options d'analyse que `POST /captures/multi`) ; état par `GET /live-captures/{capture_id}`, puis résultat sous `/analyses/{analysis_id}`. Désactivé par défaut (`NETCROSS_API_LIVE=1`), interfaces de `NETCROSS_API_LIVE_INTERFACES` seulement, `NETCROSS_API_TOKEN` exigé (issue #902) |
+| Durée maximale | oui | `--live-duration` | `duration`, bornée par `NETCROSS_API_LIVE_MAX_DURATION` (300 s par défaut ; issue #902) |
+| Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | `POST /live-captures/{capture_id}/stop` (issue #902) |
 | Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
 | Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | `GET /bpf-filters`, `PUT /bpf-filters/{nom}`, `DELETE /bpf-filters/{nom}` (même fichier, `$NETCROSS_API_BPF_FILTERS` côté serveur, issue #906) ; champ `bpf_library` par point avec #902 |
 | Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
@@ -301,6 +301,9 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /lua-doc/search` | Recherche dans la documentation Lua, `q`, `limit`, `full` (issue #873) |
 | `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
 | `POST /tools/replay` | Rejeu sur une interface autorisée (issue #871) |
+| `POST /live-captures` | Capture en direct sur des interfaces autorisées puis analyse (issue #902) |
+| `GET /live-captures/{capture_id}` | État d'une capture en direct : octets par point, durée, `analysis_id` (issue #902) |
+| `POST /live-captures/{capture_id}/stop` | Arrêt anticipé d'une capture en direct (issue #902) |
 | `GET /analyses/{analysis_id}/annotations` | Annotations de l'analyse par point, filtres `point`, `tag` (issue #910) |
 | `POST /analyses/{analysis_id}/annotations` | Ajoute ou met à jour une annotation (issue #910) |
 | `DELETE /analyses/{analysis_id}/annotations` | Supprime une annotation, `point`, `frame_number`, `tag` (issue #910) |
@@ -335,7 +338,7 @@ Classés par impact pour un utilisateur :
    batch) relève de l'automatisation et reste en CLI **par choix**.
    Révisé le 11/10/2026 (#330) : plus aucune exemption, toute fonction
    doit exister en CLI, GTK4 et API. Restent : l'API de la capture en
-   direct (#902 à #908) et la CLI et l'API des vues propres à la GUI
+   direct (#903 à #908 ; #902 livrée) et la CLI et l'API des vues propres à la GUI
    (#909 cartographie, #911 dashboard, #912
    exploration statistique).
 
