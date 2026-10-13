@@ -114,11 +114,21 @@ curl -X POST -H "X-API-Key: $NETCROSS_API_TOKEN" -H "Content-Type: application/j
   http://localhost:8000/live-captures
 curl -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID
 curl -X POST -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID/stop
+curl -X DELETE -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID
 ```
 
 L'état passe de `capturing` à `analysing` puis `completed` ; il donne alors
 `analysis_id`, et le résultat se lit sous `/analyses/{analysis_id}` comme
 pour des fichiers envoyés. Une seule capture à la fois par serveur.
+
+`/stop` arrête la capture avant la fin de `duration` et renvoie aussitôt
+l'`analysis_id` de l'analyse qui démarre. `DELETE` abandonne au contraire
+la capture sans l'analyser : les fichiers sont supprimés et l'état passe à
+`cancelled`.
+
+Au lieu d'écrire un filtre, un point peut prendre un filtre enregistré de
+la bibliothèque (`GET /bpf-filters`) : `{"name": "LAN", "interface": "eth0",
+"bpf_library": "web"}`.
 
 ## Annoter une analyse
 
