@@ -114,11 +114,37 @@ curl -X POST -H "X-API-Key: $NETCROSS_API_TOKEN" -H "Content-Type: application/j
   http://localhost:8000/live-captures
 curl -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID
 curl -X POST -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID/stop
+curl -X DELETE -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID
 ```
 
 L'état passe de `capturing` à `analysing` puis `completed` ; il donne alors
 `analysis_id`, et le résultat se lit sous `/analyses/{analysis_id}` comme
 pour des fichiers envoyés. Une seule capture à la fois par serveur.
+
+`/stop` arrête la capture avant la fin de `duration` et renvoie aussitôt
+l'`analysis_id` de l'analyse qui démarre. `DELETE` abandonne au contraire
+la capture sans l'analyser : les fichiers sont supprimés et l'état passe à
+`cancelled`.
+
+Au lieu d'écrire un filtre, un point peut prendre un filtre enregistré de
+la bibliothèque (`GET /bpf-filters`) : `{"name": "LAN", "interface": "eth0",
+"bpf_library": "web"}`.
+
+Pour garder aussi la capture brute, comme `--ring-buffer N:SECONDES`,
+ajoutez `"ring_buffer": {"files": 5, "seconds": 60}`. Chaque point enregistre
+alors en parallèle au plus 5 fichiers pcapng de 60 s, les plus anciens étant
+écrasés ; l'analyse, elle, porte sur toute la capture. Ces fichiers restent
+sur le serveur après l'analyse :
+
+```bash
+curl -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID/files
+curl -OJ -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID/files/LAN/LAN_00001_20261013120000.pcapng
+curl -X DELETE -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID/files
+```
+
+Ils ne sont supprimés que par ce `DELETE`, par l'abandon de la capture,
+ou par le nettoyage du répertoire temporaire du système. Le ring buffer
+est refusé pour une source `pipe://`, comme en CLI.
 
 ## Annoter une analyse
 
