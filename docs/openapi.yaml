@@ -2285,6 +2285,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /bpf-filters:
+    get:
+      tags:
+      - bpf-filters
+      summary: List Bpf Filters
+      description: Catalogue prédéfini puis filtres enregistrés (la liste de la GUI).
+      operationId: list_bpf_filters_bpf_filters_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response List Bpf Filters Bpf Filters Get
+        '500':
+          description: Fichier de filtres illisible ou non inscriptible (il n'est
+            pas modifié)
+      security:
+      - APIKeyHeader: []
+  /bpf-filters/{nom}:
+    put:
+      tags:
+      - bpf-filters
+      summary: Put Bpf Filter
+      description: Crée ou remplace le filtre ``nom`` ; renvoie la liste à jour.
+      operationId: put_bpf_filter_bpf_filters__nom__put
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: nom
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Nom
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BPFFilterBody'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Put Bpf Filter Bpf Filters  Nom  Put
+        '409':
+          description: Nom réservé au catalogue prédéfini
+        '500':
+          description: Fichier de filtres illisible ou non inscriptible (il n'est
+            pas modifié)
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - bpf-filters
+      summary: Delete Bpf Filter
+      description: Supprime le filtre enregistré ``nom`` ; renvoie la liste à jour.
+      operationId: delete_bpf_filter_bpf_filters__nom__delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: nom
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Nom
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Delete Bpf Filter Bpf Filters  Nom  Delete
+        '404':
+          description: Filtre enregistré introuvable
+        '409':
+          description: Nom réservé au catalogue prédéfini
+        '500':
+          description: Fichier de filtres illisible ou non inscriptible (il n'est
+            pas modifié)
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AnalysisAccepted:
@@ -2407,6 +2507,22 @@ components:
       - tag
       title: AnnotationBody
       description: Corps de ``POST /analyses/{analysis_id}/annotations``.
+    BPFFilterBody:
+      properties:
+        expression:
+          type: string
+          title: Expression
+          description: Expression BPF (libpcap), transmise telle quelle à tshark (-f)
+        description:
+          type: string
+          title: Description
+          description: Description libre, facultative
+          default: ''
+      type: object
+      required:
+      - expression
+      title: BPFFilterBody
+      description: Corps de ``PUT /bpf-filters/{nom}``.
     Body_adjust_time_route_tools_adjust_time_post:
       properties:
         file:

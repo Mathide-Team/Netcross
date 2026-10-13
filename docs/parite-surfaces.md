@@ -16,7 +16,7 @@ ici fait donc échouer la CI.
 |---|---|---|
 | CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
 | GUI | `netcross_gtk4` : 3 pages, 43 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 44 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| API | 47 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -122,7 +122,7 @@ est conservée telle quelle pour les clients existants.
 | Durée maximale | oui | `--live-duration` | non |
 | Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | non |
 | Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
-| Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | non |
+| Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | `GET /bpf-filters`, `PUT /bpf-filters/{nom}`, `DELETE /bpf-filters/{nom}` (même fichier, `$NETCROSS_API_BPF_FILTERS` côté serveur, issue #906) ; champ `bpf_library` par point avec #902 |
 | Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
 | Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | `notify_on`, `notify_webhook`, `notify_slack`, `notify_email`, `notify_detail` (trace dans `security_report.notifications` de `/report`, URL jamais conservées ; issue #875) |
 
@@ -304,6 +304,9 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /analyses/{analysis_id}/annotations` | Annotations de l'analyse par point, filtres `point`, `tag` (issue #910) |
 | `POST /analyses/{analysis_id}/annotations` | Ajoute ou met à jour une annotation (issue #910) |
 | `DELETE /analyses/{analysis_id}/annotations` | Supprime une annotation, `point`, `frame_number`, `tag` (issue #910) |
+| `GET /bpf-filters` | Bibliothèque de filtres BPF : catalogue puis filtres enregistrés (issue #906) |
+| `PUT /bpf-filters/{nom}` | Crée ou remplace un filtre BPF enregistré, `expression`, `description` (issue #906) |
+| `DELETE /bpf-filters/{nom}` | Supprime un filtre BPF enregistré (issue #906) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,

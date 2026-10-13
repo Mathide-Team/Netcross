@@ -2833,3 +2833,8 @@ _lua_doc_routes.register(app, _verify_api_key)
 from netcross_api import annotations_routes as _annotations_routes  # noqa: E402
 
 _annotations_routes.register(app, _verify_api_key, _completed_entry, lambda: store)
+
+# Issue #906 : bibliothèque de filtres BPF (fichier fixé par NETCROSS_API_BPF_FILTERS)
+from netcross_api import bpf_routes as _bpf_routes  # noqa: E402
+
+_bpf_routes.register(app, _verify_api_key)
