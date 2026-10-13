@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-200 modules · 288 classes · 706 fonctions publiques de module.
+200 modules · 290 classes · 706 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -40,9 +40,9 @@ flowchart TD
     netcross_gtk4 -->|"4 imports"| netcross_ai
     netcross_gtk4 -->|"110 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
-    netcross_api -->|"20 imports"| netcross_report
+    netcross_api -->|"21 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
-    netcross_api -->|"52 imports"| netcross_core
+    netcross_api -->|"54 imports"| netcross_core
     netcross_api -->|"4 imports"| pcap_parser
     netcross_report -->|"40 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
@@ -4095,18 +4095,36 @@ classDiagram
         +str name
         +str interface
         +str? bpf
+        +str? bpf_library
+    }
+    class RingBuffer {
+        <<BaseModel>>
+        +int files
+        +float seconds
+    }
+    class LiveReport {
+        <<BaseModel>>
+        +float interval
     }
     class LiveCaptureRequest {
         <<BaseModel>>
         +list~LivePoint~ points
         +float duration
         +list~str~? points_order
+        +RingBuffer? ring_buffer
+        +LiveReport? live_report
         +dict~str, Any~ options
     }
     class _LiveCaptures {
         +start(req) dict~str, Any~
+        +ring_files(capture_id) dict~str, Any~
+        +ring_file(capture_id, point, filename) Path
+        +purge_ring(capture_id) dict~str, Any~
+        +report_path(capture_id, name, token) Path
+        +report_response(capture_id, name, token) Response
         +get(capture_id) dict~str, Any~
         +stop(capture_id) dict~str, Any~
+        +cancel(capture_id) dict~str, Any~
         +public(entry) dict~str, Any~
     }
     class mod_netcross_api_live_routes["netcross_api.live_routes"] {
@@ -4227,6 +4245,8 @@ classDiagram
 
     %% ===== relations =====
     LiveCaptureRequest --> LivePoint : points
+    LiveCaptureRequest --> LiveReport : live_report
+    LiveCaptureRequest --> RingBuffer : ring_buffer
     netcross_api_models_SecurityReport --> SecurityFinding : findings
     MultiAnalysisSummary --> SegmentLoss : segments
 ```

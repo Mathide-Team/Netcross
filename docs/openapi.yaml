@@ -2420,7 +2420,8 @@ paths:
         '404':
           description: Capture inconnue
         '409':
-          description: Une capture est déjà en cours
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
         '422':
           description: Validation Error
           content:
@@ -2461,7 +2462,49 @@ paths:
         '404':
           description: Capture inconnue
         '409':
-          description: Une capture est déjà en cours
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - live
+      summary: Cancel Live Capture
+      description: 'Abandonne une capture en cours sans l''analyser (fichiers supprimés,
+        statut ``cancelled``) ;
+
+        409 si elle est déjà terminée.'
+      operationId: cancel_live_capture_live_captures__capture_id__delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Cancel Live Capture Live Captures  Capture Id  Delete
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
         '422':
           description: Validation Error
           content:
@@ -2473,8 +2516,10 @@ paths:
       tags:
       - live
       summary: Stop Live Capture
-      description: Arrête la capture avant la fin de ``duration`` ; l'analyse porte
-        sur ce qui a été capturé.
+      description: 'Arrête la capture avant la fin de ``duration`` (équiv. Ctrl+C
+        / « Arreter et analyser ») ;
+
+        l''analyse porte sur ce qui a été capturé et la réponse donne son ``analysis_id``.'
       operationId: stop_live_capture_live_captures__capture_id__stop_post
       security:
       - APIKeyHeader: []
@@ -2501,7 +2546,256 @@ paths:
         '404':
           description: Capture inconnue
         '409':
-          description: Une capture est déjà en cours
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/files:
+    get:
+      tags:
+      - live
+      summary: List Live Capture Files
+      description: 'Fichiers pcapng conservés par le ``ring_buffer`` (équiv. ``--ring-buffer``),
+        par point ;
+
+        404 si la capture a été lancée sans ``ring_buffer``.'
+      operationId: list_live_capture_files_live_captures__capture_id__files_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response List Live Capture Files Live Captures  Capture Id  Files
+                  Get
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - live
+      summary: Purge Live Capture Files
+      description: Supprime les fichiers du ``ring_buffer`` ; 409 pendant la capture.
+      operationId: purge_live_capture_files_live_captures__capture_id__files_delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Purge Live Capture Files Live Captures  Capture Id  Files
+                  Delete
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/files/{point}/{filename}:
+    get:
+      tags:
+      - live
+      summary: Download Live Capture File
+      description: Télécharge un fichier du ``ring_buffer`` (nom donné par ``GET .../files``).
+      operationId: download_live_capture_file_live_captures__capture_id__files__point___filename__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: point
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Point
+      - name: filename
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Filename
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/vnd.tcpdump.pcap: {}
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report:
+    get:
+      tags:
+      - live
+      summary: Get Live Capture Report
+      description: 'Dernière version du rapport en continu (équiv. ``--live-report``),
+        avec l''en-tête ``Refresh``
+
+        pendant la capture ; 404 si la capture a été lancée sans ``live_report``.'
+      operationId: get_live_capture_report_live_captures__capture_id__report_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report/{token}/:
+    get:
+      tags:
+      - live
+      summary: View Live Capture Report
+      description: Page du rapport en continu ouverte avec ``report_url`` (jeton,
+        lecture seule).
+      operationId: view_live_capture_report_live_captures__capture_id__report__token___get
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: Rapport introuvable ou jeton invalide
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report/{token}/{name}:
+    get:
+      tags:
+      - live
+      summary: View Live Capture Report File
+      description: '``index.html``, ``live.json`` (instantané) ou ``live.jsonl`` (journal)
+        du rapport en continu.'
+      operationId: view_live_capture_report_file_live_captures__capture_id__report__token___name__get
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Token
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Rapport introuvable ou jeton invalide
         '422':
           description: Validation Error
           content:
@@ -3806,6 +4100,19 @@ components:
           - type: 'null'
           title: Points Order
           description: Ordre amont -> aval (sinon déduit du trafic)
+        ring_buffer:
+          anyOf:
+          - $ref: '#/components/schemas/RingBuffer'
+          - type: 'null'
+          description: Garde aussi la capture brute de chaque point en pcapng tournants,
+            téléchargeables après l'analyse (GET /live-captures/{capture_id}/files)
+            ; incompatible avec pipe://
+        live_report:
+          anyOf:
+          - $ref: '#/components/schemas/LiveReport'
+          - type: 'null'
+          description: Rapport HTML rafraîchi pendant la capture (GET /live-captures/{capture_id}/report,
+            ou report_url dans un navigateur)
         options:
           additionalProperties: true
           type: object
@@ -3834,12 +4141,30 @@ components:
           - type: 'null'
           title: Bpf
           description: Filtre BPF de capture de ce point (ex. 'tcp port 443')
+        bpf_library:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bpf Library
+          description: Nom d'un filtre de la bibliothèque (GET /bpf-filters) à la
+            place de bpf (équiv. --bpf-library ; exclusif avec bpf)
       type: object
       required:
       - name
       - interface
       title: LivePoint
       description: 'Un point de capture : nom, interface du serveur, filtre BPF propre.'
+    LiveReport:
+      properties:
+        interval:
+          type: number
+          minimum: 1.0
+          title: Interval
+          description: Secondes entre deux relevés (5 par défaut, 1 minimum)
+          default: 5.0
+      type: object
+      title: LiveReport
+      description: Rapport HTML en continu (équiv. ``--live-report`` + ``--live-report-interval``).
     MultiAnalysisSummary:
       properties:
         analysis_id:
@@ -3896,6 +4221,24 @@ components:
       - analysis_id
       title: MultiAnalysisSummary
       description: 'Résumé d''une analyse multi-points (issue #354).'
+    RingBuffer:
+      properties:
+        files:
+          type: integer
+          minimum: 1.0
+          title: Files
+          description: Nombre de fichiers gardés par point (N)
+        seconds:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Seconds
+          description: Durée maximale d'un fichier, en secondes
+      type: object
+      required:
+      - files
+      - seconds
+      title: RingBuffer
+      description: Rotation de la capture brute (équiv. ``--ring-buffer N:SECONDES``).
     SecurityFinding:
       properties:
         severity:
