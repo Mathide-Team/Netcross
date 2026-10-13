@@ -43,7 +43,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.security import APIKeyHeader
 
 from netcross_api.models import (
@@ -1685,6 +1685,42 @@ async def get_analysis_sequence(
 
     views = top_flow_views(flows, max_flows=max_flows)
     return JSONResponse({"sequence_views": [asdict(v) for v in views]})
+
+
+_COMM_MAP_PROTOCOL_QUERY = Query(
+    default=None, description="Seulement ces protocoles (répétable ou séparés par des virgules)"
+)
+
+
+@app.get(
+    "/analyses/{analysis_id}/comm-map",
+    tags=["analyses"],
+    responses={**_ANALYSIS_RESPONSES, 404: {"model": ErrorResponse}},
+)
+async def get_analysis_comm_map(
+    analysis_id: str,
+    protocol: list[str] | None = _COMM_MAP_PROTOCOL_QUERY,
+    top_n: int | None = Query(default=None, ge=1, description="N arêtes les plus volumineuses (défaut : toutes)"),
+    anomalies_only: bool = Query(default=False, description="Seulement les arêtes avec anomalies"),
+    format: str = Query(default="json", description="json ou dot (Graphviz, anomalies en rouge)"),
+    _auth: None = Depends(_verify_api_key),
+) -> Response:
+    """Cartographie des communications (équiv. ``--comm-map``, vue GUI « Cartographie », issue #909)."""
+    from netcross_report.comm_map import build_comm_map, comm_map_to_dict, comm_map_to_dot
+
+    if format not in ("json", "dot"):
+        logger.debug("get_analysis_comm_map: format {} -> 400", format)
+        raise HTTPException(status_code=400, detail="format : json ou dot")
+    entry = _completed_entry(analysis_id)
+    flows = entry.get("flows")
+    if flows is None:
+        logger.debug("get_analysis_comm_map: pas de flux -> 404")
+        raise HTTPException(status_code=404, detail="Aucun flux disponible pour la cartographie")
+    protos = [p.strip() for v in protocol or [] for p in v.split(",") if p.strip()] or None
+    cmap = build_comm_map(flows, protocols=protos, top_n=top_n, only_anomalies=anomalies_only)
+    if format == "dot":
+        return PlainTextResponse(comm_map_to_dot(cmap), media_type="text/vnd.graphviz")
+    return JSONResponse(comm_map_to_dict(cmap))
 
 
 @app.get(

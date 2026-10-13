@@ -96,6 +96,22 @@ présentes.
 Quand Netcross ne peut pas conclure, il l'écrit (« indéterminé »,
 « impossible de conclure ») plutôt que de deviner. C'est volontaire.
 
+## La cartographie des communications
+
+La vue « Cartographie » de la GUI (qui parle à qui, anomalies en rouge)
+s'exporte aussi en ligne de commande :
+
+```bash
+netcross --capture LAN=lan.pcapng --capture WAN=wan.pcapng --comm-map carte.dot --comm-map-anomalies-only
+dot -Tsvg carte.dot -o carte.svg        # rendu SVG avec Graphviz
+netcross --capture LAN=lan.pcapng --comm-map carte.json --comm-map-protocol TCP,DNS --comm-map-top-n 20
+```
+
+Un nom en `.dot` ou `.gv` donne un graphe Graphviz, tout autre nom un JSON
+(nœuds, arêtes orientées, volumes, protocoles, anomalies). Les arêtes sont
+orientées : un échange TCP en donne deux, ce qui montre un sens sans réponse.
+Par l'API : `GET /analyses/{id}/comm-map` avec les mêmes filtres.
+
 ## Les annotations
 
 Les étiquettes et signets posés sur des trames (panneau « Annotations /
