@@ -146,6 +146,17 @@ Ils ne sont supprimés que par ce `DELETE`, par l'abandon de la capture,
 ou par le nettoyage du répertoire temporaire du système. Le ring buffer
 est refusé pour une source `pipe://`, comme en CLI.
 
+Pour suivre la capture pendant qu'elle tourne, comme `--live-report`,
+ajoutez `"live_report": {"interval": 5}`. L'état de la capture donne alors
+`report_url` : cette adresse s'ouvre dans un navigateur sans clé API (elle
+contient un jeton propre à la capture, à ne partager qu'avec qui doit voir
+le rapport). La page se met à jour toutes les 5 s, puis affiche le relevé
+final à l'arrêt. Avec la clé, `GET /live-captures/{id}/report` sert la même
+page, avec un en-tête `Refresh`.
+
+Le rapport compte les paquets au fil de l'eau ; l'analyse complète reste
+faite à l'arrêt, comme en CLI.
+
 ## Annoter une analyse
 
 ```bash

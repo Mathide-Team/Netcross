@@ -23,7 +23,14 @@ résultat consultable sous ``/analyses/{analysis_id}``.
   garde la capture brute en pcapng tournants ; ces fichiers survivent à
   l'analyse : ``GET /live-captures/{capture_id}/files`` les liste,
   ``GET .../files/{point}/{filename}`` les télécharge,
-  ``DELETE .../files`` les supprime.
+  ``DELETE .../files`` les supprime ;
+- ``live_report`` (``interval``, issue #907, équiv. ``--live-report`` /
+  ``--live-report-interval``) : rapport HTML rafraîchi pendant la capture
+  (même page et mêmes ``live.json`` / ``live.jsonl`` que la CLI).
+  ``GET /live-captures/{capture_id}/report`` le sert avec la clé API et un
+  en-tête ``Refresh`` ; ``report_url`` (jeton propre à la capture, lecture
+  seule) l'ouvre dans un navigateur sans exposer la clé, comme
+  ``--live-report-serve``.
 
 Sécurité : capturer demande des privilèges (``CAP_NET_RAW``) sur le
 serveur. Désactivé par défaut (``NETCROSS_API_LIVE=1`` pour l'activer),
@@ -35,8 +42,10 @@ défini. Une seule capture à la fois par serveur.
 
 from __future__ import annotations
 
+import hmac
 import os
 import re
+import secrets
 import shutil
 import tempfile
 import threading
@@ -48,7 +57,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
 from netcross_core.logging_config import get_logger
@@ -101,6 +110,20 @@ class RingBuffer(BaseModel):
     seconds: float = Field(..., gt=0, description="Durée maximale d'un fichier, en secondes")
 
 
+class LiveReport(BaseModel):
+    """Rapport HTML en continu (équiv. ``--live-report`` + ``--live-report-interval``)."""
+
+    interval: float = Field(5.0, ge=1, description="Secondes entre deux relevés (5 par défaut, 1 minimum)")
+
+
+# Fichiers d'un rapport en continu servis par l'URL à jeton (rien d'autre)
+REPORT_FILES = {
+    "index.html": "text/html; charset=utf-8",
+    "live.json": "application/json",
+    "live.jsonl": "application/x-ndjson",
+}
+
+
 class LiveCaptureRequest(BaseModel):
     """Corps de ``POST /live-captures``."""
 
@@ -111,6 +134,11 @@ class LiveCaptureRequest(BaseModel):
         None,
         description="Garde aussi la capture brute de chaque point en pcapng tournants, téléchargeables "
         "après l'analyse (GET /live-captures/{capture_id}/files) ; incompatible avec pipe://",
+    )
+    live_report: LiveReport | None = Field(
+        None,
+        description="Rapport HTML rafraîchi pendant la capture (GET /live-captures/{capture_id}/report, "
+        "ou report_url dans un navigateur)",
     )
     options: dict[str, Any] = Field(
         default_factory=dict,
@@ -257,14 +285,57 @@ class _LiveCaptures:
                 "_workdir": workdir,
                 "_ringdir": ringdir,
                 "ring_buffer": req.ring_buffer.model_dump() if req.ring_buffer is not None else None,
+                "live_report": req.live_report.model_dump() if req.live_report is not None else None,
+                "_report_dir": tempfile.mkdtemp(prefix="netcross-live-report-") if req.live_report else None,
+                "_report_token": secrets.token_urlsafe(24) if req.live_report else None,
             }
             self._entries[capture_id] = entry
         threading.Thread(target=self._run, args=(entry, order, options), daemon=True).start()
         logger.info("capture en direct {} démarrée : {} point(s), {} s", capture_id, len(noms), req.duration)
         return self.public(entry)
 
+    def _start_report(self, entry: dict[str, Any]) -> tuple[Any, list[threading.Thread]]:
+        """Rapport en continu (issue #907) : comme ``--live-report``, un flux de
+        dissection par point (``parse_live``) alimente le LiveReporter ; les
+        enregistreurs, eux, gardent les fichiers de l'analyse finale."""
+        if entry["live_report"] is None:
+            return None, []
+        reporter = self._deps["make_reporter"](entry["_report_dir"], entry["live_report"]["interval"])
+        for point in entry["points"]:
+            reporter.aggregator.register(point["name"])
+
+        def _worker(point: dict[str, Any]) -> None:
+            try:
+                for pkt in self._deps["parse_live"](
+                    point["name"], point["interface"], bpf_filter=point["bpf"], stop_event=entry["_stop"]
+                ):
+                    reporter.add(pkt)
+            except Exception as exc:  # noqa: BLE001 -- thread de fond : l'erreur va dans le rapport
+                logger.warning(
+                    "rapport en continu {} : point {} en erreur ({})", entry["capture_id"], point["name"], exc
+                )
+                reporter.aggregator.set_status(point["name"], "erreur", str(exc))
+            else:
+                reporter.aggregator.set_status(point["name"], "arrete")
+
+        threads = [threading.Thread(target=_worker, args=(p,), daemon=True) for p in entry["points"]]
+        reporter.start()
+        for t in threads:
+            t.start()
+        return reporter, threads
+
+    @staticmethod
+    def _stop_report(reporter: Any, threads: list[threading.Thread]) -> None:
+        if reporter is None:
+            return
+        for t in threads:
+            t.join(timeout=10)
+        reporter.stop()  # dernier relevé (final)
+
     def _run(self, entry: dict[str, Any], order: list[str] | None, options: Any) -> None:
         recorders: list[tuple[dict[str, Any], Any]] = []
+        reporter: Any = None
+        report_threads: list[threading.Thread] = []
         try:
             for point in entry["points"]:
                 proc = self._deps["start_recorder"](
@@ -287,10 +358,13 @@ class _LiveCaptures:
                         bpf_filter=point["bpf"],
                     )
                     recorders.append(({**point, "_dir": point["_ring"], "_is_ring": True}, ring))
+            reporter, report_threads = self._start_report(entry)
             entry["_stop"].wait(entry["duration"])
         except Exception as exc:  # noqa: BLE001 -- tâche de fond : l'erreur va dans l'état
             logger.exception("capture en direct {} : démarrage impossible", entry["capture_id"])
             entry["error"] = f"capture impossible : {exc}"
+        entry["_stop"].set()  # arrête aussi les flux du rapport en continu
+        self._stop_report(reporter, report_threads)
         erreurs = []
         for point, proc in recorders:
             err = self._deps["stop_recorder"](proc)
@@ -305,6 +379,8 @@ class _LiveCaptures:
             entry["status"] = CANCELLED
             shutil.rmtree(entry["_workdir"], ignore_errors=True)
             self._purge_ring(entry)
+            if entry.get("_report_dir"):
+                shutil.rmtree(entry["_report_dir"], ignore_errors=True)
             entry["_handoff"].set()
             return
         if entry["error"] is None and erreurs:
@@ -400,6 +476,40 @@ class _LiveCaptures:
         logger.info("capture en direct {} : fichiers du ring buffer supprimés", capture_id)
         return self.ring_files(capture_id)
 
+    # -- rapport en continu (issue #907) -----------------------------------------------------
+
+    def report_path(self, capture_id: str, name: str = "index.html", token: str | None = None) -> Path:
+        """Fichier du rapport en continu. Avec ``token`` (URL de consultation) :
+        404 si le jeton ne correspond pas, sans dire si la capture existe."""
+        entry = self._entries.get(capture_id)
+        if token is not None:
+            attendu = (entry or {}).get("_report_token") or ""
+            if not (attendu and hmac.compare_digest(token.encode(), attendu.encode())):
+                logger.debug("live: jeton de rapport invalide pour {} -> 404", capture_id)
+                raise HTTPException(status_code=404, detail="Rapport introuvable")
+        entry = self.get(capture_id)
+        if entry.get("live_report") is None:
+            logger.debug("live: {} sans live_report -> 404", capture_id)
+            raise HTTPException(status_code=404, detail=f"Capture en direct {capture_id} lancée sans live_report")
+        if name not in REPORT_FILES:
+            raise HTTPException(status_code=404, detail="Rapport introuvable")
+        chemin = Path(entry["_report_dir"]) / name
+        if not chemin.is_file():
+            logger.debug("live: {} absent pour {} -> 404", name, capture_id)
+            raise HTTPException(status_code=404, detail="Rapport pas encore publié ou supprimé")
+        return chemin
+
+    def report_response(self, capture_id: str, name: str = "index.html", token: str | None = None) -> Response:
+        chemin = self.report_path(capture_id, name, token)
+        entry = self.get(capture_id)
+        headers = {"Cache-Control": "no-store"}
+        if name == "index.html" and entry["status"] == CAPTURING:
+            headers["Refresh"] = str(max(1, round(entry["live_report"]["interval"])))
+        contenu = chemin.read_text(encoding="utf-8")
+        if name == "index.html":
+            return HTMLResponse(contenu, headers=headers)
+        return PlainTextResponse(contenu, media_type=REPORT_FILES[name], headers=headers)
+
     @staticmethod
     def _files(point: dict[str, Any]) -> list[str]:
         dossier = Path(point["_dir"])
@@ -459,6 +569,12 @@ class _LiveCaptures:
             "error": entry["error"],
             "ring_buffer": entry.get("ring_buffer"),
             "files_url": f"/live-captures/{entry['capture_id']}/files" if entry.get("ring_buffer") else None,
+            "live_report": entry.get("live_report"),
+            "report_url": (
+                f"/live-captures/{entry['capture_id']}/report/{entry['_report_token']}/"
+                if entry.get("_report_token")
+                else None
+            ),
         }
 
 
@@ -468,8 +584,16 @@ def register(app: FastAPI, verify: Callable[..., None], deps: dict[str, Callable
     ``make_options``, ``create_pending``, ``run_job``, ``get_analysis``) et
     l'enregistreur (``start_recorder``, ``stop_recorder``)."""
     from netcross_api.bpf_routes import resolve_bpf_library
+    from netcross_core.live_report import LiveReporter, LiveReportWriter
+    from netcross_core.parsing import parse_live
+    from netcross_report.live_html import render_live_html
+
+    def make_reporter(directory: str, interval: float) -> LiveReporter:
+        return LiveReporter(LiveReportWriter(directory, render_live_html, interval))
 
     deps = {
+        "parse_live": parse_live,
+        "make_reporter": make_reporter,
         "start_recorder": start_ring_recorder,
         "stop_recorder": stop_ring_recorder,
         "resolve_bpf_library": resolve_bpf_library,
@@ -524,5 +648,38 @@ def register(app: FastAPI, verify: Callable[..., None], deps: dict[str, Callable
         """Supprime les fichiers du ``ring_buffer`` ; 409 pendant la capture."""
         return live.purge_ring(capture_id)
 
-    logger.debug("live_routes.register: 7 routes")
+    @app.get(
+        "/live-captures/{capture_id}/report",
+        tags=["live"],
+        responses={**_RESPONSES, 200: {"content": {"text/html": {}}}},
+        dependencies=auth,
+        response_class=HTMLResponse,
+    )
+    def get_live_capture_report(capture_id: str) -> Response:
+        """Dernière version du rapport en continu (équiv. ``--live-report``), avec l'en-tête ``Refresh``
+        pendant la capture ; 404 si la capture a été lancée sans ``live_report``."""
+        return live.report_response(capture_id)
+
+    # URL de consultation (report_url) : jeton propre à la capture, sans clé API,
+    # pour un navigateur ; la page y relit live.json / live.jsonl (chemins relatifs).
+    @app.get(
+        "/live-captures/{capture_id}/report/{token}/",
+        tags=["live"],
+        responses={404: {"description": "Rapport introuvable ou jeton invalide"}},
+        response_class=HTMLResponse,
+    )
+    def view_live_capture_report(capture_id: str, token: str) -> Response:
+        """Page du rapport en continu ouverte avec ``report_url`` (jeton, lecture seule)."""
+        return live.report_response(capture_id, "index.html", token)
+
+    @app.get(
+        "/live-captures/{capture_id}/report/{token}/{name}",
+        tags=["live"],
+        responses={404: {"description": "Rapport introuvable ou jeton invalide"}},
+    )
+    def view_live_capture_report_file(capture_id: str, token: str, name: str) -> Response:
+        """``index.html``, ``live.json`` (instantané) ou ``live.jsonl`` (journal) du rapport en continu."""
+        return live.report_response(capture_id, name, token)
+
+    logger.debug("live_routes.register: 10 routes")
     return live
