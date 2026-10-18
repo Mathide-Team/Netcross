@@ -27,9 +27,14 @@ defaults:
     shell: bash
 
 jobs:
+  # Jobs en conteneur (quality, gtk4, packaging, i18n) : label « docker » exigé.
+  # Il désigne un runner maison qui lance les conteneurs sur son propre hôte
+  # (VM `ubuntu`). Un runner lui-même conteneurisé (RunnerMaison-2) monte
+  # /__w à un autre chemin que l'hôte Docker : « /__w/_temp/…sh: No such file
+  # or directory » (#848, #936). Repli inchangé : NETCROSS_RUNS_ON.
   quality:
     name: Qualité (lint, format, import-linter, tests)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux"]}') }}
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux","docker"]}') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -62,8 +67,8 @@ jobs:
             | debconf-set-selections
           DEBIAN_FRONTEND=noninteractive apt-get update -qq
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tshark poppler-utils gettext
-          tshark --version | head -1
-          editcap --version | head -1
+          tshark --version 2>&1 | sed -n 1p
+          editcap --version 2>&1 | sed -n 1p
           # poppler-utils fournit pdftotext, utilise par tests/test_security_outputs.py
           # (issue #218) pour REEXTRAIRE le texte du PDF produit au lieu de
           # s'arreter avant le rendu. C'est precisement le niveau de
@@ -72,7 +77,7 @@ jobs:
           # tshark ci-dessus (#262) -- sauter ces tests quand l'outil manque
           # rendrait la CI verte en supprimant la seule verification qui
           # regarde le fichier livre a l'utilisateur.
-          pdftotext -v 2>&1 | head -1
+          pdftotext -v 2>&1 | sed -n 1p
 
       - name: Installation de uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -172,7 +177,7 @@ jobs:
     # GTK4 tout en passant en CI). Ici : GTK4 + pygobject + serveur X
     # virtuel (Xvfb), suite complète, et échec si un test GTK est sauté.
     name: Tests GTK4 (Xvfb)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux"]}') }}
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux","docker"]}') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -267,7 +272,7 @@ jobs:
     # recoit : installation apt, --help de chaque lanceur, import de chaque
     # module avec /usr/bin/python3, analyse reelle d'une capture.
     name: Paquets (deb installé, rpm vérifié)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux"]}') }}
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux","docker"]}') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -359,7 +364,7 @@ jobs:
     # les fichiers concernés (src/**/*.py, lang/**) couvrent la majeure partie
     # du code, donc le job tourne sur toutes les PR/push.
     name: i18n (catalogues à jour)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux"]}') }}
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux","docker"]}') }}
     container:
       image: ubuntu:26.04
       options: --privileged
