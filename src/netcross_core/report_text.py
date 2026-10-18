@@ -1023,6 +1023,38 @@ def print_annotations(annotations: list[PacketAnnotation]):
     logger.debug("print_annotations: fin")
 
 
+def load_capture_annotations(captures) -> dict[str, list[PacketAnnotation]]:
+    """Annotations des sidecars de ``captures`` (paires (label, chemin)),
+    regroupees par point (issue #910). Un point sans sidecar n'apparait pas ;
+    un sidecar illisible est signale dans le journal et ignore -- une
+    annotation reste facultative, elle n'interrompt jamais le rapport."""
+    from netcross_core.forensic import read_annotations
+
+    by_point: dict[str, list[PacketAnnotation]] = {}
+    for label, path in captures or []:
+        try:
+            found = read_annotations(path)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            logger.warning("annotations illisibles pour {} ({}) : ignorees dans le rapport", path, exc)
+            continue
+        if found:
+            by_point.setdefault(label, []).extend(found)
+    logger.debug("load_capture_annotations: {} point(s) annote(s)", len(by_point))
+    return by_point
+
+
+def print_capture_annotations(by_point: dict[str, list[PacketAnnotation]]) -> None:
+    """Section annotations du rapport texte de la CLI (issue #910), un bloc
+    par point annote ; rien n'est affiche s'il n'y a aucune annotation."""
+    if not by_point:
+        logger.debug("print_capture_annotations: aucune annotation -> retour")
+        return
+    for label in sorted(by_point):
+        print(f"\n[Point {label}]", end="")
+        print_annotations(by_point[label])
+    logger.debug("print_capture_annotations: fin")
+
+
 def write_detail_csv(path, flows, points, names=None):
     """Ecrit le detail par flux en CSV. Si ``names`` (une
     ``netcross_core.naming.NameTable``) est fourni, les colonnes src/dst

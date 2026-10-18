@@ -222,3 +222,76 @@ def format_comm_map(cmap, top_n=DEFAULT_TOP_N) -> str:
         lignes.append(f"  ... {len(cmap.edges) - top_n} arete(s) supplementaire(s) non detaillee(s)")
     logger.debug("format_comm_map: retour '\\n'.join(…)")
     return "\n".join(lignes)
+
+
+def comm_map_to_dict(cmap) -> dict:
+    """Cartographie en JSON (issue #909) : meme contenu que la vue GUI --
+    noeuds, aretes orientees, protocoles presents, totaux avant filtrage.
+    Ensembles de protocoles tries pour une sortie stable."""
+    logger.debug("comm_map_to_dict: {} arete(s)", len(cmap.edges))
+    return {
+        "nodes": [
+            {
+                "host": n.host,
+                "packets": n.packets,
+                "bytes": n.bytes,
+                "protocols": sorted(n.protocols),
+                "anomalies": n.anomalies,
+            }
+            for n in cmap.nodes
+        ],
+        "edges": [
+            {
+                "src": e.src,
+                "dst": e.dst,
+                "packets": e.packets,
+                "bytes": e.bytes,
+                "protocols": sorted(e.protocols),
+                "anomalies": e.anomalies,
+                "flows": e.flows,
+            }
+            for e in cmap.edges
+        ],
+        "protocols": list(cmap.protocols),
+        "total_edges": cmap.total_edges,
+        "total_hosts": cmap.total_hosts,
+    }
+
+
+def _dot_id(text: str) -> str:
+    """Chaine DOT entre guillemets ; ``\\n`` (deux caracteres) reste le
+    saut de ligne de Graphviz, les guillemets sont echappes."""
+    return '"' + str(text).replace('"', '\\"') + '"'
+
+
+def comm_map_to_dot(cmap) -> str:
+    """Cartographie au format Graphviz DOT (issue #909), anomalies en rouge
+    comme dans la GUI. Rendu SVG : ``dot -Tsvg carte.dot -o carte.svg``."""
+    logger.debug("comm_map_to_dot: {} arete(s)", len(cmap.edges))
+    lignes = ["digraph netcross_comm_map {", "  rankdir=LR;", '  node [shape=box, fontname="Helvetica"];']
+    for n in cmap.nodes:
+        couleur = ", color=red, fontcolor=red" if n.anomalies else ""
+        libelle = n.host + "\\n" + f"{n.bytes} o"
+        lignes.append(f"  {_dot_id(n.host)} [label={_dot_id(libelle)}{couleur}];")
+    for e in cmap.edges:
+        protos = ",".join(sorted(e.protocols)) or "?"
+        libelle = f"{protos} {e.packets} pq" + (f" / {e.anomalies} anomalie(s)" if e.anomalies else "")
+        couleur = ", color=red, fontcolor=red, penwidth=2" if e.anomalies else ""
+        lignes.append(f"  {_dot_id(e.src)} -> {_dot_id(e.dst)} [label={_dot_id(libelle)}{couleur}];")
+    lignes.append("}")
+    return "\n".join(lignes) + "\n"
+
+
+def write_comm_map(path: str, cmap) -> str:
+    """Ecrit la cartographie : DOT si ``path`` finit par .dot ou .gv, JSON
+    sinon. Renvoie le format ecrit (``dot`` ou ``json``)."""
+    import json
+
+    fmt = "dot" if str(path).lower().endswith((".dot", ".gv")) else "json"
+    contenu = (
+        comm_map_to_dot(cmap) if fmt == "dot" else json.dumps(comm_map_to_dict(cmap), ensure_ascii=False, indent=2)
+    )
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(contenu)
+    logger.debug("write_comm_map: {} ecrit ({})", path, fmt)
+    return fmt

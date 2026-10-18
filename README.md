@@ -1,4 +1,4 @@
-# netcross
+# Netcross
 
 [![CI](https://github.com/MathildeDec/Netcross/actions/workflows/ci.yml/badge.svg)](https://github.com/MathildeDec/Netcross/actions/workflows/ci.yml)
 

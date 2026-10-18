@@ -14,9 +14,9 @@ ici fait donc échouer la CI.
 
 | Surface | Points d'entrée | Capacités |
 |---|---|---|
-| CLI | `cross_capture_analyzer_cli.py` (110 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
-| GUI | `netcross_gtk4` : 3 pages, 43 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
-| API | 41 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
+| CLI | `cross_capture_analyzer_cli.py` (123 options), `cross_capture_diff_cli.py` (27), `cross_capture_batch_cli.py` (11), `cross_history_cli.py`, `netcross_lua_doc_cli.py`, `netcross_ai_models_cli.py` | Surface de référence : tout y est |
+| GUI | `netcross_gtk4` : 3 pages, 44 cases à cocher, 31 réglages numériques | Analyse interactive et exploration visuelle |
+| API | 62 routes FastAPI | Analyse avec sécurité ; options NAT, TLS, QUIC, anonymisation ; exports texte, PDF, CSV (issue #670) ; options avancées (#672) ; comparaison baseline/courant (#669) ; recherche forensic, extraction, comparaison de postes, NetFlow (#675) |
 
 
 Légende : **oui** = disponible ; **non** = absent ; **auto** = toujours
@@ -90,6 +90,9 @@ actif, non réglable.
 | Graphiques Top-N du PDF | oui (« Top-N graphiques ») | `--topn-charts` | `topn` de `GET /analyses/{analysis_id}/pdf` (issue #865) |
 | Rapport de sécurité HTML / JSON | oui (section Sécurité, 2 boutons) | `--security-html` ; clé `security_report` de `--json-report` | `GET /analyses/{analysis_id}/security` (liste simplifiée) |
 | Diagramme de séquence | oui (« Diagramme de sequence » de la configuration, dans l'export PDF ; issue #674) | `--sequence-diagram` | `GET /analyses/{analysis_id}/sequence` (issue #674), `format`, `max_flows` |
+| Dashboard analytique (sélection croisée segments, flux, hôtes, protocoles, événements) | oui (onglet « Dashboard » : clic sur une vue = filtre des autres) | `--dashboard FICHIER` (JSON des six vues), filtres `--dashboard-segment`, `--dashboard-host`, `--dashboard-protocol` (issue #911) | `GET /analyses/{analysis_id}/dashboard` : `segment`, `host`, `protocol` (issue #911) |
+| Exploration statistique (Top-N, tri, regroupement, drill-down, export CSV/JSON) | oui (vue « Exploration statistique » : regroupement, tri, Top-N, sélection d'une ligne, « Exporter CSV/JSON ») | `--stats FICHIER` (CSV si `.csv`, JSON sinon), `--stats-group-by`, `--stats-sort`, `--stats-top-n`, `--stats-format` ; `flow_keys` de chaque ligne pour le drill-down (issue #912) | `GET /analyses/{analysis_id}/stats` : `group_by`, `sort`, `top_n`, `format` (`json` ou `csv` ; issue #912) |
+| Cartographie des communications (qui parle à qui, anomalies en rouge) | oui (vue « Cartographie » : filtres protocole, Top-N, « Anomalies seulement ») | `--comm-map FICHIER` (DOT Graphviz si `.dot`/`.gv`, JSON sinon), `--comm-map-protocol`, `--comm-map-top-n`, `--comm-map-anomalies-only` (issue #909) | `GET /analyses/{analysis_id}/comm-map` : `protocol`, `top_n`, `anomalies_only`, `format` (`json` ou `dot` ; issue #909) |
 | Export SIEM (CEF, LEEF, STIX) | oui (panneau « SIEM, ticket de support, historique » de la page Résultats, après un rapport de sécurité, même fichier ; issue #674) | `--siem-export`, `--siem-output` | `GET /analyses/{analysis_id}/siem` (issue #674), `format` |
 | Historique SQLite | oui (« Historique... » et « Etiquette » de la configuration, derniers runs dans le panneau « SIEM, ticket de support, historique » ; issue #674) | `--history-db`, `--history-label`, `--history-show` ; `netcross-history` | `history`, `history_label` de `POST /captures` et `POST /captures/multi` (base fixée par `NETCROSS_HISTORY_DB`, `history_id` ou `history_error` dans le résumé ; issue #890), consultation `GET /history` ; persistance propre des analyses (`NETCROSS_DB_PATH`), `GET /analyses` |
 | Ticket de support anonymisé | oui (case de consentement et « Ticket de support... » du panneau « SIEM, ticket de support, historique », ticket « diagnostic », toutes portées ; issue #674) | `--support-ticket`, `--support-consent`, `--support-scope`, `--support-map`, `--support-marker` | `POST /analyses/{analysis_id}/support-ticket` (issue #674), `consent`, `kind`, `scopes`, `marker`, `include_map` (issue #877) |
@@ -118,12 +121,12 @@ est conservée telle quelle pour les clients existants.
 
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
-| Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | non |
-| Durée maximale | oui | `--live-duration` | non |
-| Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | non |
-| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | non |
-| Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | non |
-| Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | non |
+| Capture sur interfaces, un filtre BPF par point | oui (case « Capture en direct ») | `--live` | `POST /live-captures` : `points` (`name`, `interface`, `bpf`), `points_order`, `options` (mêmes options d'analyse que `POST /captures/multi`) ; état par `GET /live-captures/{capture_id}`, puis résultat sous `/analyses/{analysis_id}`. Désactivé par défaut (`NETCROSS_API_LIVE=1`), interfaces de `NETCROSS_API_LIVE_INTERFACES` seulement, `NETCROSS_API_TOKEN` exigé (issue #902) |
+| Durée maximale | oui | `--live-duration` | `duration`, bornée par `NETCROSS_API_LIVE_MAX_DURATION` (300 s par défaut), refus 400 au-delà (issues #902, #903) |
+| Arrêt manuel puis analyse | oui (« Arreter et analyser ») | Ctrl+C | `POST /live-captures/{capture_id}/stop`, la réponse donne l'`analysis_id` ; abandon sans analyse : `DELETE /live-captures/{capture_id}` (issues #902, #904) |
+| Rotation de capture (ring buffer) | oui (« Rotation de capture », nombre de fichiers, durée par fichier) : même enregistreur que la CLI, répertoires et fichiers conservés indiqués dans le journal | `--ring-buffer N:SECONDES` : enregistre la capture brute de chaque point en pcapng tournants (ring buffer natif de tshark), incompatible avec `pipe://` (issue #676) | `ring_buffer` (`files`, `seconds`) de `POST /live-captures`, refusé avec `pipe://` ; fichiers conservés après l'analyse : `GET /live-captures/{capture_id}/files`, téléchargement `GET /live-captures/{capture_id}/files/{point}/{filename}`, suppression `DELETE /live-captures/{capture_id}/files` (issue #905) |
+| Bibliothèque de filtres BPF enregistrés | oui (enregistrer, choisir) | `--bpf-library NOM` (lit `~/.netcross/bpf_filters.json`, issue #676) | `GET /bpf-filters`, `PUT /bpf-filters/{nom}`, `DELETE /bpf-filters/{nom}` (même fichier, `$NETCROSS_API_BPF_FILTERS` côté serveur, issue #906) ; champ `bpf_library` de chaque point de `POST /live-captures`, exclusif avec `bpf` (issue #904) |
+| Rapport HTML rafraîchi en continu | oui (« Rapport HTML en continu », répertoire, intervalle, « Servir la page » et port ; issue #676) | `--live-report`, `--live-report-interval`, `--live-report-serve` | `live_report` (`interval`) de `POST /live-captures` ; `GET /live-captures/{capture_id}/report` (en-tête `Refresh` pendant la capture) ; équivalent de `--live-report-serve` : `report_url`, jeton propre à la capture, sans clé API (`GET /live-captures/{capture_id}/report/{token}/`, `live.json`, `live.jsonl` ; issue #907) |
 | Notifications (webhook, Slack, e-mail) | oui (« Notifier si », webhook, Slack, courriel, « Detail complet » ; avec « Rapport de securite », issue #676) | `--notify-on`, `--notify-webhook`, `--notify-slack`, `--notify-email`, `--notify-detail`, `--notify-silence`, `--notify-state` | `notify_on`, `notify_webhook`, `notify_slack`, `notify_email`, `notify_detail` (trace dans `security_report.notifications` de `/report`, URL jamais conservées ; issue #875) |
 
 **API : hors périmètre (issue #676).** Aucune route ne lance de capture en
@@ -139,7 +142,7 @@ de sécurité, déjà produit par `POST /analyses`.
 | Fonction | GUI | CLI (`cross_capture_diff_cli.py`) | API |
 |---|---|---|---|
 | Baseline et courant en fichiers | oui (case « Mode comparaison ») | `--baseline`, `--current` | `POST /comparisons` (issue #669) |
-| Courant capturé en direct | oui (« Mode comparaison » + « Capture en direct » : le panneau live remplace le courant en fichiers, durée maximale ; sans TLS/QUIC ni lecture parallèle du courant, issue #676) | `--live-current`, `--live-duration` | non |
+| Courant capturé en direct | oui (« Mode comparaison » + « Capture en direct » : le panneau live remplace le courant en fichiers, durée maximale ; sans TLS/QUIC ni lecture parallèle du courant, issue #676) | `--live-current`, `--live-duration` | `current_live` de `POST /comparisons` (JSON de `POST /live-captures`, sans `options`) au lieu de `current_files` ; mêmes limites (sans TLS/QUIC), `wait` refusé ; la capture se suit et s'arrête par `live_capture_id` (`/live-captures/{capture_id}`, `/stop`, `DELETE`) ; issue #908 |
 | Seuils de régression | oui (pertes, latence) | `--loss-threshold-pp`, `--latency-threshold-ms` | `loss_threshold_pp`, `latency_threshold_ms` (issue #669) |
 | TLS / QUIC de chaque côté | oui | `--tls`, `--quic` | `tls`, `quic` (issue #669) |
 | Triage des écarts | oui (« Triage des ecarts (classement des segments) », Top) | `--triage`, `--triage-top-n` | `triage_top_n` (issue #669) |
@@ -180,24 +183,25 @@ fenêtre « Outils de capture » (bouton de la barre de titre).
 | Fonction | GUI | CLI | API |
 |---|---|---|---|
 | Dossier entier de captures | oui (fenêtre « Analyse d'un dossier » : dossier, sous-dossiers, regroupement, fenêtre, recouvrement, adresses communes, tâches, reprise, sécurité, sortie ; avancement ligne à ligne ; issue #872) | `cross_capture_batch_cli.py` : `--input`, `--output`, `--recursive`, `--no-group`, `--group-window`, `--min-overlap`, `--min-common-ips`, `--jobs`, `--skip-existing`, `--security-report` | `POST /batches` (`files`, captures ou archive ZIP ; `no_group`, `group_window`, `min_overlap`, `min_common_ips`, `jobs`, `security_report`), `GET /batches/{batch_id}` (avancement, groupes, échecs), `/index`, `/reports/{name}` ; `--skip-existing` sans objet (issue #872) |
-| Documentation de l'API Lua de Wireshark | non | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | non |
+| Documentation de l'API Lua de Wireshark | oui (fenêtre « Documentation Lua » de la barre de titre : recherche, nombre de résultats, liste des classes, détail ; issue #873) | `netcross-lua-doc` (`--class`, `--classes`, `--full`, `--limit`, `--json`, `--source`, `--db`), `netcross lua-doc` | `GET /lua-doc/classes`, `GET /lua-doc/classes/{name}`, `GET /lua-doc/search` (`q`, `limit`, `full`) (issue #873) |
+| Catalogue des dissecteurs Wireshark en Lua (recensement wireshark-lua, `data/lua_dissectors.csv`) | oui (fenêtre « Documentation Lua », liste « Dissecteurs Lua » : recherche, domaine, « Sans dissecteur natif », nombre de résultats, liste des domaines à gauche, JSON ; issue #917) | `netcross-lua-doc` `--dissectors` (avec un TERME ; `--domain`, `--non-native`, `--limit`, `--json`, `--catalog`), `--domains` | `GET /lua-doc/dissectors` (`q`, `domain`, `non_native`, `limit`), `GET /lua-doc/dissectors/domains` (issue #917) |
 | Historique des runs (analyses et comparaisons) | fenêtre « Historique des runs » (bouton de la barre de titre) : base, type, étiquette, nombre (issue #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history` : `run_type`, `label`, `limit` (base du serveur `NETCROSS_HISTORY_DB`, issue #874) |
-| Historique des analyses | non | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /analyses` |
+| Historique des analyses | oui (fenêtre « Historique des runs », type « Analyses (analyse) » ; enregistrement par « Historique... » / « Etiquette », issues #674, #874) | `cross_history_cli.py` : `--db`, `--label`, `--run-type`, `--limit` | `GET /history?run_type=…` ; enregistrement par `history`/`history_label` de `POST /captures` (issue #890) ; `GET /analyses` liste les analyses du serveur |
 | Mode debug | `--debug` au lancement | `--debug` (toutes les CLI) | `NETCROSS_DEBUG=1` |
+
+## Annotations et signets
+
+| Fonction | GUI | CLI | API |
+|---|---|---|---|
+| Étiquettes et signets sur des trames | oui (panneau « Annotations / signets » : point, trame, étiquette, commentaire, menu contextuel, filtre par étiquette ; issue #363) | `netcross annotations list\|add\|remove CAPTURE` (`--frame`, `--tag`, `--comment`, `--color`, `--json`) : même sidecar `<capture>.annotations.json` que la GUI ; section « Annotations » du rapport texte si un sidecar existe (issue #910) | `GET`, `POST`, `DELETE /analyses/{analysis_id}/annotations` (`point`, `frame_number`, `tag`, `comment`, `color`) : rangées dans l'analyse, par point, au format du sidecar (issue #910) |
 
 ## Vues propres à la GUI (sans équivalent CLI ni API)
 
-| Vue | Rôle |
-|---|---|
-| Cartographie des communications (filtres protocole, Top-N, « Anomalies seulement ») | Qui parle à qui, anomalies en rouge |
-| Annotations / signets | Étiquettes sur des trames, enregistrées à côté de la capture |
-| Dashboard analytique | Sélection croisée segments / flux / hôtes / protocoles / événements |
-| Exploration statistique (export CSV et JSON) | Top-N, tri, regroupement, drill-down |
-
-Ce sont des vues d'exploration interactives. Leur calcul vit déjà hors de
-la GUI (`netcross_report/comm_map.py`, `netcross_gtk4/stats_view.py`,
-`netcross_gtk4/dashboard_context.py`), ce qui permettrait de les exposer
-ailleurs si le besoin apparaissait.
+Il n'en reste aucune. Les quatre vues d'exploration (cartographie,
+annotations, dashboard, exploration statistique) ont leur CLI et leur API
+depuis #909 à #912, voir les tableaux plus haut. Leur calcul vit hors de la
+GUI : `netcross_report/comm_map.py`, `netcross_core/annotations.py`,
+`netcross_core/dashboard.py`, `netcross_core/stats.py`.
 
 ## Inventaire des cases de la GUI
 
@@ -246,6 +250,7 @@ son équivalent CLI ou API.
 | Reprendre un lot interrompu (--skip-existing) | Fenêtre « Analyse d'un dossier » | `--skip-existing` |
 | Analyse de securite dans chaque rapport (--security-report) | Fenêtre « Analyse d'un dossier » | `--security-report` |
 | Detail complet (--full) | Fenêtre « Documentation Lua » | `netcross-lua-doc --full` |
+| Sans dissecteur natif (--non-native) | Fenêtre « Documentation Lua » (Dissecteurs Lua) | `netcross-lua-doc --dissectors --non-native` |
 
 | J'ai l'autorisation d'emettre sur cette interface | Fenêtre « Outils de capture » (Rejeu) | aucun (confirmation de la GUI) |
 
@@ -294,8 +299,29 @@ l'option CLI de même nom) : `nat_tolerant`, `nat_window_ms`, `tls`,
 | `GET /lua-doc/classes` | Classes de l'API Lua Wireshark (issue #873) |
 | `GET /lua-doc/classes/{name}` | Fiche d'une classe Lua (issue #873) |
 | `GET /lua-doc/search` | Recherche dans la documentation Lua, `q`, `limit`, `full` (issue #873) |
+| `GET /lua-doc/dissectors` | Catalogue des dissecteurs Lua, `q`, `domain`, `non_native`, `limit` (issue #917) |
+| `GET /lua-doc/dissectors/domains` | Domaines du catalogue des dissecteurs Lua (issue #917) |
 | `GET /comparisons/{comparison_id}/redact-map` | Table d'anonymisation commune baseline/courant (issue #876) |
 | `POST /tools/replay` | Rejeu sur une interface autorisée (issue #871) |
+| `GET /analyses/{analysis_id}/dashboard` | Agrégats croisés du dashboard, filtres `segment`, `host`, `protocol` (issue #911) |
+| `GET /analyses/{analysis_id}/stats` | Exploration statistique, JSON ou CSV (issue #912) |
+| `GET /analyses/{analysis_id}/comm-map` | Cartographie des communications, JSON ou DOT (issue #909) |
+| `POST /live-captures` | Capture en direct sur des interfaces autorisées puis analyse (issue #902) |
+| `GET /live-captures/{capture_id}` | État d'une capture en direct : octets par point, durée, `analysis_id` (issue #902) |
+| `POST /live-captures/{capture_id}/stop` | Arrêt anticipé d'une capture en direct, renvoie l'`analysis_id` (issues #902, #904) |
+| `DELETE /live-captures/{capture_id}` | Abandon d'une capture en direct sans analyse (issue #904) |
+| `GET /live-captures/{capture_id}/files` | Fichiers pcapng conservés par le `ring_buffer`, par point (issue #905) |
+| `GET /live-captures/{capture_id}/files/{point}/{filename}` | Téléchargement d'un fichier du `ring_buffer` (issue #905) |
+| `DELETE /live-captures/{capture_id}/files` | Suppression des fichiers du `ring_buffer` (issue #905) |
+| `GET /live-captures/{capture_id}/report` | Rapport HTML en continu d'une capture en direct, en-tête `Refresh` (issue #907) |
+| `GET /live-captures/{capture_id}/report/{token}/` | Même page par `report_url`, jeton de lecture sans clé API (issue #907) |
+| `GET /live-captures/{capture_id}/report/{token}/{name}` | `index.html`, `live.json` ou `live.jsonl` du rapport en continu (issue #907) |
+| `GET /analyses/{analysis_id}/annotations` | Annotations de l'analyse par point, filtres `point`, `tag` (issue #910) |
+| `POST /analyses/{analysis_id}/annotations` | Ajoute ou met à jour une annotation (issue #910) |
+| `DELETE /analyses/{analysis_id}/annotations` | Supprime une annotation, `point`, `frame_number`, `tag` (issue #910) |
+| `GET /bpf-filters` | Bibliothèque de filtres BPF : catalogue puis filtres enregistrés (issue #906) |
+| `PUT /bpf-filters/{nom}` | Crée ou remplace un filtre BPF enregistré, `expression`, `description` (issue #906) |
+| `DELETE /bpf-filters/{nom}` | Supprime un filtre BPF enregistré (issue #906) |
 
 Réglages par variables d'environnement (`NETCROSS_API_TOKEN` pour
 l'en-tête `X-API-Key`, `NETCROSS_MAX_UPLOAD_MB`, `NETCROSS_API_MAX_FILES`,
@@ -322,6 +348,10 @@ Classés par impact pour un utilisateur :
    de comparaison, même rendu que `--triage` / `--triage-top-n`.
 5. Le reste (manipulation de captures, notifications, plugins, IA, SIEM,
    batch) relève de l'automatisation et reste en CLI **par choix**.
+   Révisé le 11/10/2026 (#330) : plus aucune exemption, toute fonction
+   doit exister en CLI, GTK4 et API. L'API de la capture en direct
+   est complète (#902 à #908, livrées). Les vues propres à la GUI ont
+   désormais leur CLI et leur API (#909 à #912, livrées).
 
 Correctifs apportés à l'audit du 24/09 (commentaire de #330) :
 

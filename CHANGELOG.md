@@ -7,7 +7,39 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-18
+
 ### Ajouté
+- Captures en direct par l'API (issues #902 à #908) :
+  `POST /live-captures` lance une capture sur les interfaces du serveur avec
+  un filtre BPF par point (#902), durée maximale configurable
+  (`NETCROSS_API_LIVE_MAX_DURATION`, #903), arrêt avec analyse
+  (`POST /live-captures/{id}/stop` renvoie l'`analysis_id`) et abandon sans
+  analyse (`DELETE /live-captures/{id}`) (#904), ring buffer
+  (`ring_buffer`, #905), rapport HTML rafraîchi en continu (#907) et
+  comparaison avec le courant capturé en direct (#908)
+- Bibliothèque de filtres BPF dans l'API : `GET/PUT/DELETE /bpf-filters`,
+  champ `bpf_library` de chaque point de `POST /live-captures` (#906)
+- Catalogue des dissecteurs Wireshark écrits en Lua (plus de 1 200 dépôts
+  recensés par [wireshark-lua](https://github.com/Mathide-Team/wireshark-lua))
+  dans la banque Lua, en CLI, GUI et API (#917)
+- Exploration et analyses en CLI et API : cartographie des communications
+  (#909), exploration statistique (Top-N, tri, regroupement, drill-down,
+  export CSV/JSON) (#912), dashboard analytique à sélection croisée (#911),
+  annotations et signets sur les trames (#910)
+- Parité GUI / CLI / API (série #330, issues #672 à #890) : outils de capture
+  (fusion, découpage, conversion, export filtré, recalage temporel, rejeu),
+  module IA local (`POST /analyses/{id}/ai`), plugins (`GET /plugins`,
+  `NETCROSS_PLUGIN_PATH`), documentation Lua, historique des comparaisons et
+  des analyses avec consultation filtrée, notifications, table d'anonymisation,
+  export Markdown, Top-N appliqué aux graphiques du PDF, ticket de support
+  (portées, marqueurs, correspondance), lots de captures (`POST /batches`,
+  fenêtre « Analyse d'un dossier »), options d'analyse avancées
+  (`parallel_workers`, base CVE, troncature annoncée)
+- GUI : résultats de recherche forensic cliquables vers la trame (#675),
+  sections d'expertise (#673), diagramme de séquence, SIEM et historique
+  dans la fenêtre d'analyse (#674)
+- CLAUDE.md : toute instruction reçue dans le chat devient une issue (#931)
 - Plusieurs captures dans un seul fichier pcapng (#474, lot 1) :
   `--split-interfaces` fait de chaque interface (et de chaque section, pour
   des fichiers concaténés) un point distinct `NOM:INTERFACE`, analysé comme
@@ -78,6 +110,12 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - `docs/fingerprints-ja4-hassh.md` (#259)
 
 ### Corrigé
+- CI : la mesure de couverture par PR installe l'extra `api` (les tests de
+  l'API étaient sautés et `netcross_api` comptait pour 0 % dans le delta),
+  la base est mesurée avec les mêmes extras que la PR et aucune des deux
+  mesures n'applique le seuil bloquant (réservé au job Qualité, PR #930)
+- CI (release) : `softprops/action-gh-release` épinglé sur un SHA existant
+  (PR #914)
 - Rapport Markdown (`--md-report`, #761) : la section « Rapport de
   sécurité » lisait des clés que `security_report_to_dict()` ne produit pas
   (`global_score`, `critical_count`, `service_count`, `items`,
