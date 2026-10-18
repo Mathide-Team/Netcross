@@ -654,6 +654,269 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/comm-map:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Comm Map
+      description: 'Cartographie des communications (équiv. ``--comm-map``, vue GUI
+        « Cartographie », issue #909).'
+      operationId: get_analysis_comm_map_analyses__analysis_id__comm_map_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: protocol
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: Seulement ces protocoles (répétable ou séparés par des virgules)
+          title: Protocol
+        description: Seulement ces protocoles (répétable ou séparés par des virgules)
+      - name: top_n
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          description: 'N arêtes les plus volumineuses (défaut : toutes)'
+          title: Top N
+        description: 'N arêtes les plus volumineuses (défaut : toutes)'
+      - name: anomalies_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Seulement les arêtes avec anomalies
+          default: false
+          title: Anomalies Only
+        description: Seulement les arêtes avec anomalies
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          description: json ou dot (Graphviz, anomalies en rouge)
+          default: json
+          title: Format
+        description: json ou dot (Graphviz, anomalies en rouge)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/stats:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Stats
+      description: 'Exploration statistique (équiv. ``--stats``, vue GUI « Exploration
+        statistique », issue #912).
+
+
+        Chaque ligne porte ``flow_keys`` : les clés des flux regroupés (drill-down).'
+      operationId: get_analysis_stats_analyses__analysis_id__stats_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: group_by
+        in: query
+        required: false
+        schema:
+          type: string
+          description: endpoint, protocol, segment ou flow
+          default: endpoint
+          title: Group By
+        description: endpoint, protocol, segment ou flow
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          description: packets, bytes, duration_ms, throughput_bps, latency_ms ou
+            events
+          default: bytes
+          title: Sort
+        description: packets, bytes, duration_ms, throughput_bps, latency_ms ou events
+      - name: top_n
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          description: N premières lignes (0 = toutes)
+          default: 10
+          title: Top N
+        description: N premières lignes (0 = toutes)
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          description: json ou csv
+          default: json
+          title: Format
+        description: json ou csv
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            text/csv: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/dashboard:
+    get:
+      tags:
+      - analyses
+      summary: Get Analysis Dashboard
+      description: 'Agrégats croisés du dashboard (équiv. ``--dashboard``, vue GUI
+        « Dashboard », issue #911) :
+
+        timeline, segments, flux, endpoints, protocoles et événements, filtrés comme
+        une sélection GUI.'
+      operationId: get_analysis_dashboard_analyses__analysis_id__dashboard_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: segment
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filtre sur un point de capture
+          title: Segment
+        description: Filtre sur un point de capture
+      - name: host
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filtre sur une adresse d'endpoint
+          title: Host
+        description: Filtre sur une adresse d'endpoint
+      - name: protocol
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filtre sur un protocole (ex. TCP)
+          title: Protocol
+        description: Filtre sur un protocole (ex. TCP)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/siem:
     get:
       tags:
@@ -1288,7 +1551,10 @@ paths:
       description: 'Compare deux jeux de captures (baseline vs courant) et remonte
         les
 
-        régressions/améliorations (issue #669).
+        régressions/améliorations (issue #669). Le courant peut être capturé en
+
+        direct sur le serveur (``current_live``, équiv. ``--live-current``, issue
+        #908).
 
 
         Équivalent de ``cross-capture-diff --baseline LAN=lan.pcap --current
@@ -2029,7 +2295,8 @@ paths:
         '404':
           description: Classe inconnue (avec suggestions)
         '503':
-          description: JSON de l'API Lua introuvable sur le serveur
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
       security:
       - APIKeyHeader: []
   /lua-doc/classes/{name}:
@@ -2063,7 +2330,8 @@ paths:
         '404':
           description: Classe inconnue (avec suggestions)
         '503':
-          description: JSON de l'API Lua introuvable sur le serveur
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
         '422':
           description: Validation Error
           content:
@@ -2124,7 +2392,770 @@ paths:
         '404':
           description: Classe inconnue (avec suggestions)
         '503':
-          description: JSON de l'API Lua introuvable sur le serveur
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /lua-doc/dissectors:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Dissectors
+      description: 'Catalogue des dissecteurs Wireshark en Lua (équivalent de
+
+        ``netcross-lua-doc --dissectors --json``), triés par étoiles ; ``total``
+
+        compte toutes les correspondances. Aucun résultat : liste vide (200).'
+      operationId: get_lua_dissectors_lua_doc_dissectors_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          description: 'Recherche plein texte : dépôt, protocole, domaine, topics
+            (tous les mots)'
+          default: ''
+          title: Q
+        description: 'Recherche plein texte : dépôt, protocole, domaine, topics (tous
+          les mots)'
+      - name: domain
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Domaine contenant ce texte, sans accents ni casse (--domain)
+          title: Domain
+        description: Domaine contenant ce texte, sans accents ni casse (--domain)
+      - name: non_native
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Seulement sans dissecteur natif dans Wireshark (--non-native)
+          default: false
+          title: Non Native
+        description: Seulement sans dissecteur natif dans Wireshark (--non-native)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 2000
+          minimum: 1
+          description: Nombre maximal de résultats (--limit)
+          default: 20
+          title: Limit
+        description: Nombre maximal de résultats (--limit)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Lua Dissectors Lua Doc Dissectors Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /lua-doc/dissectors/domains:
+    get:
+      tags:
+      - lua-doc
+      summary: Get Lua Dissector Domains
+      description: Domaines du catalogue et leur nombre de dissecteurs (``--domains
+        --json``).
+      operationId: get_lua_dissector_domains_lua_doc_dissectors_domains_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Lua Dissector Domains Lua Doc Dissectors Domains
+                  Get
+        '404':
+          description: Classe inconnue (avec suggestions)
+        '503':
+          description: JSON de l'API Lua ou catalogue des dissecteurs introuvable
+            sur le serveur
+      security:
+      - APIKeyHeader: []
+  /live-captures:
+    post:
+      tags:
+      - live
+      summary: Start Live Capture
+      description: Démarre une capture en direct puis son analyse (équiv. ``--live``
+        + ``--live-duration``).
+      operationId: start_live_capture_live_captures_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiveCaptureRequest'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - APIKeyHeader: []
+  /live-captures/{capture_id}:
+    get:
+      tags:
+      - live
+      summary: Get Live Capture
+      description: 'État : capturing, analysing, completed ou failed ; octets par
+        point ; analysis_id.'
+      operationId: get_live_capture_live_captures__capture_id__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Live Capture Live Captures  Capture Id  Get
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - live
+      summary: Cancel Live Capture
+      description: 'Abandonne une capture en cours sans l''analyser (fichiers supprimés,
+        statut ``cancelled``) ;
+
+        409 si elle est déjà terminée.'
+      operationId: cancel_live_capture_live_captures__capture_id__delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Cancel Live Capture Live Captures  Capture Id  Delete
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/stop:
+    post:
+      tags:
+      - live
+      summary: Stop Live Capture
+      description: 'Arrête la capture avant la fin de ``duration`` (équiv. Ctrl+C
+        / « Arreter et analyser ») ;
+
+        l''analyse porte sur ce qui a été capturé et la réponse donne son ``analysis_id``.'
+      operationId: stop_live_capture_live_captures__capture_id__stop_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Stop Live Capture Live Captures  Capture Id  Stop
+                  Post
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/files:
+    get:
+      tags:
+      - live
+      summary: List Live Capture Files
+      description: 'Fichiers pcapng conservés par le ``ring_buffer`` (équiv. ``--ring-buffer``),
+        par point ;
+
+        404 si la capture a été lancée sans ``ring_buffer``.'
+      operationId: list_live_capture_files_live_captures__capture_id__files_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response List Live Capture Files Live Captures  Capture Id  Files
+                  Get
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - live
+      summary: Purge Live Capture Files
+      description: Supprime les fichiers du ``ring_buffer`` ; 409 pendant la capture.
+      operationId: purge_live_capture_files_live_captures__capture_id__files_delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Purge Live Capture Files Live Captures  Capture Id  Files
+                  Delete
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/files/{point}/{filename}:
+    get:
+      tags:
+      - live
+      summary: Download Live Capture File
+      description: Télécharge un fichier du ``ring_buffer`` (nom donné par ``GET .../files``).
+      operationId: download_live_capture_file_live_captures__capture_id__files__point___filename__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: point
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Point
+      - name: filename
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Filename
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/vnd.tcpdump.pcap: {}
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report:
+    get:
+      tags:
+      - live
+      summary: Get Live Capture Report
+      description: 'Dernière version du rapport en continu (équiv. ``--live-report``),
+        avec l''en-tête ``Refresh``
+
+        pendant la capture ; 404 si la capture a été lancée sans ``live_report``.'
+      operationId: get_live_capture_report_live_captures__capture_id__report_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report/{token}/:
+    get:
+      tags:
+      - live
+      summary: View Live Capture Report
+      description: Page du rapport en continu ouverte avec ``report_url`` (jeton,
+        lecture seule).
+      operationId: view_live_capture_report_live_captures__capture_id__report__token___get
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: Rapport introuvable ou jeton invalide
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report/{token}/{name}:
+    get:
+      tags:
+      - live
+      summary: View Live Capture Report File
+      description: '``index.html``, ``live.json`` (instantané) ou ``live.jsonl`` (journal)
+        du rapport en continu.'
+      operationId: view_live_capture_report_file_live_captures__capture_id__report__token___name__get
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Token
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Rapport introuvable ou jeton invalide
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /analyses/{analysis_id}/annotations:
+    get:
+      tags:
+      - annotations
+      summary: List
+      description: Annotations de l'analyse, par point (format du sidecar de la GUI).
+      operationId: list_analyses__analysis_id__annotations_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: point
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Seulement ce point
+          title: Point
+        description: Seulement ce point
+      - name: tag
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Seulement cette étiquette
+          title: Tag
+        description: Seulement cette étiquette
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response List Analyses  Analysis Id  Annotations Get
+        '404':
+          description: Analyse, point ou annotation introuvable
+        '409':
+          description: Analyse en cours ou en échec
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - annotations
+      summary: Add
+      description: Ajoute une annotation ; la même paire trame / étiquette est mise
+        à jour.
+      operationId: add_analyses__analysis_id__annotations_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnotationBody'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Add Analyses  Analysis Id  Annotations Post
+        '404':
+          description: Analyse, point ou annotation introuvable
+        '409':
+          description: Analyse en cours ou en échec
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - annotations
+      summary: Delete
+      description: Supprime l'annotation (point, trame, étiquette) ; 404 si absente.
+      operationId: delete_analyses__analysis_id__annotations_delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Analysis Id
+      - name: point
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Point de capture
+          title: Point
+        description: Point de capture
+      - name: frame_number
+        in: query
+        required: true
+        schema:
+          type: integer
+          description: Numéro de trame
+          title: Frame Number
+        description: Numéro de trame
+      - name: tag
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Étiquette
+          title: Tag
+        description: Étiquette
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Delete Analyses  Analysis Id  Annotations Delete
+        '404':
+          description: Analyse, point ou annotation introuvable
+        '409':
+          description: Analyse en cours ou en échec
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bpf-filters:
+    get:
+      tags:
+      - bpf-filters
+      summary: List Bpf Filters
+      description: Catalogue prédéfini puis filtres enregistrés (la liste de la GUI).
+      operationId: list_bpf_filters_bpf_filters_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response List Bpf Filters Bpf Filters Get
+        '500':
+          description: Fichier de filtres illisible ou non inscriptible (il n'est
+            pas modifié)
+      security:
+      - APIKeyHeader: []
+  /bpf-filters/{nom}:
+    put:
+      tags:
+      - bpf-filters
+      summary: Put Bpf Filter
+      description: Crée ou remplace le filtre ``nom`` ; renvoie la liste à jour.
+      operationId: put_bpf_filter_bpf_filters__nom__put
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: nom
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Nom
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BPFFilterBody'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Put Bpf Filter Bpf Filters  Nom  Put
+        '409':
+          description: Nom réservé au catalogue prédéfini
+        '500':
+          description: Fichier de filtres illisible ou non inscriptible (il n'est
+            pas modifié)
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - bpf-filters
+      summary: Delete Bpf Filter
+      description: Supprime le filtre enregistré ``nom`` ; renvoie la liste à jour.
+      operationId: delete_bpf_filter_bpf_filters__nom__delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: nom
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Nom
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Delete Bpf Filter Bpf Filters  Nom  Delete
+        '404':
+          description: Filtre enregistré introuvable
+        '409':
+          description: Nom réservé au catalogue prédéfini
+        '500':
+          description: Fichier de filtres illisible ou non inscriptible (il n'est
+            pas modifié)
         '422':
           description: Validation Error
           content:
@@ -2221,6 +3252,54 @@ components:
       - analysis_id
       title: AnalysisSummary
       description: Résumé d'une analyse (retourné par POST /captures).
+    AnnotationBody:
+      properties:
+        point:
+          type: string
+          title: Point
+          description: Point de capture annoté (un des points de l'analyse)
+        frame_number:
+          type: integer
+          title: Frame Number
+          description: Numéro de trame (>= 1, celui de Wireshark)
+        tag:
+          type: string
+          title: Tag
+          description: Étiquette
+        comment:
+          type: string
+          title: Comment
+          description: Commentaire libre
+          default: ''
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+          description: 'Couleur d''affichage (ex. #ff0000)'
+      type: object
+      required:
+      - point
+      - frame_number
+      - tag
+      title: AnnotationBody
+      description: Corps de ``POST /analyses/{analysis_id}/annotations``.
+    BPFFilterBody:
+      properties:
+        expression:
+          type: string
+          title: Expression
+          description: Expression BPF (libpcap), transmise telle quelle à tshark (-f)
+        description:
+          type: string
+          title: Description
+          description: Description libre, facultative
+          default: ''
+      type: object
+      required:
+      - expression
+      title: BPFFilterBody
+      description: Corps de ``PUT /bpf-filters/{nom}``.
     Body_adjust_time_route_tools_adjust_time_post:
       properties:
         file:
@@ -2328,12 +3407,14 @@ components:
           title: Baseline Files
           description: Fichiers pcap baseline
         current_files:
-          items:
-            type: string
-            contentMediaType: application/octet-stream
-          type: array
+          anyOf:
+          - items:
+              type: string
+              contentMediaType: application/octet-stream
+            type: array
+          - type: 'null'
           title: Current Files
-          description: Fichiers pcap courant
+          description: Fichiers pcap courant (ou current_live)
         baseline_labels:
           type: string
           title: Baseline Labels
@@ -2409,10 +3490,18 @@ components:
           - type: 'null'
           title: History Label
           description: Étiquette du run dans l'historique (équivalent de --history-label)
+        current_live:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Live
+          description: 'Courant capturé en direct au lieu de current_files (équiv.
+            --live-current, issue #908) : JSON de POST /live-captures sans options,
+            ex. {"points": [{"name": "LAN", "interface": "eth0"}], "duration": 60}
+            ; sans tls/quic ni wait'
       type: object
       required:
       - baseline_files
-      - current_files
       title: Body_create_comparison_comparisons_post
     Body_export_subset_route_tools_export_post:
       properties:
@@ -3106,6 +4195,92 @@ components:
       type: object
       title: HealthResponse
       description: Réponse du health check.
+    LiveCaptureRequest:
+      properties:
+        points:
+          items:
+            $ref: '#/components/schemas/LivePoint'
+          type: array
+          title: Points
+          description: Points à capturer simultanément (au moins 1)
+        duration:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Duration
+          description: Durée de capture en secondes (bornée par NETCROSS_API_LIVE_MAX_DURATION)
+        points_order:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Points Order
+          description: Ordre amont -> aval (sinon déduit du trafic)
+        ring_buffer:
+          anyOf:
+          - $ref: '#/components/schemas/RingBuffer'
+          - type: 'null'
+          description: Garde aussi la capture brute de chaque point en pcapng tournants,
+            téléchargeables après l'analyse (GET /live-captures/{capture_id}/files)
+            ; incompatible avec pipe://
+        live_report:
+          anyOf:
+          - $ref: '#/components/schemas/LiveReport'
+          - type: 'null'
+          description: Rapport HTML rafraîchi pendant la capture (GET /live-captures/{capture_id}/report,
+            ou report_url dans un navigateur)
+        options:
+          additionalProperties: true
+          type: object
+          title: Options
+          description: 'Options d''analyse de POST /captures/multi (mêmes noms : tls,
+            nat_tolerant, max_packets...)'
+      type: object
+      required:
+      - points
+      - duration
+      title: LiveCaptureRequest
+      description: Corps de ``POST /live-captures``.
+    LivePoint:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Nom du point (devient le point de capture de l'analyse)
+        interface:
+          type: string
+          title: Interface
+          description: Interface du serveur (autorisée par NETCROSS_API_LIVE_INTERFACES)
+        bpf:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bpf
+          description: Filtre BPF de capture de ce point (ex. 'tcp port 443')
+        bpf_library:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bpf Library
+          description: Nom d'un filtre de la bibliothèque (GET /bpf-filters) à la
+            place de bpf (équiv. --bpf-library ; exclusif avec bpf)
+      type: object
+      required:
+      - name
+      - interface
+      title: LivePoint
+      description: 'Un point de capture : nom, interface du serveur, filtre BPF propre.'
+    LiveReport:
+      properties:
+        interval:
+          type: number
+          minimum: 1.0
+          title: Interval
+          description: Secondes entre deux relevés (5 par défaut, 1 minimum)
+          default: 5.0
+      type: object
+      title: LiveReport
+      description: Rapport HTML en continu (équiv. ``--live-report`` + ``--live-report-interval``).
     MultiAnalysisSummary:
       properties:
         analysis_id:
@@ -3162,6 +4337,24 @@ components:
       - analysis_id
       title: MultiAnalysisSummary
       description: 'Résumé d''une analyse multi-points (issue #354).'
+    RingBuffer:
+      properties:
+        files:
+          type: integer
+          minimum: 1.0
+          title: Files
+          description: Nombre de fichiers gardés par point (N)
+        seconds:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Seconds
+          description: Durée maximale d'un fichier, en secondes
+      type: object
+      required:
+      - files
+      - seconds
+      title: RingBuffer
+      description: Rotation de la capture brute (équiv. ``--ring-buffer N:SECONDES``).
     SecurityFinding:
       properties:
         severity:

@@ -284,22 +284,28 @@ def _opt_str(value) -> str | None:
 
 
 def _opt_int(value) -> int | None:
+    # Valeur absente (None) : cas normal d'un champ facultatif, pas une erreur.
+    if value is None:
+        logger.debug("_opt_int: valeur absente -> retour None")
+        return None
     try:
         logger.debug("_opt_int: retour int(…)")
         return int(value)
-    except (TypeError, ValueError):
-        logger.exception("échec dans _opt_int")
-        logger.debug("_opt_int: except (TypeError, ValueError) -> retour None")
+    except (TypeError, ValueError) as exc:
+        logger.warning("_opt_int: valeur {!r} non convertible ({}) -> None", value, exc)
         return None
 
 
 def _opt_float(value) -> float | None:
+    # Valeur absente (None) : cas normal d'un champ facultatif, pas une erreur.
+    if value is None:
+        logger.debug("_opt_float: valeur absente -> retour None")
+        return None
     try:
         logger.debug("_opt_float: retour float(…)")
         return float(value)
-    except (TypeError, ValueError):
-        logger.exception("échec dans _opt_float")
-        logger.debug("_opt_float: except (TypeError, ValueError) -> retour None")
+    except (TypeError, ValueError) as exc:
+        logger.warning("_opt_float: valeur {!r} non convertible ({}) -> None", value, exc)
         return None
 
 

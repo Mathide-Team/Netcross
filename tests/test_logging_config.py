@@ -173,6 +173,7 @@ CLIS = [
     "cross_history_cli.py",
     "netcross_ai_models_cli.py",
     "netcross_lua_doc_cli.py",
+    "netcross_annotations_cli.py",
 ]
 
 

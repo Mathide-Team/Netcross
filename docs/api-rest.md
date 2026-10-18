@@ -24,6 +24,7 @@ Réglages par variables d'environnement, lues au démarrage :
 | `NETCROSS_API_WORKERS` | `2` | Analyses simultanées en tâche de fond. |
 | `NETCROSS_DB_PATH` | absent | Base SQLite : analyses conservées et rechargées au redémarrage. Absent : tout reste en mémoire. |
 | `NETCROSS_HISTORY_DB` | absent | Historique des runs (format `--history-db`) : `history=true` sur `/comparisons` y enregistre la comparaison, sur `/captures` et `/captures/multi` l'analyse (#890), `GET /history` le consulte. Absent : enregistrement refusé (400), consultation 503. Le client ne choisit jamais le chemin. |
+| `NETCROSS_API_BPF_FILTERS` | `~/.netcross/bpf_filters.json` | Fichier de la bibliothèque de filtres BPF (`/bpf-filters`, issue #906), même format que la GUI et `--bpf-library`. Le client ne choisit jamais le chemin. |
 | `NETCROSS_CVE_DB` | absent | Base CVE complète du rapport de sécurité (équivalent de `--cve-db`). Absent : base minimale embarquée, comme la CLI. Un chemin inexistant fait échouer l'analyse (la base n'est jamais créée vide). |
 | `NETCROSS_API_MAX_BATCHES` | 20 | Lots conservés en mémoire avec leurs rapports (issue #872) ; au-delà, les plus anciens lots terminés sont supprimés. |
 | `NETCROSS_PLUGIN_PATH` | absent | Fichiers plugins locaux, séparés par `:` (équivalent de `--plugin-path`, issue #867). Fixés par l'administrateur : le client ne fait que nommer un plugin dans le champ `plugins`. Voir [plugins](plugins.md#api-rest-issue-867). |
@@ -65,6 +66,7 @@ La spécification OpenAPI est disponible sur :
 |---------|------|-------------|
 | `POST` | `/captures` | Upload d'un pcap, lance l'analyse |
 | `POST` | `/captures/multi` | Plusieurs pcaps étiquetés, analyse croisée entre points ; un seul pcapng multi-interfaces suffit avec `split_interfaces=true` (#474) |
+| `POST` | `/comparisons` | Comparaison baseline / courant (`baseline_files`, et `current_files` ou `current_live`) : `cross-capture-diff`. Avec `current_live` (JSON de `POST /live-captures` sans `options` ; équiv. `--live-current`, issue #908), le courant est capturé en direct sur le serveur, puis comparé à l'arrêt ; 202 avec `live_capture_id` ; mêmes contrôles que `/live-captures` (403, 409), sans `tls`/`quic` ni `wait` (400). Si la capture est abandonnée ou échoue, la comparaison passe en échec |
 | `GET` | `/analyses/{id}/status` | Statut `pending` / `completed` / `failed` (+ résumé) |
 | `GET` | `/analyses/{id}` | Mesures brutes (copie de chaque champ du `Report`) |
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |
@@ -80,6 +82,25 @@ La spécification OpenAPI est disponible sur :
 | `POST` | `/tools/export` | Sous-ensemble filtré (`file`, `bpf`, `time_start`, `time_end`, `endpoints`, `format`) : `--export-pcap` (issue #886) |
 | `POST` | `/tools/adjust-time` | Recalage (`file`, puis `time_offset`, `normalize` ou `align_to`, `format`) : `--adjust-time-output` (issue #887) |
 | `POST` | `/tools/replay` | Rejeu (`file`, `interface`, `speed`, `loop`) : `--replay`. ÉMET du trafic réel ; refusé (403) sauf si `interface` figure dans `NETCROSS_REPLAY_INTERFACES` (liste séparée par des virgules, vide par défaut) ; 503 si tcpreplay absent (issue #871) |
+| `GET` | `/analyses/{id}/stats` | Exploration statistique : `group_by` (`endpoint`, `protocol`, `segment`, `flow`), `sort` (`packets`, `bytes`, `duration_ms`, `throughput_bps`, `latency_ms`, `events`), `top_n` (0 = toutes), `format=json\|csv` ; `flow_keys` par ligne pour le drill-down ; équiv. `--stats` (issue #912) |
+| `GET` | `/analyses/{id}/comm-map` | Cartographie des communications (qui parle à qui) : `protocol` (répétable), `top_n`, `anomalies_only`, `format=json\|dot` (DOT Graphviz, anomalies en rouge) ; équiv. `--comm-map` (issue #909) |
+| `POST` | `/live-captures` | Capture en direct (JSON `points` : `name`, `interface`, `bpf` ou `bpf_library` ; `duration` ; `points_order` ; `options` de `/captures/multi`) puis analyse ; 202. 403 si `NETCROSS_API_LIVE` n'est pas à 1, interface hors de `NETCROSS_API_LIVE_INTERFACES` ou `NETCROSS_API_TOKEN` absent ; 409 si une capture est déjà en cours (issue #902) |
+| `GET` | `/live-captures/{id}` | État (`capturing`, `analysing`, `completed`, `failed`), `bytes_captured` par point, `elapsed_seconds`, `packet_count`, `analysis_id` |
+| `POST` | `/live-captures/{id}/stop` | Arrêt anticipé ; l'analyse porte sur ce qui a été capturé ; la réponse donne l'`analysis_id` (issue #904) |
+| `DELETE` | `/live-captures/{id}` | Abandon sans analyse : tshark arrêté, fichiers supprimés, statut `cancelled` ; 409 si la capture est déjà terminée (issue #904) |
+| `GET` | `/live-captures/{id}/files` | Avec `ring_buffer` (`files`, `seconds` ; équiv. `--ring-buffer N:SECONDES`, issue #905) : fichiers pcapng tournants gardés par point, avec taille et URL ; 404 sans `ring_buffer` |
+| `GET` | `/live-captures/{id}/files/{point}/{filename}` | Télécharge un fichier listé (pcapng) ; 404 pour tout autre nom |
+| `DELETE` | `/live-captures/{id}/files` | Supprime les fichiers du ring buffer ; 409 pendant la capture |
+| `GET` | `/live-captures/{id}/report` | Avec `live_report` (`interval`, 5 s par défaut ; équiv. `--live-report`, issue #907) : dernière version du rapport HTML, en-tête `Refresh` pendant la capture ; 404 sans `live_report` |
+| `GET` | `/live-captures/{id}/report/{token}/` | Même page sans clé API, par `report_url` (jeton propre à la capture, lecture seule ; équiv. `--live-report-serve`) ; la page y relit `live.json` et `live.jsonl` |
+| `GET` | `/live-captures/{id}/report/{token}/{name}` | `index.html`, `live.json` (instantané) ou `live.jsonl` (journal) ; 404 pour tout autre nom ou un jeton invalide |
+| `GET` | `/analyses/{id}/annotations` | Annotations par point (`point`, `tag`) : même format que le sidecar `<capture>.annotations.json` de la GUI (issue #910) |
+| `POST` | `/analyses/{id}/annotations` | Ajoute une annotation (JSON `point`, `frame_number`, `tag`, `comment`, `color`) ; même trame et étiquette = mise à jour ; 404 point inconnu, 422 saisie invalide |
+| `DELETE` | `/analyses/{id}/annotations?point=&frame_number=&tag=` | Supprime une annotation ; 404 si absente |
+| `GET` | `/bpf-filters` | Bibliothèque de filtres BPF (`--bpf-library`, issue #906) : catalogue prédéfini (`predefined: true`) puis filtres enregistrés |
+| `PUT` | `/bpf-filters/{nom}` | Crée ou remplace un filtre (JSON `expression`, `description`) ; 409 pour un nom du catalogue, 422 si l'expression est vide |
+| `DELETE` | `/bpf-filters/{nom}` | Supprime un filtre enregistré ; 404 s'il est inconnu, 409 pour un nom du catalogue |
+| `GET` | `/analyses/{id}/dashboard` | Dashboard : timeline, segments, flux, endpoints, protocoles, événements ; filtres `segment` (point de capture), `host` (adresse), `protocol` ; 400 si le point est inconnu ; équiv. `--dashboard` (issue #911) |
 | `GET` | `/health` | Health check |
 
 ## Exemples curl

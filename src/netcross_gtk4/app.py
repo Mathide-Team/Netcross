@@ -65,6 +65,10 @@ from netcross_core import (  # noqa: E402
 )
 from netcross_core.baseline_diff import write_diff_csv  # noqa: E402
 from netcross_core.bpf_filters import PREDEFINED_BPF_FILTERS, available_bpf_filters, upsert_bpf_filter  # noqa: E402
+from netcross_core.dashboard import (  # noqa: E402
+    DashboardSelection,
+    build_dashboard_snapshot,
+)
 from netcross_core.forensic import DEFAULT_DUPLICATE_THRESHOLD_MS, detect_cross_capture_duplicates  # noqa: E402
 from netcross_core.logging_config import DEBUG_FLAG, enable_debug, get_logger, is_debug_enabled, summarize  # noqa: E402
 from netcross_gtk4 import capture_list, row_labels  # noqa: E402
@@ -93,10 +97,6 @@ from netcross_gtk4.client_compare_view import (  # noqa: E402
     ClientGroupError,
     parse_client_groups,
     validate_client_settings,
-)
-from netcross_gtk4.dashboard_context import (  # noqa: E402
-    DashboardSelection,
-    build_dashboard_snapshot,
 )
 from netcross_gtk4.expertise_panel import ExpertisePanel  # noqa: E402
 from netcross_gtk4.expertise_view import (  # noqa: E402

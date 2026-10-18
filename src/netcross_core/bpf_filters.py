@@ -224,3 +224,27 @@ def upsert_bpf_filter(new: BPFFilter, path: str | Path | None = None) -> list[BP
     save_bpf_filters(saved, path)
     logger.debug("upsert_bpf_filter: retour available_bpf_filters(…)")
     return available_bpf_filters(path)
+
+
+def delete_bpf_filter(name: str, path: str | Path | None = None) -> list[BPFFilter]:
+    """Supprime le filtre sauvegarde ``name`` (issue #906) et renvoie la liste
+    ``available_bpf_filters`` mise a jour.
+
+    Nom compare comme partout dans ce module (casse et espaces de bordure
+    ignores). ``ValueError`` si le nom est reserve au catalogue predefini (il
+    ne vit pas dans le fichier : rien a supprimer) ou si le fichier est
+    illisible (il n'est alors pas modifie). ``KeyError`` si aucun filtre
+    sauvegarde ne porte ce nom. ``OSError`` si l'ecriture echoue.
+    """
+    key = _name_key(name)
+    if key in _PREDEFINED_KEYS:
+        logger.debug("delete_bpf_filter: si key in _PREDEFINED_KEYS -> levée ValueError")
+        raise ValueError(f"le nom '{name.strip()}' appartient au catalogue predefini : il ne peut pas etre supprime")
+    saved = load_bpf_filters(path)
+    kept = [f for f in saved if _name_key(f.name) != key]
+    if len(kept) == len(saved):
+        logger.debug("delete_bpf_filter: filtre absent -> levée KeyError")
+        raise KeyError(name.strip())
+    save_bpf_filters(kept, path)
+    logger.debug("delete_bpf_filter: retour available_bpf_filters(…)")
+    return available_bpf_filters(path)

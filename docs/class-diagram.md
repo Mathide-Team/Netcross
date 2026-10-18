@@ -11,7 +11,7 @@
 > Il remplace l'ancienne section 3 de `docs/features-backlog.md`, tenue à la main, qui avait dérivé
 > (voir `docs/sessions/session-36.md`, issue #140).
 
-194 modules · 282 classes · 671 fonctions publiques de module.
+202 modules · 292 classes · 721 fonctions publiques de module.
 
 Conventions : `+` public, `-` privé (préfixe `_`) ; `int?` = `int | None` ; `list~str~` = `list[str]` ;
 `<<module>>` regroupe les fonctions publiques d'un module ; `A --> B : champ` = `A` a un champ annoté
@@ -32,19 +32,19 @@ flowchart TD
     netcross_ai["netcross_ai"]
     netcross_core["netcross_core"]
     pcap_parser["pcap_parser"]
-    CLI -->|"20 imports"| netcross_report
+    CLI -->|"24 imports"| netcross_report
     CLI -->|"8 imports"| netcross_ai
-    CLI -->|"41 imports"| netcross_core
+    CLI -->|"50 imports"| netcross_core
     CLI -->|"8 imports"| pcap_parser
-    netcross_gtk4 -->|"31 imports"| netcross_report
+    netcross_gtk4 -->|"32 imports"| netcross_report
     netcross_gtk4 -->|"4 imports"| netcross_ai
-    netcross_gtk4 -->|"109 imports"| netcross_core
+    netcross_gtk4 -->|"110 imports"| netcross_core
     netcross_gtk4 -->|"6 imports"| pcap_parser
-    netcross_api -->|"19 imports"| netcross_report
+    netcross_api -->|"21 imports"| netcross_report
     netcross_api -->|"5 imports"| netcross_ai
-    netcross_api -->|"42 imports"| netcross_core
-    netcross_api -->|"3 imports"| pcap_parser
-    netcross_report -->|"40 imports"| netcross_core
+    netcross_api -->|"54 imports"| netcross_core
+    netcross_api -->|"4 imports"| pcap_parser
+    netcross_report -->|"41 imports"| netcross_core
     netcross_ai -->|"10 imports"| netcross_core
     netcross_core -->|"19 imports"| pcap_parser
 ```
@@ -461,6 +461,7 @@ classDiagram
 | `netcross_core` | moteur d'analyse croisee de captures Wireshark multi-points, sans dependance a une interface (CLI, GTK4, PDF...). |
 | `netcross_core.alarms` | alarmes et surveillance de seuils en analyse live (§6.16, Session 11). |
 | `netcross_core.analysis` | coeur analytique : construit un Report a partir des flux correles (pertes, latence, TTL/topologie, QoS, fragmentation, saturation/bufferbloat, TCP avance, VLAN, decalage d'horloge, RTP, decomposition… |
+| `netcross_core.annotations` | annotations (etiquettes / signets sur des trames) partagees par la CLI et l'API (issue #910). |
 | `netcross_core.baseline_diff` | compare deux Report (avant/apres un correctif, site A / site B, ou toute paire de scenarios comparables) et produit des constats de regression/amelioration. |
 | `netcross_core.baseline_profile` | profil de reference dynamique construit a partir de l'historique SQLite (Job 12/issue #9, section 8.5 de FEATURES.md). |
 | `netcross_core.batch` | Mode batch : inventaire d'un dossier de captures et regroupement automatique CONSERVATEUR des captures qui semblent etre plusieurs points de vue d'un meme evenement (issue #277). |
@@ -472,6 +473,7 @@ classDiagram
 | `netcross_core.config` | chargement de configuration depuis .netcross.toml (issue #170). |
 | `netcross_core.content` | Extraction des objets applicatifs HTTP/1.x sans conservation du corps. |
 | `netcross_core.correlate` | correlation des paquets entre points de capture (par 5-tuple strict ou par hash de payload en mode NAT-tolerant) et calcul du debit par fenetre temporelle. |
+| `netcross_core.dashboard` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
 | `netcross_core.expert_model` | objets de contrat partages entre netcross_core et netcross_report ("Session 0" de FEATURES.md section 13.3 : stabiliser les objets communs avant de batir le moteur d'expertise vise par la comparaison… |
 | `netcross_core.expert_rules` | bibliotheque de regles d'expertise reseau DECLARATIVE (FEATURES.md section 6.2), dernier chantier de la Session 2 de la section 13.3 ("moteur d'evenements d'expertise") apres la cloture cote… |
 | `netcross_core.exploit_signatures` | detection PASSIVE de signatures d'exploits CVE connus (Log4Shell, Shellshock, Heartbleed, EternalBlue, compression TLS/CRIME) dans la charge utile brute des paquets. |
@@ -483,6 +485,7 @@ classDiagram
 | `netcross_core.live_diff` | Capture en continu + diff en direct (Job 33, issue #33). |
 | `netcross_core.live_report` | issue #274 : export / rapport temps reel du mode ``--live``. |
 | `netcross_core.logging_config` | configuration centrale du logging (issue #245). |
+| `netcross_core.lua_dissectors` | catalogue des dissecteurs Wireshark écrits en Lua, dans la banque Lua (issue #917). |
 | `netcross_core.lua_doc` | banque SQLite locale de l'API Lua Wireshark (issue #387, rattachee a #331). |
 | `netcross_core.models` | structures de donnees partagees : un paquet normalise (Pkt) et le resultat d'analyse consolide (Report). |
 | `netcross_core.naming` | table locale de correspondance adresse/MAC -> nom logique, type, contexte (Job 18 / issue #16-bis, section 6.15 de FEATURES.md). |
@@ -544,6 +547,18 @@ classDiagram
     class mod_netcross_core_analysis["netcross_core.analysis"] {
         <<module>>
         +analyse(flows, points_order, all_packets, bucket_seconds, nat_tolerant, rtp_clock_rate, topn, idle_timeout_seconds, exclude_duplicates, duplicate_counts)
+    }
+
+    %% ===== netcross_core.annotations =====
+    class mod_netcross_core_annotations["netcross_core.annotations"] {
+        <<module>>
+        +parse_frame_number(value) int
+        +make_annotation(frame, tag, comment, color) PacketAnnotation
+        +add_annotation(annotations, new) list~PacketAnnotation~
+        +remove_annotation(annotations, frame, tag) list~PacketAnnotation~
+        +sort_annotations(annotations) list~PacketAnnotation~
+        +annotation_to_dict(annotation) dict~str, Any~
+        +annotation_from_dict(item) PacketAnnotation
     }
 
     %% ===== netcross_core.baseline_diff =====
@@ -656,6 +671,7 @@ classDiagram
         +load_bpf_filters(path) list~BPFFilter~
         +available_bpf_filters(path) list~BPFFilter~
         +upsert_bpf_filter(new, path) list~BPFFilter~
+        +delete_bpf_filter(name, path) list~BPFFilter~
     }
 
     %% ===== netcross_core.capture_tools =====
@@ -802,6 +818,40 @@ classDiagram
         +build_conversations(flow_list) list~Conversation~
         +compute_throughput(all_packets, bucket_seconds)
         +compute_topn_series(all_packets, bucket_seconds, dimension, top_n)
+    }
+
+    %% ===== netcross_core.dashboard =====
+    class DashboardSelection {
+        <<dataclass>>
+        +str? point
+        +str? endpoint
+        +str? protocol
+        +tuple? flow_key
+        +tuple~str, str~? pair
+        +int? bucket
+        +int? event_id
+    }
+    class DashboardSnapshot {
+        <<dataclass, frozen>>
+        +list~dict~ timeline_rows
+        +list~dict~ segment_rows
+        +list~dict~ flow_rows
+        +list~dict~ endpoint_rows
+        +list~dict~ protocol_rows
+        +list~dict~ event_rows
+        +str selection_summary
+    }
+    class mod_netcross_core_dashboard["netcross_core.dashboard"] {
+        <<module>>
+        +clear_selection(selection) DashboardSelection
+        +select_flow(selection, flow) DashboardSelection
+        +select_endpoint(selection, endpoint) DashboardSelection
+        +select_protocol(selection, protocol) DashboardSelection
+        +select_point(selection, point) DashboardSelection
+        +select_bucket(selection, bucket) DashboardSelection
+        +select_event(selection, event_id, events) DashboardSelection
+        +build_dashboard_snapshot(report, flows, findings, tls_findings, quic_findings, wireshark_expert_events, selection) DashboardSnapshot
+        +dashboard_document(report, flows, findings, tls_findings, quic_findings, wireshark_expert_events, segment, host, protocol) dict
     }
 
     %% ===== netcross_core.expert_model =====
@@ -1218,6 +1268,44 @@ classDiagram
         +apply_debug_argument(args) None
         +get_logger(name)
         +summarize(value, name) str
+    }
+
+    %% ===== netcross_core.lua_dissectors =====
+    class Dissecteur {
+        <<dataclass>>
+        +str url
+        +str depot
+        +str hebergeur
+        +str domaine
+        +str protocole
+        +int etoiles
+        +int forks
+        +str derniere_maj
+        +str date_creation
+        +str licence
+        +bool archive
+        +str topics
+        +str langage
+        +bool natif
+        +str natif_protocole
+        +str ajout
+    }
+    class CatalogueError {
+        <<ValueError>>
+    }
+    class mod_netcross_core_lua_dissectors["netcross_core.lua_dissectors"] {
+        <<module>>
+        +parse_row(row) dict~str, Any~
+        +read_csv(texte) list~dict~str, Any~~
+        +load_csv(conn, texte) int
+        +csv_candidates() list~Path~
+        +find_csv() Path?
+        +ensure_catalogue(conn, csv_path) bool
+        +search(conn, terme, domaine, non_natif, limit) tuple~int, list~Dissecteur~~
+        +domains(conn) list~tuple~str, int~~
+        +count(conn) int
+        +search_document(conn, terme, domaine, non_natif, limit) dict~str, Any~
+        +domains_document(conn) dict~str, Any~
     }
 
     %% ===== netcross_core.lua_doc =====
@@ -1649,6 +1737,50 @@ classDiagram
         +print_quic_diagnostics(findings) None
     }
 
+    %% ===== relations =====
+    DiffFinding --> EvidenceLink : evidence
+    CaptureGroup --> CaptureInventory : members
+    CaptureGroup --> PairEvaluation : evaluations
+    IsolatedCapture --> CaptureInventory : capture
+    BatchPlan --> CaptureGroup : groups
+    BatchPlan --> CaptureInventory : failures
+    BatchPlan --> IsolatedCapture : isolated
+    ClientReport --> ClientSignature : signature
+    ClientReport --> Report : report
+    ClientComparisonResult --> ClientReport : clients
+    NetcrossConfig --> AnalysisConfig : analysis
+    NetcrossConfig --> NotifyConfig : notify
+    NetcrossConfig --> OutputConfig : output
+    NetcrossConfig --> ParallelConfig : parallel
+    NetcrossConfig --> SecurityConfig : security
+    EvidenceLink --> PacketEvidence : packet
+    ExpertEvent --> EvidenceLink : evidence
+    ExpertEvent --> PacketEvidence : packet_evidence
+    Diagnosis --> ExpertEvent : events
+    ComplianceResult --> ReferenceProfile : reference
+    _Detector --> netcross_core_exploit_signatures__FlowState : run
+    FlowTimeline --> PacketTiming : packet_timings
+    FlowTimeline --> ThroughputWindow : throughput_windows
+    FlowView --> ExpertEvent : events
+    FlowView --> Flow : flow
+    FlowView --> TcpSummary : tcp
+    FlowView --> Transaction : transactions
+    LiveDiffState --> Pkt : packets_in_window
+    LiveAggregator --> _Point : points
+    Methode --> Parametre : parametres
+    FicheClasse --> Attribut : attributs
+    FicheClasse --> Methode : methodes
+    Pkt --> Banner : service_banners
+    Report --> ChecksumError : checksum_errors
+    Report --> SequenceGap : sequence_gaps
+```
+
+### Diagramme (2/2)
+
+```mermaid
+classDiagram
+    direction LR
+
     %% ===== netcross_core.redact =====
     class AddressRedactor {
         +redact(packets) None
@@ -1669,6 +1801,8 @@ classDiagram
         +print_sequence_gaps(r)
         +print_checksum_errors(r)
         +print_annotations(annotations)
+        +load_capture_annotations(captures) dict~str, list~PacketAnnotation~~
+        +print_capture_annotations(by_point) None
         +write_detail_csv(path, flows, points, names)
     }
 
@@ -1700,6 +1834,10 @@ classDiagram
         +compute_stats(flows, report, all_packets, query, events_by_segment) list~StatRow~
         +export_csv(rows) str
         +export_json(rows) list~dict~
+        +build_events_by_segment(findings) dict~str, list~
+        +explore_stats(flows, report, findings, group_by, sort_by, top_n) list~StatRow~
+        +stats_format_for(path, fmt) str
+        +render_stats(rows, fmt) str
     }
 
     %% ===== netcross_core.tls_diagnostics =====
@@ -1754,50 +1892,6 @@ classDiagram
         +diagnose_tls(status_by_point, points_order) list~TlsFinding~
         +print_tls_diagnostics(findings) None
     }
-
-    %% ===== relations =====
-    DiffFinding --> EvidenceLink : evidence
-    CaptureGroup --> CaptureInventory : members
-    CaptureGroup --> PairEvaluation : evaluations
-    IsolatedCapture --> CaptureInventory : capture
-    BatchPlan --> CaptureGroup : groups
-    BatchPlan --> CaptureInventory : failures
-    BatchPlan --> IsolatedCapture : isolated
-    ClientReport --> ClientSignature : signature
-    ClientReport --> Report : report
-    ClientComparisonResult --> ClientReport : clients
-    NetcrossConfig --> AnalysisConfig : analysis
-    NetcrossConfig --> NotifyConfig : notify
-    NetcrossConfig --> OutputConfig : output
-    NetcrossConfig --> ParallelConfig : parallel
-    NetcrossConfig --> SecurityConfig : security
-    EvidenceLink --> PacketEvidence : packet
-    ExpertEvent --> EvidenceLink : evidence
-    ExpertEvent --> PacketEvidence : packet_evidence
-    Diagnosis --> ExpertEvent : events
-    ComplianceResult --> ReferenceProfile : reference
-    _Detector --> netcross_core_exploit_signatures__FlowState : run
-    FlowTimeline --> PacketTiming : packet_timings
-    FlowTimeline --> ThroughputWindow : throughput_windows
-    FlowView --> ExpertEvent : events
-    FlowView --> Flow : flow
-    FlowView --> TcpSummary : tcp
-    FlowView --> Transaction : transactions
-    LiveDiffState --> Pkt : packets_in_window
-    LiveAggregator --> _Point : points
-    Methode --> Parametre : parametres
-    FicheClasse --> Attribut : attributs
-    FicheClasse --> Methode : methodes
-    Pkt --> Banner : service_banners
-    Report --> ChecksumError : checksum_errors
-    Report --> SequenceGap : sequence_gaps
-```
-
-### Diagramme (2/2)
-
-```mermaid
-classDiagram
-    direction LR
 
     %% ===== netcross_core.voip =====
     class Call {
@@ -3375,6 +3469,7 @@ classDiagram
 | `netcross_report.history` | persiste un resume de chaque run (analyse ou diff) dans une base SQLite locale, pour observer une tendance dans le temps (score de sante, nombre de constats par severite) sur des runs successifs --… |
 | `netcross_report.json_report` | serialise un Report/DiffFinding en JSON structure, pour l'integration externe (dashboard, ticketing, pipeline CI qui veut parser un resultat sans dependre du format texte console). |
 | `netcross_report.live_html` | issue #274 : page de presentation du rapport temps reel (voir netcross_core.live_report). |
+| `netcross_report.lua_dissectors_text` | rendu texte du catalogue des dissecteurs Lua (issue #917), partagé par ``netcross-lua-doc --dissectors`` et la fenêtre « Documentation Lua » de la GUI. |
 | `netcross_report.lua_doc_text` | rendu texte de la documentation Lua Wireshark (``netcross-lua-doc``, issue #388), partage avec la fenetre « Documentation Lua » de la GUI (issue #873). |
 | `netcross_report.markdown_report` | generation d'un rapport au format Markdown (issue #761). |
 | `netcross_report.metric_charts` | API generique de graphiques : tout module d'analyse peut produire un graphique a partir d'une MetricSeries sans reimplementer son propre code matplotlib. |
@@ -3486,6 +3581,9 @@ classDiagram
         +available_protocols(flows) list~str~
         +build_comm_map(flows, protocols, top_n, only_anomalies) CommMap
         +format_comm_map(cmap, top_n) str
+        +comm_map_to_dict(cmap) dict
+        +comm_map_to_dot(cmap) str
+        +write_comm_map(path, cmap) str
     }
 
     %% ===== netcross_report.expert_events =====
@@ -3532,6 +3630,13 @@ classDiagram
     class mod_netcross_report_live_html["netcross_report.live_html"] {
         <<module>>
         +render_live_html(snapshot, journal, interval) str
+    }
+
+    %% ===== netcross_report.lua_dissectors_text =====
+    class mod_netcross_report_lua_dissectors_text["netcross_report.lua_dissectors_text"] {
+        <<module>>
+        +render_dissecteurs(doc) list~str~
+        +render_domaines(doc) list~str~
     }
 
     %% ===== netcross_report.lua_doc_text =====
@@ -3872,9 +3977,12 @@ classDiagram
 | Module | Rôle |
 |---|---|
 | `netcross_api` | service REST FastAPI pour exposer les analyses Netcross (issue #209). |
+| `netcross_api.annotations_routes` | annotations (etiquettes / signets sur des trames) d'une analyse (issue #910), équivalent API du panneau « Annotations / signets » de la GUI et de ``netcross annotations``. |
 | `netcross_api.app` | application FastAPI pour exposer les analyses Netcross (issues #209, #354, #356). |
 | `netcross_api.batches` | lots de captures de l'API (issue #872). |
+| `netcross_api.bpf_routes` | bibliothèque de filtres BPF enregistrés (issue #906), équivalent API de ``--bpf-library NOM`` et des boutons « Filtres… » / « Enregistrer » de la GUI. |
 | `netcross_api.history_routes` | historique SQLite des runs (issue #874). |
+| `netcross_api.live_routes` | capture en direct sur des interfaces du serveur, puis analyse (issue #902), équivalent API de ``--live`` et de la case « Capture en direct » de la GUI. |
 | `netcross_api.lua_doc_routes` | documentation hors ligne de l'API Lua Wireshark (issue #873), équivalent de ``netcross-lua-doc --json``. |
 | `netcross_api.models` | modèles Pydantic pour les requêtes/réponses API (issue #209). |
 | `netcross_api.store` | analyses de l'API : statut, document JSON, persistance. |
@@ -3885,6 +3993,25 @@ classDiagram
 ```mermaid
 classDiagram
     direction LR
+
+    %% ===== netcross_api.annotations_routes =====
+    class AnnotationBody {
+        <<BaseModel>>
+        +str point
+        +int frame_number
+        +str tag
+        +str comment
+        +str? color
+    }
+    class _Routes {
+        +list(analysis_id, point, tag) dict~str, Any~
+        +add(analysis_id, body) dict~str, Any~
+        +delete(analysis_id, point, frame_number, tag) dict~str, Any~
+    }
+    class mod_netcross_api_annotations_routes["netcross_api.annotations_routes"] {
+        <<module>>
+        +register(app, verify, completed_entry, get_store) None
+    }
 
     %% ===== netcross_api.app =====
     class ApiAnalysisOptions {
@@ -3936,6 +4063,9 @@ classDiagram
         +get_analysis_pdf(analysis_id, topn, _auth) StreamingResponse
         +get_analysis_csv(analysis_id, _auth) PlainTextResponse
         +get_analysis_sequence(analysis_id, max_flows, _auth) JSONResponse
+        +get_analysis_comm_map(analysis_id, protocol, top_n, anomalies_only, format, _auth) Response
+        +get_analysis_stats(analysis_id, group_by, sort, top_n, format, _auth) Response
+        +get_analysis_dashboard(analysis_id, segment, host, protocol, _auth) JSONResponse
         +get_analysis_siem(analysis_id, format, _auth) PlainTextResponse
         +forensic_search(analysis_id, body, _auth) JSONResponse
         +extract_contents(analysis_id, files, labels, kinds, _auth) StreamingResponse
@@ -3946,7 +4076,7 @@ classDiagram
         +netflow_summary(analysis_id, files, exporters, top, _auth) JSONResponse
         +list_analyses(_auth) dict
         +get_analysis_status(analysis_id, _auth) AnalysisStatus
-        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, history, history_label, wait, _auth) JSONResponse
+        +create_comparison(baseline_files, current_files, baseline_labels, current_labels, points_order, nat_tolerant, nat_window_ms, tls, quic, redact, loss_threshold_pp, latency_threshold_ms, triage_top_n, history, history_label, wait, current_live, _auth) JSONResponse
         +get_comparison(comparison_id, _auth) JSONResponse
         +get_analysis_redact_map(analysis_id, _auth) PlainTextResponse
         +get_comparison_redact_map(comparison_id, _auth) PlainTextResponse
@@ -3980,6 +4110,22 @@ classDiagram
         +new_workdir() tuple~str, str~
     }
 
+    %% ===== netcross_api.bpf_routes =====
+    class BPFFilterBody {
+        <<BaseModel>>
+        +str expression
+        +str description
+    }
+    class mod_netcross_api_bpf_routes["netcross_api.bpf_routes"] {
+        <<module>>
+        +filters_path() Path?
+        +list_bpf_filters() dict~str, Any~
+        +put_bpf_filter(nom, body) dict~str, Any~
+        +delete_bpf_filter(nom) dict~str, Any~
+        +resolve_bpf_library(nom) str
+        +register(app, verify) None
+    }
+
     %% ===== netcross_api.history_routes =====
     class mod_netcross_api_history_routes["netcross_api.history_routes"] {
         <<module>>
@@ -3990,9 +4136,58 @@ classDiagram
         +register(app, verify) None
     }
 
+    %% ===== netcross_api.live_routes =====
+    class LivePoint {
+        <<BaseModel>>
+        +str name
+        +str interface
+        +str? bpf
+        +str? bpf_library
+    }
+    class RingBuffer {
+        <<BaseModel>>
+        +int files
+        +float seconds
+    }
+    class LiveReport {
+        <<BaseModel>>
+        +float interval
+    }
+    class LiveCaptureRequest {
+        <<BaseModel>>
+        +list~LivePoint~ points
+        +float duration
+        +list~str~? points_order
+        +RingBuffer? ring_buffer
+        +LiveReport? live_report
+        +dict~str, Any~ options
+    }
+    class _LiveCaptures {
+        +check(req) None
+        +start(req, analyse, comparison_id, on_abort) dict~str, Any~
+        +ring_files(capture_id) dict~str, Any~
+        +ring_file(capture_id, point, filename) Path
+        +purge_ring(capture_id) dict~str, Any~
+        +report_path(capture_id, name, token) Path
+        +report_response(capture_id, name, token) Response
+        +get(capture_id) dict~str, Any~
+        +stop(capture_id) dict~str, Any~
+        +cancel(capture_id) dict~str, Any~
+        +public(entry) dict~str, Any~
+    }
+    class mod_netcross_api_live_routes["netcross_api.live_routes"] {
+        <<module>>
+        +live_enabled(environ) bool
+        +allowed_interfaces(environ) frozenset~str~
+        +max_duration(environ) float
+        +register(app, verify, deps) _LiveCaptures
+    }
+
     %% ===== netcross_api.lua_doc_routes =====
     class mod_netcross_api_lua_doc_routes["netcross_api.lua_doc_routes"] {
         <<module>>
+        +get_lua_dissectors(q, domain, non_native, limit) dict~str, Any~
+        +get_lua_dissector_domains() dict~str, Any~
         +get_lua_classes() dict~str, Any~
         +get_lua_class(name) dict~str, Any~
         +search_lua_doc(q, limit, full) dict~str, Any~
@@ -4079,6 +4274,7 @@ classDiagram
         +persistent() bool
         +create_pending(metadata) str
         +complete(analysis_id, document, summary, report, report_obj, flows, findings, security_report_obj, tls_findings, quic_findings, all_packets, redaction_map) None
+        +set_metadata(analysis_id, key, value) None
         +fail(analysis_id, error) None
         +get(analysis_id) dict?
         +get_status(analysis_id) str?
@@ -4098,6 +4294,9 @@ classDiagram
     }
 
     %% ===== relations =====
+    LiveCaptureRequest --> LivePoint : points
+    LiveCaptureRequest --> LiveReport : live_report
+    LiveCaptureRequest --> RingBuffer : ring_buffer
     netcross_api_models_SecurityReport --> SecurityFinding : findings
     MultiAnalysisSummary --> SegmentLoss : segments
 ```
@@ -4119,7 +4318,7 @@ classDiagram
 | `netcross_gtk4.capture_tools_window` | fenetre « Outils de capture » (issues #868, #869, #870, #886, #887) : fusion, decoupage, conversion, export filtre et recalage temporel, equivalents des modes utilitaires de la CLI (``--merge``,… |
 | `netcross_gtk4.client_compare_panel` | panneau GTK « Comparaison de postes » de la page Resultats (issue #675). |
 | `netcross_gtk4.client_compare_view` | comparaison de postes dans la GUI (issue #675). |
-| `netcross_gtk4.dashboard_context` | contexte d'analyse partage pour le dashboard analytique interactif (issue #18, section 6.17). |
+| `netcross_gtk4.dashboard_context` | alias de netcross_core.dashboard. |
 | `netcross_gtk4.diff_pipeline` | pipeline de comparaison baseline/courant extrait de MainWindow._run_diff_thread (issue #246, #285 -- lot supplémentaire). |
 | `netcross_gtk4.duplicate_view` | Presentation helpers for cross-capture duplicate detection (Job 41). |
 | `netcross_gtk4.expertise_panel` | panneau « Expertise (exports JSON) » de la page Resultats (issue #673). |
@@ -4435,39 +4634,6 @@ classDiagram
         +comparison_summary(comparison) str
     }
 
-    %% ===== netcross_gtk4.dashboard_context =====
-    class DashboardSelection {
-        <<dataclass>>
-        +str? point
-        +str? endpoint
-        +str? protocol
-        +tuple? flow_key
-        +tuple~str, str~? pair
-        +int? bucket
-        +int? event_id
-    }
-    class DashboardSnapshot {
-        <<dataclass, frozen>>
-        +list~dict~ timeline_rows
-        +list~dict~ segment_rows
-        +list~dict~ flow_rows
-        +list~dict~ endpoint_rows
-        +list~dict~ protocol_rows
-        +list~dict~ event_rows
-        +str selection_summary
-    }
-    class mod_netcross_gtk4_dashboard_context["netcross_gtk4.dashboard_context"] {
-        <<module>>
-        +clear_selection(selection) DashboardSelection
-        +select_flow(selection, flow) DashboardSelection
-        +select_endpoint(selection, endpoint) DashboardSelection
-        +select_protocol(selection, protocol) DashboardSelection
-        +select_point(selection, point) DashboardSelection
-        +select_bucket(selection, bucket) DashboardSelection
-        +select_event(selection, event_id, events) DashboardSelection
-        +build_dashboard_snapshot(report, flows, findings, tls_findings, quic_findings, wireshark_expert_events, selection) DashboardSnapshot
-    }
-
     %% ===== netcross_gtk4.diff_pipeline =====
     class DiffOptions {
         <<dataclass>>
@@ -4640,12 +4806,17 @@ classDiagram
         +classes_text() str
         +class_text(name) str
         +search(terme, limit, full) tuple~str, list~str~~
+        +domains() list~str~
+        +domains_text() str
+        +dissectors_text(terme, domaine, non_natif, limit) str
+        +dissectors_json(terme, domaine, non_natif, limit) str
         +json_text(terme, name, limit, full) str
     }
 
     %% ===== netcross_gtk4.lua_doc_window =====
     class LuaDocWindow {
         <<Gtk.Window>>
+        +dissectors_mode() bool
         +text() str
         +open_class(name) None
         +run_search() None
@@ -4898,6 +5069,7 @@ classDiagram
 | `cross_capture_diff_cli` | cross_capture_diff_cli.py -- compare deux jeux de captures (avant/apres un correctif, site A / site B...) et remonte les regressions et ameliorations entre les deux runs. |
 | `cross_history_cli` | cross_history_cli.py -- interroge une base d'historique SQLite deja alimentee par cross_capture_analyzer_cli.py/cross_capture_diff_cli.py (--history-db), sans relancer d'analyse ni de comparaison. |
 | `netcross_ai_models_cli` | paquets de modeles IA partageables et boite d'envoi hors connexion (issue #271). |
+| `netcross_annotations_cli` | netcross annotations -- etiquettes et signets sur des trames, en CLI (issue #910). |
 | `netcross_lua_doc_cli` | consultation hors ligne de l'API Lua Wireshark (issue #388, rattachee a #331). |
 
 ### Diagramme
@@ -4909,6 +5081,7 @@ classDiagram
     %% ===== cross_capture_analyzer_cli =====
     class mod_cross_capture_analyzer_cli["cross_capture_analyzer_cli"] {
         <<module>>
+        +comm_map_protocols(values) list~str~?
         +main()
     }
 
@@ -4932,6 +5105,13 @@ classDiagram
 
     %% ===== netcross_ai_models_cli =====
     class mod_netcross_ai_models_cli["netcross_ai_models_cli"] {
+        <<module>>
+        +build_parser() argparse.ArgumentParser
+        +main(argv) int
+    }
+
+    %% ===== netcross_annotations_cli =====
+    class mod_netcross_annotations_cli["netcross_annotations_cli"] {
         <<module>>
         +build_parser() argparse.ArgumentParser
         +main(argv) int

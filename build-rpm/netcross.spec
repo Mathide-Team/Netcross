@@ -1,9 +1,9 @@
 Name:           netcross
-Version:        1.0.0
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        Analyse croisee de captures Wireshark multi-points
 License:        MIT
-URL:            https://github.com/MathildeDec/netcross
+URL:            https://github.com/Mathide-Team/Netcross
 BuildArch:      noarch
 
 # paquet "native" sans tarball amont : les sources sont copiees dans le
@@ -66,8 +66,10 @@ cp cross_history_cli.py %{buildroot}%{_datadir}/netcross/
 cp cross_capture_batch_cli.py %{buildroot}%{_datadir}/netcross/
 cp netcross_ai_models_cli.py %{buildroot}%{_datadir}/netcross/
 cp netcross_lua_doc_cli.py %{buildroot}%{_datadir}/netcross/
+cp netcross_annotations_cli.py %{buildroot}%{_datadir}/netcross/
 mkdir -p %{buildroot}%{_datadir}/netcross/data
 cp data/lua_api.json %{buildroot}%{_datadir}/netcross/data/
+cp data/lua_dissectors.csv %{buildroot}%{_datadir}/netcross/data/
 mkdir -p %{buildroot}%{_datadir}/locale
 cp -r locale/* %{buildroot}%{_datadir}/locale/
 
@@ -91,6 +93,10 @@ install -m 755 netcross-lua-doc-wrapper %{buildroot}%{_bindir}/netcross-lua-doc
 %{_datadir}/locale/*/LC_MESSAGES/netcross.mo
 
 %changelog
+* Sun Oct 18 2026 Mathilde Deuscher <149895843+MathildeDec@users.noreply.github.com> - 1.1.0-1
+- Captures en direct par l'API, bibliothèque de filtres BPF, catalogue
+  des dissecteurs Lua, parité GUI/CLI/API complète, exploration et
+  analyses.
 * Mon Aug 17 2026 Mathilde Deuscher <149895843+MathildeDec@users.noreply.github.com> - 1.0.0-1
 - Version initiale : analyse croisee de captures multi-points, CLI,
   rapport PDF, interface GTK4.
