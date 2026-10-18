@@ -316,7 +316,9 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-          pip install 'coverage>=7'
+          # GITHUB_PATH ne prend effet qu'à l'étape suivante : pip du venv
+          # appelé par son chemin absolu ici.
+          "$RUNNER_TEMP/venv/bin/pip" install 'coverage>=7'
 
       - name: Combinaison et rapport réel
         # Les données manquantes (job amont rouge avant pytest) ne font
