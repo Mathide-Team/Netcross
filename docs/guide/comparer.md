@@ -89,6 +89,9 @@ la comparaison démarre à l'arrêt de la capture (équivalent de
 | Diagnostics TLS/QUIC de chaque côté | `--tls`, `--quic` |
 | Garder une trace de chaque comparaison | `--history-db suivi.db`, puis `netcross-history --db suivi.db` |
 
+Par l'API, `POST /comparisons` accepte aussi un courant capturé en
+direct (champ `current_live`, voir [API REST](api.md#comparer-a-une-capture-en-direct)).
+
 La référence (`--baseline`) est toujours un fichier : on ne compare qu'à
 une situation déjà enregistrée.
 

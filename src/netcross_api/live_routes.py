@@ -14,7 +14,26 @@ résultat consultable sous ``/analyses/{analysis_id}``.
   ``completed``, ``failed``), octets enregistrés par point, durée écoulée,
   ``analysis_id`` une fois l'analyse lancée ;
 - ``POST /live-captures/{capture_id}/stop`` : arrêt anticipé (l'analyse
-  porte alors sur ce qui a été capturé).
+  porte alors sur ce qui a été capturé) ; la réponse donne l'``analysis_id``
+  (issue #904) ;
+- ``DELETE /live-captures/{capture_id}`` : abandon sans analyse, fichiers
+  supprimés, statut ``cancelled`` (issue #904) ;
+- ``ring_buffer`` (``files``, ``seconds``, issue #905, équiv. ``--ring-buffer
+  N:SECONDES``) : en plus de l'analyse, un second enregistreur par point
+  garde la capture brute en pcapng tournants ; ces fichiers survivent à
+  l'analyse : ``GET /live-captures/{capture_id}/files`` les liste,
+  ``GET .../files/{point}/{filename}`` les télécharge,
+  ``DELETE .../files`` les supprime ;
+- ``live_report`` (``interval``, issue #907, équiv. ``--live-report`` /
+  ``--live-report-interval``) : rapport HTML rafraîchi pendant la capture
+  (même page et mêmes ``live.json`` / ``live.jsonl`` que la CLI).
+  ``GET /live-captures/{capture_id}/report`` le sert avec la clé API et un
+  en-tête ``Refresh`` ; ``report_url`` (jeton propre à la capture, lecture
+  seule) l'ouvre dans un navigateur sans exposer la clé, comme
+  ``--live-report-serve`` ;
+- ``POST /comparisons`` avec ``current_live`` (issue #908, équiv. ``--live-current``) :
+  même capture, puis comparaison au baseline au lieu d'une analyse simple
+  (``start(..., analyse=...)``) ; l'état donne alors ``comparison_id``.
 
 Sécurité : capturer demande des privilèges (``CAP_NET_RAW``) sur le
 serveur. Désactivé par défaut (``NETCROSS_API_LIVE=1`` pour l'activer),
@@ -26,8 +45,10 @@ défini. Une seule capture à la fois par serveur.
 
 from __future__ import annotations
 
+import hmac
 import os
 import re
+import secrets
 import shutil
 import tempfile
 import threading
@@ -39,7 +60,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
 from netcross_core.logging_config import get_logger
@@ -53,6 +74,10 @@ MAX_DURATION_ENV = "NETCROSS_API_LIVE_MAX_DURATION"
 DEFAULT_MAX_DURATION = 300.0
 
 CAPTURING, ANALYSING, COMPLETED, FAILED = "capturing", "analysing", "completed", "failed"
+CANCELLED = "cancelled"  # DELETE /live-captures/{id} (issue #904) : abandon sans analyse
+# Attente maximale de /stop et DELETE : le temps d'arrêter tshark et de créer
+# l'analyse (issue #904 : /stop renvoie l'analysis_id).
+STOP_WAIT_SECONDS = 15.0
 
 #: Options de ``_options`` sans objet ici (fichiers téléversés, séparation
 #: des interfaces d'un pcapng : un point = une interface).
@@ -64,7 +89,7 @@ _RESPONSES: dict[int | str, dict[str, Any]] = {
         "ou NETCROSS_API_TOKEN non défini"
     },
     404: {"description": "Capture inconnue"},
-    409: {"description": "Une capture est déjà en cours"},
+    409: {"description": "Une capture est déjà en cours, ou abandon d'une capture déjà terminée"},
 }
 
 
@@ -74,6 +99,32 @@ class LivePoint(BaseModel):
     name: str = Field(..., description="Nom du point (devient le point de capture de l'analyse)")
     interface: str = Field(..., description=f"Interface du serveur (autorisée par {INTERFACES_ENV})")
     bpf: str | None = Field(None, description="Filtre BPF de capture de ce point (ex. 'tcp port 443')")
+    bpf_library: str | None = Field(
+        None,
+        description="Nom d'un filtre de la bibliothèque (GET /bpf-filters) à la place de bpf "
+        "(équiv. --bpf-library ; exclusif avec bpf)",
+    )
+
+
+class RingBuffer(BaseModel):
+    """Rotation de la capture brute (équiv. ``--ring-buffer N:SECONDES``)."""
+
+    files: int = Field(..., ge=1, description="Nombre de fichiers gardés par point (N)")
+    seconds: float = Field(..., gt=0, description="Durée maximale d'un fichier, en secondes")
+
+
+class LiveReport(BaseModel):
+    """Rapport HTML en continu (équiv. ``--live-report`` + ``--live-report-interval``)."""
+
+    interval: float = Field(5.0, ge=1, description="Secondes entre deux relevés (5 par défaut, 1 minimum)")
+
+
+# Fichiers d'un rapport en continu servis par l'URL à jeton (rien d'autre)
+REPORT_FILES = {
+    "index.html": "text/html; charset=utf-8",
+    "live.json": "application/json",
+    "live.jsonl": "application/x-ndjson",
+}
 
 
 class LiveCaptureRequest(BaseModel):
@@ -82,6 +133,16 @@ class LiveCaptureRequest(BaseModel):
     points: list[LivePoint] = Field(..., description="Points à capturer simultanément (au moins 1)")
     duration: float = Field(..., gt=0, description=f"Durée de capture en secondes (bornée par {MAX_DURATION_ENV})")
     points_order: list[str] | None = Field(None, description="Ordre amont -> aval (sinon déduit du trafic)")
+    ring_buffer: RingBuffer | None = Field(
+        None,
+        description="Garde aussi la capture brute de chaque point en pcapng tournants, téléchargeables "
+        "après l'analyse (GET /live-captures/{capture_id}/files) ; incompatible avec pipe://",
+    )
+    live_report: LiveReport | None = Field(
+        None,
+        description="Rapport HTML rafraîchi pendant la capture (GET /live-captures/{capture_id}/report, "
+        "ou report_url dans un navigateur)",
+    )
     options: dict[str, Any] = Field(
         default_factory=dict,
         description="Options d'analyse de POST /captures/multi (mêmes noms : tls, nat_tolerant, max_packets...)",
@@ -161,6 +222,19 @@ class _LiveCaptures:
             raise HTTPException(status_code=400, detail="chaque point doit avoir un nom non vide et distinct")
         if any(not p.interface.strip() for p in req.points):
             raise HTTPException(status_code=400, detail="interface manquante")
+        for p in req.points:
+            if p.bpf_library is not None:
+                if p.bpf:
+                    raise HTTPException(status_code=400, detail=f"{p.name} : bpf et bpf_library sont exclusifs")
+                p.bpf = self._deps["resolve_bpf_library"](p.bpf_library)
+                p.bpf_library = None  # résolu : un second contrôle (check puis start) ne le refuse pas
+                logger.debug("live: point {} : filtre {!r} de la bibliothèque", p.name, p.bpf_library)
+        if req.ring_buffer is not None:
+            for p in req.points:
+                if p.interface.strip().startswith("pipe://"):
+                    raise HTTPException(
+                        status_code=400, detail=f"{p.name} : ring_buffer incompatible avec une source pipe://"
+                    )
         borne = max_duration()
         if req.duration > borne:
             raise HTTPException(status_code=400, detail=f"duration : {borne:g} s au plus ({MAX_DURATION_ENV})")
@@ -179,7 +253,26 @@ class _LiveCaptures:
 
     # -- cycle de vie ------------------------------------------------------------------
 
-    def start(self, req: LiveCaptureRequest) -> dict[str, Any]:
+    def check(self, req: LiveCaptureRequest) -> None:
+        """Contrôles de ``POST /live-captures`` sans démarrer (``POST /comparisons``
+        les fait avant d'enregistrer le baseline, issue #908)."""
+        self._check_security(req)
+        self._check_request(req)
+        if any(e["status"] == CAPTURING for e in self._entries.values()):
+            logger.debug("live: capture déjà en cours -> 409")
+            raise HTTPException(status_code=409, detail="une capture en direct est déjà en cours sur ce serveur")
+
+    def start(
+        self,
+        req: LiveCaptureRequest,
+        analyse: Callable[[list[tuple[str, str]]], None] | None = None,
+        comparison_id: str | None = None,
+        on_abort: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Démarre la capture. ``analyse`` (issue #908) remplace l'analyse
+        simple : appelée avec les fichiers ``(point, chemin)`` à la fin de la
+        capture ; une exception la passe en ``failed``. ``on_abort`` est
+        appelé avec la raison si la capture est abandonnée ou échoue avant."""
         self._check_security(req)
         noms, order, options = self._check_request(req)
         with self._lock:
@@ -188,6 +281,7 @@ class _LiveCaptures:
                 raise HTTPException(status_code=409, detail="une capture en direct est déjà en cours sur ce serveur")
             capture_id = uuid.uuid4().hex
             workdir = tempfile.mkdtemp(prefix="netcross-live-")
+            ringdir = tempfile.mkdtemp(prefix="netcross-live-ring-") if req.ring_buffer is not None else None
             entry: dict[str, Any] = {
                 "capture_id": capture_id,
                 "status": CAPTURING,
@@ -196,21 +290,78 @@ class _LiveCaptures:
                 "_t1": None,
                 "duration": req.duration,
                 "points": [
-                    {"name": n, "interface": p.interface.strip(), "bpf": p.bpf or None, "_dir": f"{workdir}/{i}"}
+                    {
+                        "name": n,
+                        "interface": p.interface.strip(),
+                        "bpf": p.bpf or None,
+                        "_dir": f"{workdir}/{i}",
+                        "_ring": f"{ringdir}/{_safe_name(n)}" if ringdir else None,
+                    }
                     for i, (n, p) in enumerate(zip(noms, req.points, strict=True))
                 ],
                 "analysis_id": None,
                 "error": None,
                 "_stop": threading.Event(),
+                # posé quand la phase de capture est finie : analyse créée, échec ou abandon
+                "_handoff": threading.Event(),
+                "_abort": False,
                 "_workdir": workdir,
+                "_ringdir": ringdir,
+                "ring_buffer": req.ring_buffer.model_dump() if req.ring_buffer is not None else None,
+                "live_report": req.live_report.model_dump() if req.live_report is not None else None,
+                "_report_dir": tempfile.mkdtemp(prefix="netcross-live-report-") if req.live_report else None,
+                "_report_token": secrets.token_urlsafe(24) if req.live_report else None,
+                "_analyse": analyse,
+                "_on_abort": on_abort,
+                "comparison_id": comparison_id,
             }
             self._entries[capture_id] = entry
         threading.Thread(target=self._run, args=(entry, order, options), daemon=True).start()
         logger.info("capture en direct {} démarrée : {} point(s), {} s", capture_id, len(noms), req.duration)
         return self.public(entry)
 
+    def _start_report(self, entry: dict[str, Any]) -> tuple[Any, list[threading.Thread]]:
+        """Rapport en continu (issue #907) : comme ``--live-report``, un flux de
+        dissection par point (``parse_live``) alimente le LiveReporter ; les
+        enregistreurs, eux, gardent les fichiers de l'analyse finale."""
+        if entry["live_report"] is None:
+            return None, []
+        reporter = self._deps["make_reporter"](entry["_report_dir"], entry["live_report"]["interval"])
+        for point in entry["points"]:
+            reporter.aggregator.register(point["name"])
+
+        def _worker(point: dict[str, Any]) -> None:
+            try:
+                for pkt in self._deps["parse_live"](
+                    point["name"], point["interface"], bpf_filter=point["bpf"], stop_event=entry["_stop"]
+                ):
+                    reporter.add(pkt)
+            except Exception as exc:  # noqa: BLE001 -- thread de fond : l'erreur va dans le rapport
+                logger.warning(
+                    "rapport en continu {} : point {} en erreur ({})", entry["capture_id"], point["name"], exc
+                )
+                reporter.aggregator.set_status(point["name"], "erreur", str(exc))
+            else:
+                reporter.aggregator.set_status(point["name"], "arrete")
+
+        threads = [threading.Thread(target=_worker, args=(p,), daemon=True) for p in entry["points"]]
+        reporter.start()
+        for t in threads:
+            t.start()
+        return reporter, threads
+
+    @staticmethod
+    def _stop_report(reporter: Any, threads: list[threading.Thread]) -> None:
+        if reporter is None:
+            return
+        for t in threads:
+            t.join(timeout=10)
+        reporter.stop()  # dernier relevé (final)
+
     def _run(self, entry: dict[str, Any], order: list[str] | None, options: Any) -> None:
         recorders: list[tuple[dict[str, Any], Any]] = []
+        reporter: Any = None
+        report_threads: list[threading.Thread] = []
         try:
             for point in entry["points"]:
                 proc = self._deps["start_recorder"](
@@ -223,19 +374,42 @@ class _LiveCaptures:
                     bpf_filter=point["bpf"],
                 )
                 recorders.append((point, proc))
+                if point["_ring"] is not None:
+                    ring = self._deps["start_recorder"](
+                        point["interface"],
+                        point["_ring"],
+                        max_files=entry["ring_buffer"]["files"],
+                        max_duration_per_file=entry["ring_buffer"]["seconds"],
+                        prefix=_safe_name(point["name"]),
+                        bpf_filter=point["bpf"],
+                    )
+                    recorders.append(({**point, "_dir": point["_ring"], "_is_ring": True}, ring))
+            reporter, report_threads = self._start_report(entry)
             entry["_stop"].wait(entry["duration"])
         except Exception as exc:  # noqa: BLE001 -- tâche de fond : l'erreur va dans l'état
             logger.exception("capture en direct {} : démarrage impossible", entry["capture_id"])
             entry["error"] = f"capture impossible : {exc}"
+        entry["_stop"].set()  # arrête aussi les flux du rapport en continu
+        self._stop_report(reporter, report_threads)
         erreurs = []
         for point, proc in recorders:
             err = self._deps["stop_recorder"](proc)
-            if err and not self._files(point):
+            if err and not point.get("_is_ring") and not self._files(point):
                 erreurs.append(f"{point['name']} : {err}")
         entry["_t1"] = time.monotonic()
         for point in entry["points"]:  # figé : les fichiers sont supprimés après l'analyse
             point["_bytes"] = sum(_size(f) for f in self._files(point))
         captures = [(p["name"], f) for p in entry["points"] for f in self._files(p)]
+        if entry["_abort"]:
+            logger.info("capture en direct {} abandonnée sans analyse", entry["capture_id"])
+            entry["status"] = CANCELLED
+            self._notify_abort(entry, "capture en direct abandonnée (DELETE)")
+            shutil.rmtree(entry["_workdir"], ignore_errors=True)
+            self._purge_ring(entry)
+            if entry.get("_report_dir"):
+                shutil.rmtree(entry["_report_dir"], ignore_errors=True)
+            entry["_handoff"].set()
+            return
         if entry["error"] is None and erreurs:
             entry["error"] = "; ".join(erreurs)
         if entry["error"] is None and {n for n, _ in captures} != {p["name"] for p in entry["points"]}:
@@ -244,7 +418,12 @@ class _LiveCaptures:
         if entry["error"] is not None:
             logger.warning("capture en direct {} en échec : {}", entry["capture_id"], entry["error"])
             entry["status"] = FAILED
+            self._notify_abort(entry, f"capture en direct en échec : {entry['error']}")
             shutil.rmtree(entry["_workdir"], ignore_errors=True)
+            entry["_handoff"].set()
+            return
+        if entry["_analyse"] is not None:
+            self._run_custom(entry, captures)
             return
         multi = len(entry["points"]) > 1
         metadata = {
@@ -255,6 +434,7 @@ class _LiveCaptures:
         }
         entry["analysis_id"] = self._deps["create_pending"](metadata, options)
         entry["status"] = ANALYSING
+        entry["_handoff"].set()
         try:
             self._deps["run_job"](entry["analysis_id"], captures, order, multi, options)
         finally:
@@ -266,6 +446,126 @@ class _LiveCaptures:
             entry["status"] = FAILED
             entry["error"] = analyse.get("error") or "analyse en échec"
         logger.info("capture en direct {} : {}", entry["capture_id"], entry["status"])
+
+    @staticmethod
+    def _notify_abort(entry: dict[str, Any], raison: str) -> None:
+        if entry.get("_on_abort") is None:
+            return
+        try:
+            entry["_on_abort"](raison)
+        except Exception:  # noqa: BLE001 -- tâche de fond : ne doit pas bloquer la fin de capture
+            logger.exception("capture en direct {} : on_abort en échec", entry["capture_id"])
+
+    @staticmethod
+    def _run_custom(entry: dict[str, Any], captures: list[tuple[str, str]]) -> None:
+        """Fin de capture d'un ``--live-current`` (issue #908) : la comparaison."""
+        entry["status"] = ANALYSING
+        entry["_handoff"].set()
+        try:
+            entry["_analyse"](captures)
+        except Exception as exc:  # noqa: BLE001 -- tâche de fond : l'erreur va dans l'état
+            logger.exception("capture en direct {} : comparaison en échec", entry["capture_id"])
+            entry["status"] = FAILED
+            entry["error"] = str(exc)
+        else:
+            entry["status"] = COMPLETED
+        finally:
+            shutil.rmtree(entry["_workdir"], ignore_errors=True)
+        logger.info("capture en direct {} : {}", entry["capture_id"], entry["status"])
+
+    # -- fichiers du ring buffer (issue #905) --------------------------------------------
+
+    @staticmethod
+    def _purge_ring(entry: dict[str, Any]) -> None:
+        if entry.get("_ringdir"):
+            shutil.rmtree(entry["_ringdir"], ignore_errors=True)
+            entry["_ring_purged"] = True
+
+    def ring_files(self, capture_id: str) -> dict[str, Any]:
+        entry = self.get(capture_id)
+        if entry.get("ring_buffer") is None:
+            logger.debug("live: {} sans ring_buffer -> 404", capture_id)
+            raise HTTPException(status_code=404, detail=f"Capture en direct {capture_id} lancée sans ring_buffer")
+        points = []
+        for p in entry["points"]:
+            fichiers = [Path(f) for f in self._files({"_dir": p["_ring"]})]
+            points.append(
+                {
+                    "name": p["name"],
+                    "files": [
+                        {
+                            "filename": f.name,
+                            "bytes": _size(str(f)),
+                            "url": f"/live-captures/{capture_id}/files/{p['name']}/{f.name}",
+                        }
+                        for f in fichiers
+                    ],
+                }
+            )
+        return {
+            "capture_id": capture_id,
+            "status": entry["status"],
+            "ring_buffer": entry["ring_buffer"],
+            "purged": bool(entry.get("_ring_purged")),
+            "points": points,
+        }
+
+    def ring_file(self, capture_id: str, point: str, filename: str) -> Path:
+        """Chemin d'un fichier listé par ``ring_files`` : seuls ces noms sont
+        servis (aucun chemin construit depuis la requête)."""
+        doc = self.ring_files(capture_id)
+        entry = self.get(capture_id)
+        for p, desc in zip(entry["points"], doc["points"], strict=True):
+            if desc["name"] == point:
+                for f in desc["files"]:
+                    if f["filename"] == filename:
+                        return Path(p["_ring"]) / f["filename"]
+        logger.debug("live: fichier {}/{} absent de {} -> 404", point, filename, capture_id)
+        raise HTTPException(status_code=404, detail=f"Fichier {point}/{filename} introuvable")
+
+    def purge_ring(self, capture_id: str) -> dict[str, Any]:
+        entry = self.get(capture_id)
+        self.ring_files(capture_id)  # 404 sans ring_buffer
+        if entry["status"] == CAPTURING:
+            logger.debug("live: purge de {} pendant la capture -> 409", capture_id)
+            raise HTTPException(status_code=409, detail="capture en cours : l'arrêter avant de supprimer ses fichiers")
+        self._purge_ring(entry)
+        logger.info("capture en direct {} : fichiers du ring buffer supprimés", capture_id)
+        return self.ring_files(capture_id)
+
+    # -- rapport en continu (issue #907) -----------------------------------------------------
+
+    def report_path(self, capture_id: str, name: str = "index.html", token: str | None = None) -> Path:
+        """Fichier du rapport en continu. Avec ``token`` (URL de consultation) :
+        404 si le jeton ne correspond pas, sans dire si la capture existe."""
+        entry = self._entries.get(capture_id)
+        if token is not None:
+            attendu = (entry or {}).get("_report_token") or ""
+            if not (attendu and hmac.compare_digest(token.encode(), attendu.encode())):
+                logger.debug("live: jeton de rapport invalide pour {} -> 404", capture_id)
+                raise HTTPException(status_code=404, detail="Rapport introuvable")
+        entry = self.get(capture_id)
+        if entry.get("live_report") is None:
+            logger.debug("live: {} sans live_report -> 404", capture_id)
+            raise HTTPException(status_code=404, detail=f"Capture en direct {capture_id} lancée sans live_report")
+        if name not in REPORT_FILES:
+            raise HTTPException(status_code=404, detail="Rapport introuvable")
+        chemin = Path(entry["_report_dir"]) / name
+        if not chemin.is_file():
+            logger.debug("live: {} absent pour {} -> 404", name, capture_id)
+            raise HTTPException(status_code=404, detail="Rapport pas encore publié ou supprimé")
+        return chemin
+
+    def report_response(self, capture_id: str, name: str = "index.html", token: str | None = None) -> Response:
+        chemin = self.report_path(capture_id, name, token)
+        entry = self.get(capture_id)
+        headers = {"Cache-Control": "no-store"}
+        if name == "index.html" and entry["status"] == CAPTURING:
+            headers["Refresh"] = str(max(1, round(entry["live_report"]["interval"])))
+        contenu = chemin.read_text(encoding="utf-8")
+        if name == "index.html":
+            return HTMLResponse(contenu, headers=headers)
+        return PlainTextResponse(contenu, media_type=REPORT_FILES[name], headers=headers)
 
     @staticmethod
     def _files(point: dict[str, Any]) -> list[str]:
@@ -280,8 +580,29 @@ class _LiveCaptures:
         return entry
 
     def stop(self, capture_id: str) -> dict[str, Any]:
+        """Arrêt anticipé (issue #904) : attend que l'analyse soit créée pour
+        renvoyer son ``analysis_id``. Sans effet si la capture est finie."""
         entry = self.get(capture_id)
+        if entry["status"] == CAPTURING:
+            entry["_stop"].set()
+            if not entry["_handoff"].wait(STOP_WAIT_SECONDS):
+                logger.warning("capture en direct {} : arrêt plus long que {} s", capture_id, STOP_WAIT_SECONDS)
+        return self.public(entry)
+
+    def cancel(self, capture_id: str) -> dict[str, Any]:
+        """Abandon sans analyse (issue #904) : arrête tshark, supprime les
+        fichiers, statut ``cancelled``. 409 si la capture est déjà finie."""
+        entry = self.get(capture_id)
+        if entry["status"] != CAPTURING:
+            logger.debug("live: abandon de {} au statut {} -> 409", capture_id, entry["status"])
+            raise HTTPException(
+                status_code=409,
+                detail=f"capture en direct {capture_id} déjà terminée ({entry['status']}) : rien à abandonner",
+            )
+        entry["_abort"] = True
         entry["_stop"].set()
+        if not entry["_handoff"].wait(STOP_WAIT_SECONDS):
+            logger.warning("capture en direct {} : abandon plus long que {} s", capture_id, STOP_WAIT_SECONDS)
         return self.public(entry)
 
     def public(self, entry: dict[str, Any]) -> dict[str, Any]:
@@ -303,6 +624,16 @@ class _LiveCaptures:
             "analysis_id": entry["analysis_id"],
             "analysis_url": f"/analyses/{entry['analysis_id']}" if entry["analysis_id"] else None,
             "error": entry["error"],
+            "ring_buffer": entry.get("ring_buffer"),
+            "files_url": f"/live-captures/{entry['capture_id']}/files" if entry.get("ring_buffer") else None,
+            "live_report": entry.get("live_report"),
+            "comparison_id": entry.get("comparison_id"),
+            "comparison_url": f"/comparisons/{entry['comparison_id']}" if entry.get("comparison_id") else None,
+            "report_url": (
+                f"/live-captures/{entry['capture_id']}/report/{entry['_report_token']}/"
+                if entry.get("_report_token")
+                else None
+            ),
         }
 
 
@@ -311,7 +642,22 @@ def register(app: FastAPI, verify: Callable[..., None], deps: dict[str, Callable
     (``token``, ``max_files``, ``parse_points_order``, ``option_names``,
     ``make_options``, ``create_pending``, ``run_job``, ``get_analysis``) et
     l'enregistreur (``start_recorder``, ``stop_recorder``)."""
-    deps = {"start_recorder": start_ring_recorder, "stop_recorder": stop_ring_recorder, **deps}
+    from netcross_api.bpf_routes import resolve_bpf_library
+    from netcross_core.live_report import LiveReporter, LiveReportWriter
+    from netcross_core.parsing import parse_live
+    from netcross_report.live_html import render_live_html
+
+    def make_reporter(directory: str, interval: float) -> LiveReporter:
+        return LiveReporter(LiveReportWriter(directory, render_live_html, interval))
+
+    deps = {
+        "parse_live": parse_live,
+        "make_reporter": make_reporter,
+        "start_recorder": start_ring_recorder,
+        "stop_recorder": stop_ring_recorder,
+        "resolve_bpf_library": resolve_bpf_library,
+        **deps,
+    }
     live = _LiveCaptures(deps)
     auth = [Depends(verify)]
 
@@ -329,8 +675,70 @@ def register(app: FastAPI, verify: Callable[..., None], deps: dict[str, Callable
 
     @app.post("/live-captures/{capture_id}/stop", tags=["live"], responses=_RESPONSES, dependencies=auth)
     def stop_live_capture(capture_id: str) -> dict[str, Any]:
-        """Arrête la capture avant la fin de ``duration`` ; l'analyse porte sur ce qui a été capturé."""
+        """Arrête la capture avant la fin de ``duration`` (équiv. Ctrl+C / « Arreter et analyser ») ;
+        l'analyse porte sur ce qui a été capturé et la réponse donne son ``analysis_id``."""
         return live.stop(capture_id)
 
-    logger.debug("live_routes.register: 3 routes")
+    @app.delete("/live-captures/{capture_id}", tags=["live"], responses=_RESPONSES, dependencies=auth)
+    def cancel_live_capture(capture_id: str) -> dict[str, Any]:
+        """Abandonne une capture en cours sans l'analyser (fichiers supprimés, statut ``cancelled``) ;
+        409 si elle est déjà terminée."""
+        return live.cancel(capture_id)
+
+    @app.get("/live-captures/{capture_id}/files", tags=["live"], responses=_RESPONSES, dependencies=auth)
+    def list_live_capture_files(capture_id: str) -> dict[str, Any]:
+        """Fichiers pcapng conservés par le ``ring_buffer`` (équiv. ``--ring-buffer``), par point ;
+        404 si la capture a été lancée sans ``ring_buffer``."""
+        return live.ring_files(capture_id)
+
+    @app.get(
+        "/live-captures/{capture_id}/files/{point}/{filename}",
+        tags=["live"],
+        responses={**_RESPONSES, 200: {"content": {"application/vnd.tcpdump.pcap": {}}}},
+        dependencies=auth,
+    )
+    def download_live_capture_file(capture_id: str, point: str, filename: str) -> FileResponse:
+        """Télécharge un fichier du ``ring_buffer`` (nom donné par ``GET .../files``)."""
+        chemin = live.ring_file(capture_id, point, filename)
+        return FileResponse(chemin, media_type="application/vnd.tcpdump.pcap", filename=chemin.name)
+
+    @app.delete("/live-captures/{capture_id}/files", tags=["live"], responses=_RESPONSES, dependencies=auth)
+    def purge_live_capture_files(capture_id: str) -> dict[str, Any]:
+        """Supprime les fichiers du ``ring_buffer`` ; 409 pendant la capture."""
+        return live.purge_ring(capture_id)
+
+    @app.get(
+        "/live-captures/{capture_id}/report",
+        tags=["live"],
+        responses={**_RESPONSES, 200: {"content": {"text/html": {}}}},
+        dependencies=auth,
+        response_class=HTMLResponse,
+    )
+    def get_live_capture_report(capture_id: str) -> Response:
+        """Dernière version du rapport en continu (équiv. ``--live-report``), avec l'en-tête ``Refresh``
+        pendant la capture ; 404 si la capture a été lancée sans ``live_report``."""
+        return live.report_response(capture_id)
+
+    # URL de consultation (report_url) : jeton propre à la capture, sans clé API,
+    # pour un navigateur ; la page y relit live.json / live.jsonl (chemins relatifs).
+    @app.get(
+        "/live-captures/{capture_id}/report/{token}/",
+        tags=["live"],
+        responses={404: {"description": "Rapport introuvable ou jeton invalide"}},
+        response_class=HTMLResponse,
+    )
+    def view_live_capture_report(capture_id: str, token: str) -> Response:
+        """Page du rapport en continu ouverte avec ``report_url`` (jeton, lecture seule)."""
+        return live.report_response(capture_id, "index.html", token)
+
+    @app.get(
+        "/live-captures/{capture_id}/report/{token}/{name}",
+        tags=["live"],
+        responses={404: {"description": "Rapport introuvable ou jeton invalide"}},
+    )
+    def view_live_capture_report_file(capture_id: str, token: str, name: str) -> Response:
+        """``index.html``, ``live.json`` (instantané) ou ``live.jsonl`` (journal) du rapport en continu."""
+        return live.report_response(capture_id, name, token)
+
+    logger.debug("live_routes.register: 10 routes")
     return live
