@@ -43,10 +43,16 @@ jobs:
       # des deux mesures (PR et base), le delta reste donc comparable.
       - name: Dépendances + couverture de la PR
         run: |
-          uv sync --extra dev
+          # Extra api dès la première mesure : sans lui les tests de l'API sont
+          # sautés et tout netcross_api compte pour 0 % dans le delta — toute
+          # PR ajoutant du code d'API faisait plonger le total sous 80 %
+          # (constat PR #928/#929 : 79,86 % le runner, 88,1 % avec l'extra).
+          uv sync --extra dev --extra api
           uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
-          uv sync --extra dev --extra ai
-          uv run pytest --cov --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
+          uv sync --extra dev --extra ai --extra api
+          # Seconde mesure (avec l'extra ai) : sans seuil non plus. Le seuil bloquant
+          # reste celui de ci.yml, qui installe aussi l'extra api.
+          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
 
       - name: Couverture de la base (SHA de dev)
         run: |
@@ -58,7 +64,9 @@ jobs:
           git worktree prune
           git worktree add --force "$BASE_DIR" ${{ github.event.pull_request.base.sha }}
           cd "$BASE_DIR"
-          uv sync --extra dev
+          # Mêmes extras que la mesure de la PR, sinon le delta compare des
+          # suites différentes (tests API sautés d'un seul côté).
+          uv sync --extra dev --extra api
           uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-base.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
           mv coverage-base.json "$OLDPWD/"
 
