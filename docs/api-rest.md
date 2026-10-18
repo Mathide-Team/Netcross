@@ -66,6 +66,7 @@ La spécification OpenAPI est disponible sur :
 |---------|------|-------------|
 | `POST` | `/captures` | Upload d'un pcap, lance l'analyse |
 | `POST` | `/captures/multi` | Plusieurs pcaps étiquetés, analyse croisée entre points ; un seul pcapng multi-interfaces suffit avec `split_interfaces=true` (#474) |
+| `POST` | `/comparisons` | Comparaison baseline / courant (`baseline_files`, et `current_files` ou `current_live`) : `cross-capture-diff`. Avec `current_live` (JSON de `POST /live-captures` sans `options` ; équiv. `--live-current`, issue #908), le courant est capturé en direct sur le serveur, puis comparé à l'arrêt ; 202 avec `live_capture_id` ; mêmes contrôles que `/live-captures` (403, 409), sans `tls`/`quic` ni `wait` (400). Si la capture est abandonnée ou échoue, la comparaison passe en échec |
 | `GET` | `/analyses/{id}/status` | Statut `pending` / `completed` / `failed` (+ résumé) |
 | `GET` | `/analyses/{id}` | Mesures brutes (copie de chaque champ du `Report`) |
 | `GET` | `/analyses/{id}/report` | Rapport structuré, identique à `--json-report` : constats, triage, score de santé (issue #330) |

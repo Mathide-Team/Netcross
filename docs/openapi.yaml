@@ -1551,7 +1551,10 @@ paths:
       description: 'Compare deux jeux de captures (baseline vs courant) et remonte
         les
 
-        régressions/améliorations (issue #669).
+        régressions/améliorations (issue #669). Le courant peut être capturé en
+
+        direct sur le serveur (``current_live``, équiv. ``--live-current``, issue
+        #908).
 
 
         Équivalent de ``cross-capture-diff --baseline LAN=lan.pcap --current
@@ -3301,12 +3304,14 @@ components:
           title: Baseline Files
           description: Fichiers pcap baseline
         current_files:
-          items:
-            type: string
-            contentMediaType: application/octet-stream
-          type: array
+          anyOf:
+          - items:
+              type: string
+              contentMediaType: application/octet-stream
+            type: array
+          - type: 'null'
           title: Current Files
-          description: Fichiers pcap courant
+          description: Fichiers pcap courant (ou current_live)
         baseline_labels:
           type: string
           title: Baseline Labels
@@ -3382,10 +3387,18 @@ components:
           - type: 'null'
           title: History Label
           description: Étiquette du run dans l'historique (équivalent de --history-label)
+        current_live:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Live
+          description: 'Courant capturé en direct au lieu de current_files (équiv.
+            --live-current, issue #908) : JSON de POST /live-captures sans options,
+            ex. {"points": [{"name": "LAN", "interface": "eth0"}], "duration": 60}
+            ; sans tls/quic ni wait'
       type: object
       required:
       - baseline_files
-      - current_files
       title: Body_create_comparison_comparisons_post
     Body_export_subset_route_tools_export_post:
       properties:

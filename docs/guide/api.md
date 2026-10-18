@@ -157,6 +157,27 @@ page, avec un en-tête `Refresh`.
 Le rapport compte les paquets au fil de l'eau ; l'analyse complète reste
 faite à l'arrêt, comme en CLI.
 
+### Comparer à une capture en direct
+
+Comme `--live-current`, `POST /comparisons` peut capturer le courant sur
+le serveur au lieu de le recevoir en fichiers : envoyez le baseline en
+fichiers, et dans le champ `current_live` la même description qu'à
+`POST /live-captures` (sans `options` : celles de la comparaison
+s'appliquent).
+
+```bash
+curl -X POST http://localhost:8000/comparisons \
+  -H "X-API-Key: $NETCROSS_API_TOKEN" \
+  -F baseline_files=@lan-hier.pcap -F baseline_labels=LAN \
+  -F 'current_live={"points": [{"name": "LAN", "interface": "eth0"}], "duration": 60}'
+```
+
+La réponse (202) donne `status_url` pour la comparaison et
+`live_capture_url` pour la capture : `POST .../stop` l'arrête plus tôt
+(la comparaison porte alors sur ce qui a été capturé), `DELETE` l'abandonne
+(la comparaison passe en échec). Mêmes limites qu'en CLI : pas de `tls` ni
+de `quic` ; `wait=true` est refusé, la capture durant `duration`.
+
 ## Annoter une analyse
 
 ```bash
