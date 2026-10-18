@@ -19,6 +19,16 @@ Deux points de marge, pas davantage :
 - **Assez** pour absorber une PR qui ajoute légitimement du code GTK. Ce code n'est pas testable en CI (PyGObject absent), voir #285 et la page « Couverture de la GUI » ajoutée par la PR #327.
 - **Pas plus**, parce qu'un seuil à 70 % laisserait passer la suppression de plusieurs milliers de lignes de tests sans rien signaler.
 
+## Seuil du total réel : 95 % (audit #462)
+
+Le seuil de 80 % porte sur la mesure du job Qualité, sans PyGObject : les modules `netcross_gtk4` y comptent pour 0 %. Depuis #943, le job « Couverture combinée (Qualité + GTK4) » fusionne cette mesure avec celle du job GTK4 (Xvfb) et obtient le total réel toutes sources confondues.
+
+| Date | Total réel combiné | Événement |
+|---|---|---|
+| 2026-10-18 | 98,2 % | premier passage du job combiné (#944) |
+
+L'audit #462 demandait de passer à 95 %. Ce seuil est appliqué au total réel par le job combiné (`coverage report --fail-under=95` dans `ci.yml`) : 3,2 points de marge. Le seuil de `pyproject.toml` reste à 80 % pour le job Qualité, qui ne peut pas mesurer la GUI.
+
 ## Ce que le seuil ne dit pas
 
 Le seuil est un plancher contre la régression, pas un objectif. Le principe de #246 tient toujours : on vise les chemins d'erreur, les branches de dégradation et les sorties réellement produites, module par module. Un test écrit pour faire monter le chiffre sans rien vérifier est pire que pas de test, puisqu'il fait croire que la vérification a eu lieu.
