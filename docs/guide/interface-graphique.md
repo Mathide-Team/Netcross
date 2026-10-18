@@ -258,6 +258,19 @@ complète), recherche plein texte (« Resultats max. » = `--limit`,
 de `--json`. Aucun accès réseau ; la banque est celle de la CLI
 (`~/.cache/netcross/lua_api.db`).
 
+La liste en tête de la fenêtre passe de « API Lua » à **Dissecteurs Lua**,
+le catalogue des dissecteurs Wireshark écrits en Lua : plus de 1 200 dépôts
+recensés dans [wireshark-lua](https://github.com/Mathide-Team/wireshark-lua),
+avec leur domaine, le protocole décodé, la licence, le nombre d'étoiles et
+la présence ou non d'un dissecteur natif dans Wireshark. C'est l'équivalent
+de `netcross-lua-doc --dissectors`. La recherche porte sur le nom du dépôt,
+le protocole, le domaine et les sujets, sans tenir compte des accents. La
+liste de gauche donne les domaines, et un clic filtre sur l'un d'eux
+(`--domain`). « Sans dissecteur natif » (`--non-native`) ne garde que les
+protocoles que Wireshark ne décode pas lui-même. Les résultats sont triés
+par nombre d'étoiles. Seules les métadonnées sont gardées : le code reste
+dans chaque dépôt, sous sa propre licence.
+
 ## Historique des runs
 
 Le bouton **Historique des runs** de la barre de titre ouvre la

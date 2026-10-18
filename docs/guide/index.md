@@ -49,7 +49,7 @@ guide ont été obtenues avec ces fichiers.
 | `netcross-gui` | `cd src && python3 -m netcross_gtk4.app` | Interface graphique |
 | `netcross-batch` | `python3 src/cross_capture_batch_cli.py` | Un dossier entier de captures ([Mode batch](../batch-mode.md)) |
 | `netcross-history` | `python3 src/cross_history_cli.py` | Historique des analyses enregistrées |
-| `netcross-lua-doc` | `python3 src/netcross_lua_doc_cli.py` | Documentation hors ligne de l'API Lua de Wireshark |
+| `netcross-lua-doc` | `python3 src/netcross_lua_doc_cli.py` | Documentation hors ligne de l'API Lua de Wireshark, et catalogue des dissecteurs Lua (`--dissectors`) |
 | `netcross-ai-models` | `python3 src/netcross_ai_models_cli.py` | Modèles du module IA local ([Module IA](../module-ia.md)) |
 
 Une API REST est également disponible pour l'intégrer à d'autres outils :

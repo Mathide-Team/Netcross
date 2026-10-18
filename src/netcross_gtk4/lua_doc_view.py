@@ -4,7 +4,9 @@
 Meme banque SQLite (``netcross_core.lua_doc``), meme texte que la CLI
 (``netcross_report.lua_doc_text``) : liste des classes (``--classes``),
 fiche d'une classe (``--class``), recherche (``TERME``, ``--limit``,
-``--full``) et document JSON (``--json``).
+``--full``) et document JSON (``--json``). Issue #917 : catalogue des
+dissecteurs Lua (``--dissectors``, ``--domain``, ``--non-native``,
+``--domains``), même texte et même JSON.
 """
 
 from __future__ import annotations
@@ -16,8 +18,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from netcross_core import lua_doc
+from netcross_core import lua_dissectors, lua_doc
 from netcross_core.logging_config import get_logger
+from netcross_report.lua_dissectors_text import render_dissecteurs, render_domaines
 from netcross_report.lua_doc_text import render_fiche, render_resultats
 
 logger = get_logger(__name__)
@@ -49,6 +52,7 @@ class LuaDocBrowser:
             )
         self.conn: sqlite3.Connection = lua_doc.ensure_db(db_path or lua_doc.DEFAULT_DB_PATH, json_path)
         self.version = lua_doc.get_meta(self.conn).get("version_wireshark", "")
+        self.catalogue = lua_dissectors.ensure_catalogue(self.conn)
 
     def close(self) -> None:
         self.conn.close()
@@ -81,6 +85,42 @@ class LuaDocBrowser:
             return f"Aucun resultat pour « {terme} » (Wireshark {self.version}).", []
         classes = list(dict.fromkeys(r.classe for r in res))
         return "\n".join(render_resultats(self.conn, terme, res, full)).rstrip(), classes
+
+    # -- catalogue des dissecteurs (issue #917) -------------------------------
+
+    def domains(self) -> list[str]:
+        """Domaines du catalogue (liste de la GUI), du plus fourni au moins fourni."""
+        return [d for d, _n in lua_dissectors.domains(self.conn)]
+
+    def domains_text(self) -> str:
+        """Texte de ``netcross-lua-doc --domains``."""
+        if not self.catalogue:
+            return self._catalogue_absent()
+        return "\n".join(render_domaines(lua_dissectors.domains_document(self.conn)))
+
+    def dissectors_text(
+        self, terme: str = "", domaine: str | None = None, non_natif: bool = False, limit: int = DEFAULT_LIMIT
+    ) -> str:
+        """Texte de ``netcross-lua-doc --dissectors [TERME] [--domain] [--non-native] --limit N``."""
+        if not self.catalogue:
+            return self._catalogue_absent()
+        doc = lua_dissectors.search_document(self.conn, terme.strip(), domaine, non_natif, limit)
+        if not doc["total"]:
+            return f"Aucun dissecteur Lua pour « {terme.strip() or domaine or ''} »."
+        return "\n".join(render_dissecteurs(doc)).rstrip()
+
+    def dissectors_json(
+        self, terme: str = "", domaine: str | None = None, non_natif: bool = False, limit: int = DEFAULT_LIMIT
+    ) -> str:
+        """JSON de ``--dissectors --json`` (même document que ``GET /lua-doc/dissectors``)."""
+        doc = lua_dissectors.search_document(self.conn, terme.strip(), domaine, non_natif, limit)
+        return json.dumps(doc, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _catalogue_absent() -> str:
+        emplacements = ", ".join(str(p) for p in lua_dissectors.csv_candidates())
+        logger.debug("LuaDocBrowser: catalogue des dissecteurs absent")
+        return f"Catalogue des dissecteurs Lua introuvable ({emplacements})."
 
     def json_text(
         self, terme: str = "", name: str | None = None, limit: int = DEFAULT_LIMIT, full: bool = False
