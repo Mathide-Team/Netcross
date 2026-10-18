@@ -64,9 +64,10 @@ jobs:
           git worktree prune
           git worktree add --force "$BASE_DIR" ${{ github.event.pull_request.base.sha }}
           cd "$BASE_DIR"
-          # Mêmes extras que la mesure de la PR, sinon le delta compare des
-          # suites différentes (tests API sautés d'un seul côté).
-          uv sync --extra dev --extra api
+          # Mêmes extras que la mesure finale de la PR (ai + api), sinon le
+          # delta compare des suites différentes : tests API sautés d'un seul
+          # côté, tests du client LLM de l'autre.
+          uv sync --extra dev --extra ai --extra api
           uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-base.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
           mv coverage-base.json "$OLDPWD/"
 
