@@ -44,6 +44,7 @@ check_rpm() {
     grep -q "/usr/share/netcross/netcross_core/data/cve_seed.json$" <<<"$listing" \
         || fail "rpm : cve_seed.json absent"
     grep -q "/usr/share/netcross/data/lua_api.json$" <<<"$listing" || fail "rpm : lua_api.json absent"
+    grep -q "/usr/share/netcross/data/lua_dissectors.csv$" <<<"$listing" || fail "rpm : lua_dissectors.csv absent"
     for l in "${LAUNCHERS[@]}"; do
         grep -q "^/usr/bin/$l$" <<<"$listing" || fail "rpm : lanceur /usr/bin/$l absent"
     done
@@ -135,6 +136,9 @@ PY
     HOME="$(mktemp -d)" /usr/bin/netcross-lua-doc --class Tvb | grep -q "tvb:range" \
         || fail "netcross-lua-doc --class Tvb depuis le paquet installe"
     echo "netcross-lua-doc : fiche Tvb servie depuis /usr/share/netcross/data/lua_api.json"
+    HOME="$(mktemp -d)" /usr/bin/netcross-lua-doc --dissectors mavlink | grep -q "dissecteur(s) Lua" \
+        || fail "netcross-lua-doc --dissectors depuis le paquet installe"
+    echo "netcross-lua-doc : catalogue des dissecteurs servi depuis /usr/share/netcross/data/lua_dissectors.csv"
 
     local tmp
     tmp="$(mktemp -d)"

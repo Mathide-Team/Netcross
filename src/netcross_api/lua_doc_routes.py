@@ -7,6 +7,11 @@ Wireshark (issue #873), équivalent de ``netcross-lua-doc --json``.
 SQLite (``~/.cache/netcross/lua_api.db`` du serveur, reconstruite quand
 ``data/lua_api.json`` ou ``$NETCROSS_LUA_API_JSON`` change), aucun accès
 réseau.
+
+Issue #917 : ``GET /lua-doc/dissectors`` et ``GET /lua-doc/dissectors/domains``
+rendent le catalogue des dissecteurs Lua (``--dissectors``, ``--domains``),
+chargé depuis ``data/lua_dissectors.csv`` ; ils ne dépendent pas du JSON de
+l'API.
 """
 
 from __future__ import annotations
@@ -19,14 +24,14 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 
-from netcross_core import lua_doc
+from netcross_core import lua_dissectors, lua_doc
 from netcross_core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 _RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"description": "Classe inconnue (avec suggestions)"},
-    503: {"description": "JSON de l'API Lua introuvable sur le serveur"},
+    503: {"description": "JSON de l'API Lua ou catalogue des dissecteurs introuvable sur le serveur"},
 }
 
 
@@ -46,6 +51,43 @@ def _connexion() -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+@contextmanager
+def _catalogue() -> Iterator[sqlite3.Connection]:
+    lua_doc.DEFAULT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = lua_doc.connect(lua_doc.DEFAULT_DB_PATH)
+    try:
+        if not lua_dissectors.ensure_catalogue(conn):
+            emplacements = ", ".join(str(p) for p in lua_dissectors.csv_candidates())
+            logger.warning("lua-doc : catalogue des dissecteurs introuvable ({})", emplacements)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Catalogue des dissecteurs Lua introuvable ({emplacements}) : "
+                f"le generer avec scripts/import_lua_dissectors.py ou definir ${lua_dissectors.ENV_CSV}",
+            )
+        yield conn
+    finally:
+        conn.close()
+
+
+def get_lua_dissectors(
+    q: str = Query("", description="Recherche plein texte : dépôt, protocole, domaine, topics (tous les mots)"),
+    domain: str | None = Query(None, description="Domaine contenant ce texte, sans accents ni casse (--domain)"),
+    non_native: bool = Query(False, description="Seulement sans dissecteur natif dans Wireshark (--non-native)"),
+    limit: int = Query(20, ge=1, le=2000, description="Nombre maximal de résultats (--limit)"),
+) -> dict[str, Any]:
+    """Catalogue des dissecteurs Wireshark en Lua (équivalent de
+    ``netcross-lua-doc --dissectors --json``), triés par étoiles ; ``total``
+    compte toutes les correspondances. Aucun résultat : liste vide (200)."""
+    with _catalogue() as conn:
+        return lua_dissectors.search_document(conn, q.strip(), domain, non_native, limit)
+
+
+def get_lua_dissector_domains() -> dict[str, Any]:
+    """Domaines du catalogue et leur nombre de dissecteurs (``--domains --json``)."""
+    with _catalogue() as conn:
+        return lua_dissectors.domains_document(conn)
 
 
 def get_lua_classes() -> dict[str, Any]:
@@ -90,6 +132,8 @@ def register(app: FastAPI, verify: Callable[..., None]) -> None:
         ("/lua-doc/classes", get_lua_classes),
         ("/lua-doc/classes/{name}", get_lua_class),
         ("/lua-doc/search", search_lua_doc),
+        ("/lua-doc/dissectors", get_lua_dissectors),
+        ("/lua-doc/dissectors/domains", get_lua_dissector_domains),
     ):
         app.add_api_route(path, endpoint, methods=["GET"], tags=["lua-doc"], responses=_RESPONSES, dependencies=deps)
-    logger.debug("lua_doc_routes.register: 3 routes")
+    logger.debug("lua_doc_routes.register: 5 routes")
