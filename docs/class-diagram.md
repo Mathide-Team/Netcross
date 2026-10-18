@@ -4095,6 +4095,7 @@ classDiagram
         +str name
         +str interface
         +str? bpf
+        +str? bpf_library
     }
     class LiveCaptureRequest {
         <<BaseModel>>
@@ -4107,6 +4108,7 @@ classDiagram
         +start(req) dict~str, Any~
         +get(capture_id) dict~str, Any~
         +stop(capture_id) dict~str, Any~
+        +cancel(capture_id) dict~str, Any~
         +public(entry) dict~str, Any~
     }
     class mod_netcross_api_live_routes["netcross_api.live_routes"] {

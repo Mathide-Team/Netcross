@@ -14,7 +14,10 @@ résultat consultable sous ``/analyses/{analysis_id}``.
   ``completed``, ``failed``), octets enregistrés par point, durée écoulée,
   ``analysis_id`` une fois l'analyse lancée ;
 - ``POST /live-captures/{capture_id}/stop`` : arrêt anticipé (l'analyse
-  porte alors sur ce qui a été capturé).
+  porte alors sur ce qui a été capturé) ; la réponse donne l'``analysis_id``
+  (issue #904) ;
+- ``DELETE /live-captures/{capture_id}`` : abandon sans analyse, fichiers
+  supprimés, statut ``cancelled`` (issue #904).
 
 Sécurité : capturer demande des privilèges (``CAP_NET_RAW``) sur le
 serveur. Désactivé par défaut (``NETCROSS_API_LIVE=1`` pour l'activer),
@@ -53,6 +56,10 @@ MAX_DURATION_ENV = "NETCROSS_API_LIVE_MAX_DURATION"
 DEFAULT_MAX_DURATION = 300.0
 
 CAPTURING, ANALYSING, COMPLETED, FAILED = "capturing", "analysing", "completed", "failed"
+CANCELLED = "cancelled"  # DELETE /live-captures/{id} (issue #904) : abandon sans analyse
+# Attente maximale de /stop et DELETE : le temps d'arrêter tshark et de créer
+# l'analyse (issue #904 : /stop renvoie l'analysis_id).
+STOP_WAIT_SECONDS = 15.0
 
 #: Options de ``_options`` sans objet ici (fichiers téléversés, séparation
 #: des interfaces d'un pcapng : un point = une interface).
@@ -64,7 +71,7 @@ _RESPONSES: dict[int | str, dict[str, Any]] = {
         "ou NETCROSS_API_TOKEN non défini"
     },
     404: {"description": "Capture inconnue"},
-    409: {"description": "Une capture est déjà en cours"},
+    409: {"description": "Une capture est déjà en cours, ou abandon d'une capture déjà terminée"},
 }
 
 
@@ -74,6 +81,11 @@ class LivePoint(BaseModel):
     name: str = Field(..., description="Nom du point (devient le point de capture de l'analyse)")
     interface: str = Field(..., description=f"Interface du serveur (autorisée par {INTERFACES_ENV})")
     bpf: str | None = Field(None, description="Filtre BPF de capture de ce point (ex. 'tcp port 443')")
+    bpf_library: str | None = Field(
+        None,
+        description="Nom d'un filtre de la bibliothèque (GET /bpf-filters) à la place de bpf "
+        "(équiv. --bpf-library ; exclusif avec bpf)",
+    )
 
 
 class LiveCaptureRequest(BaseModel):
@@ -161,6 +173,12 @@ class _LiveCaptures:
             raise HTTPException(status_code=400, detail="chaque point doit avoir un nom non vide et distinct")
         if any(not p.interface.strip() for p in req.points):
             raise HTTPException(status_code=400, detail="interface manquante")
+        for p in req.points:
+            if p.bpf_library is not None:
+                if p.bpf:
+                    raise HTTPException(status_code=400, detail=f"{p.name} : bpf et bpf_library sont exclusifs")
+                p.bpf = self._deps["resolve_bpf_library"](p.bpf_library)
+                logger.debug("live: point {} : filtre {!r} de la bibliothèque", p.name, p.bpf_library)
         borne = max_duration()
         if req.duration > borne:
             raise HTTPException(status_code=400, detail=f"duration : {borne:g} s au plus ({MAX_DURATION_ENV})")
@@ -202,6 +220,9 @@ class _LiveCaptures:
                 "analysis_id": None,
                 "error": None,
                 "_stop": threading.Event(),
+                # posé quand la phase de capture est finie : analyse créée, échec ou abandon
+                "_handoff": threading.Event(),
+                "_abort": False,
                 "_workdir": workdir,
             }
             self._entries[capture_id] = entry
@@ -236,6 +257,12 @@ class _LiveCaptures:
         for point in entry["points"]:  # figé : les fichiers sont supprimés après l'analyse
             point["_bytes"] = sum(_size(f) for f in self._files(point))
         captures = [(p["name"], f) for p in entry["points"] for f in self._files(p)]
+        if entry["_abort"]:
+            logger.info("capture en direct {} abandonnée sans analyse", entry["capture_id"])
+            entry["status"] = CANCELLED
+            shutil.rmtree(entry["_workdir"], ignore_errors=True)
+            entry["_handoff"].set()
+            return
         if entry["error"] is None and erreurs:
             entry["error"] = "; ".join(erreurs)
         if entry["error"] is None and {n for n, _ in captures} != {p["name"] for p in entry["points"]}:
@@ -245,6 +272,7 @@ class _LiveCaptures:
             logger.warning("capture en direct {} en échec : {}", entry["capture_id"], entry["error"])
             entry["status"] = FAILED
             shutil.rmtree(entry["_workdir"], ignore_errors=True)
+            entry["_handoff"].set()
             return
         multi = len(entry["points"]) > 1
         metadata = {
@@ -255,6 +283,7 @@ class _LiveCaptures:
         }
         entry["analysis_id"] = self._deps["create_pending"](metadata, options)
         entry["status"] = ANALYSING
+        entry["_handoff"].set()
         try:
             self._deps["run_job"](entry["analysis_id"], captures, order, multi, options)
         finally:
@@ -280,8 +309,29 @@ class _LiveCaptures:
         return entry
 
     def stop(self, capture_id: str) -> dict[str, Any]:
+        """Arrêt anticipé (issue #904) : attend que l'analyse soit créée pour
+        renvoyer son ``analysis_id``. Sans effet si la capture est finie."""
         entry = self.get(capture_id)
+        if entry["status"] == CAPTURING:
+            entry["_stop"].set()
+            if not entry["_handoff"].wait(STOP_WAIT_SECONDS):
+                logger.warning("capture en direct {} : arrêt plus long que {} s", capture_id, STOP_WAIT_SECONDS)
+        return self.public(entry)
+
+    def cancel(self, capture_id: str) -> dict[str, Any]:
+        """Abandon sans analyse (issue #904) : arrête tshark, supprime les
+        fichiers, statut ``cancelled``. 409 si la capture est déjà finie."""
+        entry = self.get(capture_id)
+        if entry["status"] != CAPTURING:
+            logger.debug("live: abandon de {} au statut {} -> 409", capture_id, entry["status"])
+            raise HTTPException(
+                status_code=409,
+                detail=f"capture en direct {capture_id} déjà terminée ({entry['status']}) : rien à abandonner",
+            )
+        entry["_abort"] = True
         entry["_stop"].set()
+        if not entry["_handoff"].wait(STOP_WAIT_SECONDS):
+            logger.warning("capture en direct {} : abandon plus long que {} s", capture_id, STOP_WAIT_SECONDS)
         return self.public(entry)
 
     def public(self, entry: dict[str, Any]) -> dict[str, Any]:
@@ -311,7 +361,14 @@ def register(app: FastAPI, verify: Callable[..., None], deps: dict[str, Callable
     (``token``, ``max_files``, ``parse_points_order``, ``option_names``,
     ``make_options``, ``create_pending``, ``run_job``, ``get_analysis``) et
     l'enregistreur (``start_recorder``, ``stop_recorder``)."""
-    deps = {"start_recorder": start_ring_recorder, "stop_recorder": stop_ring_recorder, **deps}
+    from netcross_api.bpf_routes import resolve_bpf_library
+
+    deps = {
+        "start_recorder": start_ring_recorder,
+        "stop_recorder": stop_ring_recorder,
+        "resolve_bpf_library": resolve_bpf_library,
+        **deps,
+    }
     live = _LiveCaptures(deps)
     auth = [Depends(verify)]
 
@@ -329,8 +386,15 @@ def register(app: FastAPI, verify: Callable[..., None], deps: dict[str, Callable
 
     @app.post("/live-captures/{capture_id}/stop", tags=["live"], responses=_RESPONSES, dependencies=auth)
     def stop_live_capture(capture_id: str) -> dict[str, Any]:
-        """Arrête la capture avant la fin de ``duration`` ; l'analyse porte sur ce qui a été capturé."""
+        """Arrête la capture avant la fin de ``duration`` (équiv. Ctrl+C / « Arreter et analyser ») ;
+        l'analyse porte sur ce qui a été capturé et la réponse donne son ``analysis_id``."""
         return live.stop(capture_id)
 
-    logger.debug("live_routes.register: 3 routes")
+    @app.delete("/live-captures/{capture_id}", tags=["live"], responses=_RESPONSES, dependencies=auth)
+    def cancel_live_capture(capture_id: str) -> dict[str, Any]:
+        """Abandonne une capture en cours sans l'analyser (fichiers supprimés, statut ``cancelled``) ;
+        409 si elle est déjà terminée."""
+        return live.cancel(capture_id)
+
+    logger.debug("live_routes.register: 4 routes")
     return live

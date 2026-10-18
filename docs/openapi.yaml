@@ -2420,7 +2420,8 @@ paths:
         '404':
           description: Capture inconnue
         '409':
-          description: Une capture est déjà en cours
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
         '422':
           description: Validation Error
           content:
@@ -2461,7 +2462,49 @@ paths:
         '404':
           description: Capture inconnue
         '409':
-          description: Une capture est déjà en cours
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - live
+      summary: Cancel Live Capture
+      description: 'Abandonne une capture en cours sans l''analyser (fichiers supprimés,
+        statut ``cancelled``) ;
+
+        409 si elle est déjà terminée.'
+      operationId: cancel_live_capture_live_captures__capture_id__delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Cancel Live Capture Live Captures  Capture Id  Delete
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
         '422':
           description: Validation Error
           content:
@@ -2473,8 +2516,10 @@ paths:
       tags:
       - live
       summary: Stop Live Capture
-      description: Arrête la capture avant la fin de ``duration`` ; l'analyse porte
-        sur ce qui a été capturé.
+      description: 'Arrête la capture avant la fin de ``duration`` (équiv. Ctrl+C
+        / « Arreter et analyser ») ;
+
+        l''analyse porte sur ce qui a été capturé et la réponse donne son ``analysis_id``.'
       operationId: stop_live_capture_live_captures__capture_id__stop_post
       security:
       - APIKeyHeader: []
@@ -2501,7 +2546,8 @@ paths:
         '404':
           description: Capture inconnue
         '409':
-          description: Une capture est déjà en cours
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
         '422':
           description: Validation Error
           content:
@@ -3834,6 +3880,13 @@ components:
           - type: 'null'
           title: Bpf
           description: Filtre BPF de capture de ce point (ex. 'tcp port 443')
+        bpf_library:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bpf Library
+          description: Nom d'un filtre de la bibliothèque (GET /bpf-filters) à la
+            place de bpf (équiv. --bpf-library ; exclusif avec bpf)
       type: object
       required:
       - name
