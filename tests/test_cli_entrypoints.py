@@ -163,16 +163,23 @@ def test_une_capture_introuvable_est_rapportee_comme_un_echec(monkeypatch, capsy
     La regle du projet -- toujours emettre une ligne explicite pour une
     information absente, ne jamais laisser une absence passer pour une mesure
     -- etait donc appliquee sur le chemin rare et pas sur le chemin courant.
+
+    Issue #940 : l'echec se voit AUSSI dans le code de sortie (3 = rapport
+    rendu mais incomplet), pour que l'automatisation ne confonde pas analyse
+    incomplete et succes.
     """
     presente = _ecrire_capture(tmp_path / "ok.pcap")
-    sortie = _lancer_analyzer(
-        monkeypatch,
-        capsys,
-        "--capture",
-        f"MANQUANT={tmp_path / 'jamais_creee.pcap'}",
-        "--capture",
-        f"PRESENT={presente}",
-    )
+    with pytest.raises(SystemExit) as excinfo:
+        _lancer_analyzer(
+            monkeypatch,
+            capsys,
+            "--capture",
+            f"MANQUANT={tmp_path / 'jamais_creee.pcap'}",
+            "--capture",
+            f"PRESENT={presente}",
+        )
+    assert excinfo.value.code == 3, "un echec de lecture doit se voir dans le code de sortie"
+    sortie = capsys.readouterr()
     assert "ECHEC" in sortie.err, "un fichier introuvable n'est pas rapporte comme un echec"
     assert "resultat est incomplet" in sortie.err, "aucun avertissement de resultat partiel"
     assert "Traceback" not in sortie.err

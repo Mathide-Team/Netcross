@@ -96,7 +96,9 @@ def test_convert_avec_live_seul(lance, capsys):
 
 
 def test_lecture_sequentielle_avec_un_fichier_en_echec(lance, monkeypatch, capsys):
-    """Lignes 2839-2847 : fichier illisible signale, analyse poursuivie."""
+    """Lignes 2839-2847 : fichier illisible signale, analyse poursuivie,
+    puis code de sortie 3 (issue #940 : l'echec doit se voir pour
+    l'automatisation, sans arreter l'analyse des fichiers restants)."""
     from pcap_parser import TsharkError
 
     def _parse(label, path, raise_on_error=False):
@@ -105,7 +107,7 @@ def test_lecture_sequentielle_avec_un_fichier_en_echec(lance, monkeypatch, capsy
         return [p for p in PKTS if p.point == label]
 
     monkeypatch.setattr(cli, "parse_capture", _parse)
-    assert lance() == 0
+    assert lance() == 3
     err = capsys.readouterr().err
     assert "[B] ECHEC sur b.pcap : fichier tronque" in err
     assert "au moins un fichier n'a pas pu etre lu" in err
@@ -122,7 +124,7 @@ def test_lecture_parallele(lance, monkeypatch, capsys, cpus, workers, attendu):
     ]
     monkeypatch.setattr(cli, "parse_captures_parallel", lambda captures, workers: (list(PKTS), stats))
     argv = ["--parallel"] + (["--parallel-workers", workers] if workers else [])
-    assert lance(*argv) == 0
+    assert lance(*argv) == 3
     captured = capsys.readouterr()
     assert attendu in captured.out
     assert "[A] 3 paquets charges depuis a.pcap (0.50s)" in captured.out
