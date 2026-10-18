@@ -168,15 +168,19 @@ jobs:
         # les modules netcross_gtk4 comptent pour 0 % dans le total de la
         # CI alors que leurs tests tournent (et couvrent) dans l'autre job.
         # Renommage : les deux jobs publient chacun un « .coverage », les
-        # noms d'artifacts distincts évitent la collision au téléchargement.
+        # noms distincts évitent la collision au téléchargement — et sans
+        # point initial : upload-artifact exclut les fichiers cachés
+        # depuis la v4.4.0 (premier passage : « No files were found »
+        # malgré le cp réussi ; include-hidden-files: true existerait mais
+        # ne sert qu'à ça, le renommage est plus simple).
         if: always()
-        run: cp .coverage .coverage-qualite || { echo "::warning::.coverage absent (mesure non exécutée)"; exit 0; }
+        run: cp .coverage coverage-qualite.dat || { echo "::warning::.coverage absent (mesure non exécutée)"; exit 0; }
       - name: Upload des données de couverture brutes
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-data-qualite
-          path: .coverage-qualite
+          path: coverage-qualite.dat
           retention-days: 14
           if-no-files-found: warn
 
@@ -253,17 +257,18 @@ jobs:
         # Issue #943 : la couverture de ce job n'était ni exportée ni
         # combinée avec celle du job Qualité — les ~3700 instructions des
         # modules netcross_gtk4 comptaient pour 0 % dans le total de la CI.
-        # Renommage du .coverage (même raison que le job Qualité) et
+        # Renommage du .coverage (même raison que le job Qualité : sans
+        # point initial, upload-artifact exclut les fichiers cachés) et
         # publication pour le job « Couverture combinée ».
         if: always()
-        run: cp .coverage .coverage-gtk4 || { echo "::warning::.coverage absent (mesure non exécutée)"; exit 0; }
+        run: cp .coverage coverage-gtk4.dat || { echo "::warning::.coverage absent (mesure non exécutée)"; exit 0; }
       - name: Upload de la couverture GTK4
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-data-gtk4
           path: |
-            .coverage-gtk4
+            coverage-gtk4.dat
             coverage-gtk4.xml
           retention-days: 14
           if-no-files-found: warn
@@ -324,13 +329,13 @@ jobs:
         # Les données manquantes (job amont rouge avant pytest) ne font
         # pas échouer ce job : l'échec amont est déjà le signal.
         run: |
-          if [ ! -f cov/.coverage-qualite ] || [ ! -f cov/.coverage-gtk4 ]; then
+          if [ ! -f cov/coverage-qualite.dat ] || [ ! -f cov/coverage-gtk4.dat ]; then
             echo "::warning::données de couverture incomplètes (job Qualité ou GTK4 en échec avant la mesure) — pas de total combiné"
             echo "## Couverture combinée (issue #943)" >> "$GITHUB_STEP_SUMMARY"
             echo "Données incomplètes : le job Qualité ou GTK4 a échoué avant la mesure. Pas de total combiné." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          coverage combine cov/.coverage-qualite cov/.coverage-gtk4
+          coverage combine cov/coverage-qualite.dat cov/coverage-gtk4.dat
           coverage report | tee /tmp/couverture.txt
           coverage xml -o coverage-combinee.xml
 
