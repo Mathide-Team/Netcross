@@ -87,6 +87,9 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/live-captures/{id}` | État (`capturing`, `analysing`, `completed`, `failed`), `bytes_captured` par point, `elapsed_seconds`, `packet_count`, `analysis_id` |
 | `POST` | `/live-captures/{id}/stop` | Arrêt anticipé ; l'analyse porte sur ce qui a été capturé ; la réponse donne l'`analysis_id` (issue #904) |
 | `DELETE` | `/live-captures/{id}` | Abandon sans analyse : tshark arrêté, fichiers supprimés, statut `cancelled` ; 409 si la capture est déjà terminée (issue #904) |
+| `GET` | `/live-captures/{id}/files` | Avec `ring_buffer` (`files`, `seconds` ; équiv. `--ring-buffer N:SECONDES`, issue #905) : fichiers pcapng tournants gardés par point, avec taille et URL ; 404 sans `ring_buffer` |
+| `GET` | `/live-captures/{id}/files/{point}/{filename}` | Télécharge un fichier listé (pcapng) ; 404 pour tout autre nom |
+| `DELETE` | `/live-captures/{id}/files` | Supprime les fichiers du ring buffer ; 409 pendant la capture |
 | `GET` | `/analyses/{id}/annotations` | Annotations par point (`point`, `tag`) : même format que le sidecar `<capture>.annotations.json` de la GUI (issue #910) |
 | `POST` | `/analyses/{id}/annotations` | Ajoute une annotation (JSON `point`, `frame_number`, `tag`, `comment`, `color`) ; même trame et étiquette = mise à jour ; 404 point inconnu, 422 saisie invalide |
 | `DELETE` | `/analyses/{id}/annotations?point=&frame_number=&tag=` | Supprime une annotation ; 404 si absente |

@@ -17,7 +17,13 @@ résultat consultable sous ``/analyses/{analysis_id}``.
   porte alors sur ce qui a été capturé) ; la réponse donne l'``analysis_id``
   (issue #904) ;
 - ``DELETE /live-captures/{capture_id}`` : abandon sans analyse, fichiers
-  supprimés, statut ``cancelled`` (issue #904).
+  supprimés, statut ``cancelled`` (issue #904) ;
+- ``ring_buffer`` (``files``, ``seconds``, issue #905, équiv. ``--ring-buffer
+  N:SECONDES``) : en plus de l'analyse, un second enregistreur par point
+  garde la capture brute en pcapng tournants ; ces fichiers survivent à
+  l'analyse : ``GET /live-captures/{capture_id}/files`` les liste,
+  ``GET .../files/{point}/{filename}`` les télécharge,
+  ``DELETE .../files`` les supprime.
 
 Sécurité : capturer demande des privilèges (``CAP_NET_RAW``) sur le
 serveur. Désactivé par défaut (``NETCROSS_API_LIVE=1`` pour l'activer),
@@ -42,7 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from netcross_core.logging_config import get_logger
@@ -88,12 +94,24 @@ class LivePoint(BaseModel):
     )
 
 
+class RingBuffer(BaseModel):
+    """Rotation de la capture brute (équiv. ``--ring-buffer N:SECONDES``)."""
+
+    files: int = Field(..., ge=1, description="Nombre de fichiers gardés par point (N)")
+    seconds: float = Field(..., gt=0, description="Durée maximale d'un fichier, en secondes")
+
+
 class LiveCaptureRequest(BaseModel):
     """Corps de ``POST /live-captures``."""
 
     points: list[LivePoint] = Field(..., description="Points à capturer simultanément (au moins 1)")
     duration: float = Field(..., gt=0, description=f"Durée de capture en secondes (bornée par {MAX_DURATION_ENV})")
     points_order: list[str] | None = Field(None, description="Ordre amont -> aval (sinon déduit du trafic)")
+    ring_buffer: RingBuffer | None = Field(
+        None,
+        description="Garde aussi la capture brute de chaque point en pcapng tournants, téléchargeables "
+        "après l'analyse (GET /live-captures/{capture_id}/files) ; incompatible avec pipe://",
+    )
     options: dict[str, Any] = Field(
         default_factory=dict,
         description="Options d'analyse de POST /captures/multi (mêmes noms : tls, nat_tolerant, max_packets...)",
@@ -179,6 +197,12 @@ class _LiveCaptures:
                     raise HTTPException(status_code=400, detail=f"{p.name} : bpf et bpf_library sont exclusifs")
                 p.bpf = self._deps["resolve_bpf_library"](p.bpf_library)
                 logger.debug("live: point {} : filtre {!r} de la bibliothèque", p.name, p.bpf_library)
+        if req.ring_buffer is not None:
+            for p in req.points:
+                if p.interface.strip().startswith("pipe://"):
+                    raise HTTPException(
+                        status_code=400, detail=f"{p.name} : ring_buffer incompatible avec une source pipe://"
+                    )
         borne = max_duration()
         if req.duration > borne:
             raise HTTPException(status_code=400, detail=f"duration : {borne:g} s au plus ({MAX_DURATION_ENV})")
@@ -206,6 +230,7 @@ class _LiveCaptures:
                 raise HTTPException(status_code=409, detail="une capture en direct est déjà en cours sur ce serveur")
             capture_id = uuid.uuid4().hex
             workdir = tempfile.mkdtemp(prefix="netcross-live-")
+            ringdir = tempfile.mkdtemp(prefix="netcross-live-ring-") if req.ring_buffer is not None else None
             entry: dict[str, Any] = {
                 "capture_id": capture_id,
                 "status": CAPTURING,
@@ -214,7 +239,13 @@ class _LiveCaptures:
                 "_t1": None,
                 "duration": req.duration,
                 "points": [
-                    {"name": n, "interface": p.interface.strip(), "bpf": p.bpf or None, "_dir": f"{workdir}/{i}"}
+                    {
+                        "name": n,
+                        "interface": p.interface.strip(),
+                        "bpf": p.bpf or None,
+                        "_dir": f"{workdir}/{i}",
+                        "_ring": f"{ringdir}/{_safe_name(n)}" if ringdir else None,
+                    }
                     for i, (n, p) in enumerate(zip(noms, req.points, strict=True))
                 ],
                 "analysis_id": None,
@@ -224,6 +255,8 @@ class _LiveCaptures:
                 "_handoff": threading.Event(),
                 "_abort": False,
                 "_workdir": workdir,
+                "_ringdir": ringdir,
+                "ring_buffer": req.ring_buffer.model_dump() if req.ring_buffer is not None else None,
             }
             self._entries[capture_id] = entry
         threading.Thread(target=self._run, args=(entry, order, options), daemon=True).start()
@@ -244,6 +277,16 @@ class _LiveCaptures:
                     bpf_filter=point["bpf"],
                 )
                 recorders.append((point, proc))
+                if point["_ring"] is not None:
+                    ring = self._deps["start_recorder"](
+                        point["interface"],
+                        point["_ring"],
+                        max_files=entry["ring_buffer"]["files"],
+                        max_duration_per_file=entry["ring_buffer"]["seconds"],
+                        prefix=_safe_name(point["name"]),
+                        bpf_filter=point["bpf"],
+                    )
+                    recorders.append(({**point, "_dir": point["_ring"], "_is_ring": True}, ring))
             entry["_stop"].wait(entry["duration"])
         except Exception as exc:  # noqa: BLE001 -- tâche de fond : l'erreur va dans l'état
             logger.exception("capture en direct {} : démarrage impossible", entry["capture_id"])
@@ -251,7 +294,7 @@ class _LiveCaptures:
         erreurs = []
         for point, proc in recorders:
             err = self._deps["stop_recorder"](proc)
-            if err and not self._files(point):
+            if err and not point.get("_is_ring") and not self._files(point):
                 erreurs.append(f"{point['name']} : {err}")
         entry["_t1"] = time.monotonic()
         for point in entry["points"]:  # figé : les fichiers sont supprimés après l'analyse
@@ -261,6 +304,7 @@ class _LiveCaptures:
             logger.info("capture en direct {} abandonnée sans analyse", entry["capture_id"])
             entry["status"] = CANCELLED
             shutil.rmtree(entry["_workdir"], ignore_errors=True)
+            self._purge_ring(entry)
             entry["_handoff"].set()
             return
         if entry["error"] is None and erreurs:
@@ -295,6 +339,66 @@ class _LiveCaptures:
             entry["status"] = FAILED
             entry["error"] = analyse.get("error") or "analyse en échec"
         logger.info("capture en direct {} : {}", entry["capture_id"], entry["status"])
+
+    # -- fichiers du ring buffer (issue #905) --------------------------------------------
+
+    @staticmethod
+    def _purge_ring(entry: dict[str, Any]) -> None:
+        if entry.get("_ringdir"):
+            shutil.rmtree(entry["_ringdir"], ignore_errors=True)
+            entry["_ring_purged"] = True
+
+    def ring_files(self, capture_id: str) -> dict[str, Any]:
+        entry = self.get(capture_id)
+        if entry.get("ring_buffer") is None:
+            logger.debug("live: {} sans ring_buffer -> 404", capture_id)
+            raise HTTPException(status_code=404, detail=f"Capture en direct {capture_id} lancée sans ring_buffer")
+        points = []
+        for p in entry["points"]:
+            fichiers = [Path(f) for f in self._files({"_dir": p["_ring"]})]
+            points.append(
+                {
+                    "name": p["name"],
+                    "files": [
+                        {
+                            "filename": f.name,
+                            "bytes": _size(str(f)),
+                            "url": f"/live-captures/{capture_id}/files/{p['name']}/{f.name}",
+                        }
+                        for f in fichiers
+                    ],
+                }
+            )
+        return {
+            "capture_id": capture_id,
+            "status": entry["status"],
+            "ring_buffer": entry["ring_buffer"],
+            "purged": bool(entry.get("_ring_purged")),
+            "points": points,
+        }
+
+    def ring_file(self, capture_id: str, point: str, filename: str) -> Path:
+        """Chemin d'un fichier listé par ``ring_files`` : seuls ces noms sont
+        servis (aucun chemin construit depuis la requête)."""
+        doc = self.ring_files(capture_id)
+        entry = self.get(capture_id)
+        for p, desc in zip(entry["points"], doc["points"], strict=True):
+            if desc["name"] == point:
+                for f in desc["files"]:
+                    if f["filename"] == filename:
+                        return Path(p["_ring"]) / f["filename"]
+        logger.debug("live: fichier {}/{} absent de {} -> 404", point, filename, capture_id)
+        raise HTTPException(status_code=404, detail=f"Fichier {point}/{filename} introuvable")
+
+    def purge_ring(self, capture_id: str) -> dict[str, Any]:
+        entry = self.get(capture_id)
+        self.ring_files(capture_id)  # 404 sans ring_buffer
+        if entry["status"] == CAPTURING:
+            logger.debug("live: purge de {} pendant la capture -> 409", capture_id)
+            raise HTTPException(status_code=409, detail="capture en cours : l'arrêter avant de supprimer ses fichiers")
+        self._purge_ring(entry)
+        logger.info("capture en direct {} : fichiers du ring buffer supprimés", capture_id)
+        return self.ring_files(capture_id)
 
     @staticmethod
     def _files(point: dict[str, Any]) -> list[str]:
@@ -353,6 +457,8 @@ class _LiveCaptures:
             "analysis_id": entry["analysis_id"],
             "analysis_url": f"/analyses/{entry['analysis_id']}" if entry["analysis_id"] else None,
             "error": entry["error"],
+            "ring_buffer": entry.get("ring_buffer"),
+            "files_url": f"/live-captures/{entry['capture_id']}/files" if entry.get("ring_buffer") else None,
         }
 
 
@@ -396,5 +502,27 @@ def register(app: FastAPI, verify: Callable[..., None], deps: dict[str, Callable
         409 si elle est déjà terminée."""
         return live.cancel(capture_id)
 
-    logger.debug("live_routes.register: 4 routes")
+    @app.get("/live-captures/{capture_id}/files", tags=["live"], responses=_RESPONSES, dependencies=auth)
+    def list_live_capture_files(capture_id: str) -> dict[str, Any]:
+        """Fichiers pcapng conservés par le ``ring_buffer`` (équiv. ``--ring-buffer``), par point ;
+        404 si la capture a été lancée sans ``ring_buffer``."""
+        return live.ring_files(capture_id)
+
+    @app.get(
+        "/live-captures/{capture_id}/files/{point}/{filename}",
+        tags=["live"],
+        responses={**_RESPONSES, 200: {"content": {"application/vnd.tcpdump.pcap": {}}}},
+        dependencies=auth,
+    )
+    def download_live_capture_file(capture_id: str, point: str, filename: str) -> FileResponse:
+        """Télécharge un fichier du ``ring_buffer`` (nom donné par ``GET .../files``)."""
+        chemin = live.ring_file(capture_id, point, filename)
+        return FileResponse(chemin, media_type="application/vnd.tcpdump.pcap", filename=chemin.name)
+
+    @app.delete("/live-captures/{capture_id}/files", tags=["live"], responses=_RESPONSES, dependencies=auth)
+    def purge_live_capture_files(capture_id: str) -> dict[str, Any]:
+        """Supprime les fichiers du ``ring_buffer`` ; 409 pendant la capture."""
+        return live.purge_ring(capture_id)
+
+    logger.debug("live_routes.register: 7 routes")
     return live

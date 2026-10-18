@@ -2554,6 +2554,137 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/files:
+    get:
+      tags:
+      - live
+      summary: List Live Capture Files
+      description: 'Fichiers pcapng conservés par le ``ring_buffer`` (équiv. ``--ring-buffer``),
+        par point ;
+
+        404 si la capture a été lancée sans ``ring_buffer``.'
+      operationId: list_live_capture_files_live_captures__capture_id__files_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response List Live Capture Files Live Captures  Capture Id  Files
+                  Get
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - live
+      summary: Purge Live Capture Files
+      description: Supprime les fichiers du ``ring_buffer`` ; 409 pendant la capture.
+      operationId: purge_live_capture_files_live_captures__capture_id__files_delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Purge Live Capture Files Live Captures  Capture Id  Files
+                  Delete
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/files/{point}/{filename}:
+    get:
+      tags:
+      - live
+      summary: Download Live Capture File
+      description: Télécharge un fichier du ``ring_buffer`` (nom donné par ``GET .../files``).
+      operationId: download_live_capture_file_live_captures__capture_id__files__point___filename__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: point
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Point
+      - name: filename
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Filename
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+            application/vnd.tcpdump.pcap: {}
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/annotations:
     get:
       tags:
@@ -3852,6 +3983,13 @@ components:
           - type: 'null'
           title: Points Order
           description: Ordre amont -> aval (sinon déduit du trafic)
+        ring_buffer:
+          anyOf:
+          - $ref: '#/components/schemas/RingBuffer'
+          - type: 'null'
+          description: Garde aussi la capture brute de chaque point en pcapng tournants,
+            téléchargeables après l'analyse (GET /live-captures/{capture_id}/files)
+            ; incompatible avec pipe://
         options:
           additionalProperties: true
           type: object
@@ -3949,6 +4087,24 @@ components:
       - analysis_id
       title: MultiAnalysisSummary
       description: 'Résumé d''une analyse multi-points (issue #354).'
+    RingBuffer:
+      properties:
+        files:
+          type: integer
+          minimum: 1.0
+          title: Files
+          description: Nombre de fichiers gardés par point (N)
+        seconds:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Seconds
+          description: Durée maximale d'un fichier, en secondes
+      type: object
+      required:
+      - files
+      - seconds
+      title: RingBuffer
+      description: Rotation de la capture brute (équiv. ``--ring-buffer N:SECONDES``).
     SecurityFinding:
       properties:
         severity:

@@ -130,6 +130,22 @@ Au lieu d'écrire un filtre, un point peut prendre un filtre enregistré de
 la bibliothèque (`GET /bpf-filters`) : `{"name": "LAN", "interface": "eth0",
 "bpf_library": "web"}`.
 
+Pour garder aussi la capture brute, comme `--ring-buffer N:SECONDES`,
+ajoutez `"ring_buffer": {"files": 5, "seconds": 60}`. Chaque point enregistre
+alors en parallèle au plus 5 fichiers pcapng de 60 s, les plus anciens étant
+écrasés ; l'analyse, elle, porte sur toute la capture. Ces fichiers restent
+sur le serveur après l'analyse :
+
+```bash
+curl -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID/files
+curl -OJ -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID/files/LAN/LAN_00001_20261013120000.pcapng
+curl -X DELETE -H "X-API-Key: $NETCROSS_API_TOKEN" http://localhost:8000/live-captures/$CAPTURE_ID/files
+```
+
+Ils ne sont supprimés que par ce `DELETE`, par l'abandon de la capture,
+ou par le nettoyage du répertoire temporaire du système. Le ring buffer
+est refusé pour une source `pipe://`, comme en CLI.
+
 ## Annoter une analyse
 
 ```bash
