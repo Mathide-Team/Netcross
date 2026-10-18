@@ -2920,6 +2920,10 @@ def main():
     sample_n = _parse_sample_spec(args.sample) if args.sample else None
 
     all_packets = []
+    # Issue #940 : un point en echec (fichier illisible ou tshark absent)
+    # doit se retrouver dans le code de sortie -- defini ici, car la
+    # branche --live ne passe par aucune des branches de lecture.
+    any_error = False
     if args.live:
         # Issue #676 : --bpf-library charge un filtre depuis la bibliotheque
         # et l'applique a tous les points de capture
@@ -2970,7 +2974,6 @@ def main():
         all_packets, per_file_stats = parse_captures_parallel(captures, args.parallel_workers)
         # chaque fichier est rapporte explicitement, succes ou echec -- rien
         # ne doit pouvoir passer sous silence derriere un total agrege
-        any_error = False
         for s in per_file_stats:
             if s["error"]:
                 any_error = True
@@ -3003,7 +3006,6 @@ def main():
         # resume ATTENTION n'existait que pour --parallel. Un fichier
         # introuvable passait donc pour une capture vide sur le chemin le plus
         # emprunte. raise_on_error=True rend l'echec visible ici.
-        any_error = False
         for label, path in captures:
             try:
                 pkts = parse_capture(label, path, raise_on_error=True)
@@ -3518,6 +3520,14 @@ def main():
         if args.support_map:
             write_support_map_csv(scrubber, args.support_map)
             print(f"  correspondance privee : {args.support_map} (a NE PAS transmettre avec le ticket)")
+    # Issue #940 : un echec de lecture (fichier introuvable, tshark absent,
+    # fichier tronque) laisse l'analyse poursuivre sur les fichiers restants
+    # (issue #287), mais le code de sortie doit porter l'echec : une
+    # automatisation ne doit pas confondre analyse incomplete et succes.
+    # 3 : 0 = succes, 1 = erreur fatale, 2 = erreur d'usage (argparse),
+    # 3 = rapport rendu mais incomplet.
+    if any_error:
+        sys.exit(3)
     logger.debug("main: fin")
 
 
