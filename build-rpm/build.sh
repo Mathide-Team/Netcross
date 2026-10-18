@@ -15,9 +15,13 @@
 
 set -euo pipefail
 
-VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Issue #939 : la version vient de pyproject.toml (source unique), comme pour
+# le .deb via debian/changelog -- en dur ici, chaque bump cassait le build
+# (tarball netcross-<ancienne>.tar.gz introuvable pour le spec à jour).
+VERSION="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$REPO_ROOT/pyproject.toml" | head -1)"
+[ -n "$VERSION" ] || { echo "version introuvable dans $REPO_ROOT/pyproject.toml" >&2; exit 1; }
 STAGE_DIR="$SCRIPT_DIR/_build/netcross-${VERSION}"
 TOPDIR="$SCRIPT_DIR/_build/rpmbuild"
 

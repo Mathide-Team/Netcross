@@ -1,6 +1,6 @@
 [project]
 name = "netcross"
-version = "1.0.0"
+version = "1.1.0"
 description = "Analyse croisee de captures reseau multi-points (pcap_parser/tshark, netcross_core, netcross_report, CLI, GUI GTK4)"
 requires-python = ">=3.10"
 # >=3.10 (et non >=3.9, la cible historique de `ruff target-version`

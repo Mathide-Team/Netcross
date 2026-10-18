@@ -1,3 +1,11 @@
+netcross (1.1.0) unstable; urgency=medium
+
+  * Captures en direct par l'API (#902-#908), bibliothèque de filtres BPF
+    (#906), catalogue des dissecteurs Lua (#917), parité GUI/CLI/API
+    complète (#672-#890), exploration et analyses (#909-#912).
+
+ -- Mathilde Deuscher <149895843+MathildeDec@users.noreply.github.com>  Sun, 18 Oct 2026 14:20:00 +0000
+
 netcross (1.0.0) unstable; urgency=medium
 
   * Version initiale : analyse croisee de captures multi-points, CLI,
