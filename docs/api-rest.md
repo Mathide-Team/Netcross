@@ -90,6 +90,9 @@ La spécification OpenAPI est disponible sur :
 | `GET` | `/live-captures/{id}/files` | Avec `ring_buffer` (`files`, `seconds` ; équiv. `--ring-buffer N:SECONDES`, issue #905) : fichiers pcapng tournants gardés par point, avec taille et URL ; 404 sans `ring_buffer` |
 | `GET` | `/live-captures/{id}/files/{point}/{filename}` | Télécharge un fichier listé (pcapng) ; 404 pour tout autre nom |
 | `DELETE` | `/live-captures/{id}/files` | Supprime les fichiers du ring buffer ; 409 pendant la capture |
+| `GET` | `/live-captures/{id}/report` | Avec `live_report` (`interval`, 5 s par défaut ; équiv. `--live-report`, issue #907) : dernière version du rapport HTML, en-tête `Refresh` pendant la capture ; 404 sans `live_report` |
+| `GET` | `/live-captures/{id}/report/{token}/` | Même page sans clé API, par `report_url` (jeton propre à la capture, lecture seule ; équiv. `--live-report-serve`) ; la page y relit `live.json` et `live.jsonl` |
+| `GET` | `/live-captures/{id}/report/{token}/{name}` | `index.html`, `live.json` (instantané) ou `live.jsonl` (journal) ; 404 pour tout autre nom ou un jeton invalide |
 | `GET` | `/analyses/{id}/annotations` | Annotations par point (`point`, `tag`) : même format que le sidecar `<capture>.annotations.json` de la GUI (issue #910) |
 | `POST` | `/analyses/{id}/annotations` | Ajoute une annotation (JSON `point`, `frame_number`, `tag`, `comment`, `color`) ; même trame et étiquette = mise à jour ; 404 point inconnu, 422 saisie invalide |
 | `DELETE` | `/analyses/{id}/annotations?point=&frame_number=&tag=` | Supprime une annotation ; 404 si absente |

@@ -2685,6 +2685,123 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report:
+    get:
+      tags:
+      - live
+      summary: Get Live Capture Report
+      description: 'Dernière version du rapport en continu (équiv. ``--live-report``),
+        avec l''en-tête ``Refresh``
+
+        pendant la capture ; 404 si la capture a été lancée sans ``live_report``.'
+      operationId: get_live_capture_report_live_captures__capture_id__report_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
+        '403':
+          description: Capture en direct désactivée (NETCROSS_API_LIVE), interface
+            hors de NETCROSS_API_LIVE_INTERFACES, ou NETCROSS_API_TOKEN non défini
+        '404':
+          description: Capture inconnue
+        '409':
+          description: Une capture est déjà en cours, ou abandon d'une capture déjà
+            terminée
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report/{token}/:
+    get:
+      tags:
+      - live
+      summary: View Live Capture Report
+      description: Page du rapport en continu ouverte avec ``report_url`` (jeton,
+        lecture seule).
+      operationId: view_live_capture_report_live_captures__capture_id__report__token___get
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: Rapport introuvable ou jeton invalide
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /live-captures/{capture_id}/report/{token}/{name}:
+    get:
+      tags:
+      - live
+      summary: View Live Capture Report File
+      description: '``index.html``, ``live.json`` (instantané) ou ``live.jsonl`` (journal)
+        du rapport en continu.'
+      operationId: view_live_capture_report_file_live_captures__capture_id__report__token___name__get
+      parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Capture Id
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Token
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Rapport introuvable ou jeton invalide
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /analyses/{analysis_id}/annotations:
     get:
       tags:
@@ -3990,6 +4107,12 @@ components:
           description: Garde aussi la capture brute de chaque point en pcapng tournants,
             téléchargeables après l'analyse (GET /live-captures/{capture_id}/files)
             ; incompatible avec pipe://
+        live_report:
+          anyOf:
+          - $ref: '#/components/schemas/LiveReport'
+          - type: 'null'
+          description: Rapport HTML rafraîchi pendant la capture (GET /live-captures/{capture_id}/report,
+            ou report_url dans un navigateur)
         options:
           additionalProperties: true
           type: object
@@ -4031,6 +4154,17 @@ components:
       - interface
       title: LivePoint
       description: 'Un point de capture : nom, interface du serveur, filtre BPF propre.'
+    LiveReport:
+      properties:
+        interval:
+          type: number
+          minimum: 1.0
+          title: Interval
+          description: Secondes entre deux relevés (5 par défaut, 1 minimum)
+          default: 5.0
+      type: object
+      title: LiveReport
+      description: Rapport HTML en continu (équiv. ``--live-report`` + ``--live-report-interval``).
     MultiAnalysisSummary:
       properties:
         analysis_id:
