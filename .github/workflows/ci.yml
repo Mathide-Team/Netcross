@@ -280,10 +280,10 @@ jobs:
     # GUI est couvert par ses propres tests dans l'autre job. Ce job
     # télécharge les deux fichiers de données coverage.py, les combine
     # (coverage combine) et publie le total réel toutes sources confondues
-    # dans le résumé du run, avec le même seuil bloquant que les tests
-    # (fail_under de pyproject.toml, #246) — conservé à 80 dans un
-    # premier temps, la cible 95 % de l'audit #462 sera mesurée sur ce
-    # chiffre réel avant d'être appliquée.
+    # dans le résumé du run. Seuil bloquant : 95 %, la cible de l'audit #462,
+    # appliquée au total réel (98,2 % mesuré le 18/10/2026). Le job Qualité
+    # garde son propre seuil (fail_under de pyproject.toml, 80, #246) : il
+    # mesure sans les modules GTK4, qui y comptent pour 0 %.
     name: Couverture combinée (Qualité + GTK4)
     needs: [quality, gtk4]
     # Toujours exécuté : si un job amont échoue, c'est lui qui est rouge,
@@ -354,13 +354,13 @@ jobs:
             echo
             echo "Total réel toutes sources confondues : **${pct} %**"
             echo
-            echo "Seuil bloquant : 80 % (`fail_under`, #246). La cible 95 % de l'audit #462 se mesure désormais sur ce chiffre."
+            echo "Seuil bloquant : 95 % (cible de l'audit #462), appliqué à ce total réel."
             echo
             echo '```'
             cat /tmp/couverture.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          coverage report --fail-under=80
+          coverage report --fail-under=95
 
   types:
     # Verification statique des types (issue #281).
