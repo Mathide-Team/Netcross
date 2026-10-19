@@ -166,6 +166,29 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      - name: Publication des données de couverture brutes (artifact)
+        # Issue #943 : le fichier de données coverage.py (.coverage) est
+        # renommé et publié pour le job « Couverture combinée », qui
+        # fusionne la mesure de ce job avec celle du job GTK4 : sans lui,
+        # les modules netcross_gtk4 comptent pour 0 % dans le total de la
+        # CI alors que leurs tests tournent (et couvrent) dans l'autre job.
+        # Renommage : les deux jobs publient chacun un « .coverage », les
+        # noms distincts évitent la collision au téléchargement — et sans
+        # point initial : upload-artifact exclut les fichiers cachés
+        # depuis la v4.4.0 (premier passage : « No files were found »
+        # malgré le cp réussi ; include-hidden-files: true existerait mais
+        # ne sert qu'à ça, le renommage est plus simple).
+        if: always()
+        run: cp .coverage coverage-qualite.dat || { echo "::warning::.coverage absent (mesure non exécutée)"; exit 0; }
+      - name: Upload des données de couverture brutes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-qualite
+          path: coverage-qualite.dat
+          retention-days: 14
+          if-no-files-found: warn
+
   gtk4:
     # Tests GTK4 réellement exécutés (issues #357, #363, #421).
     # Le job Qualité n'installe ni pygobject ni libgtk-4 : tous les tests
@@ -227,13 +250,122 @@ jobs:
         run: |
           set -o pipefail
           xvfb-run -a uv run pytest -q -rs --no-header -p no:cacheprovider \
-            --cov=netcross_gtk4 --cov-report=term --cov-fail-under=0 \
+            --cov=netcross_gtk4 --cov-report=term --cov-report=xml:coverage-gtk4.xml --cov-fail-under=0 \
             | tee /tmp/gtk4.txt
           if grep -qE "pygobject absent|GTK4 absent|pas d'affichage pour GTK4" /tmp/gtk4.txt; then
             echo "::error::des tests GTK4 ont été sautés alors que ce job installe GTK4 et Xvfb"
             exit 1
           fi
           echo "tests GTK4 : tous exécutés"
+
+      - name: Publication de la couverture GTK4 (artifact)
+        # Issue #943 : la couverture de ce job n'était ni exportée ni
+        # combinée avec celle du job Qualité — les ~3700 instructions des
+        # modules netcross_gtk4 comptaient pour 0 % dans le total de la CI.
+        # Renommage du .coverage (même raison que le job Qualité : sans
+        # point initial, upload-artifact exclut les fichiers cachés) et
+        # publication pour le job « Couverture combinée ».
+        if: always()
+        run: cp .coverage coverage-gtk4.dat || { echo "::warning::.coverage absent (mesure non exécutée)"; exit 0; }
+      - name: Upload de la couverture GTK4
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-gtk4
+          path: |
+            coverage-gtk4.dat
+            coverage-gtk4.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  couverture-combinee:
+    # Issue #943 : le total de couverture de la CI ne voyait jamais le GUI.
+    # Les jobs Qualité et GTK4 mesuraient chacun leur moitié (source vs
+    # netcross_gtk4) sans jamais combiner : 88,1 % affichés alors que le
+    # GUI est couvert par ses propres tests dans l'autre job. Ce job
+    # télécharge les deux fichiers de données coverage.py, les combine
+    # (coverage combine) et publie le total réel toutes sources confondues
+    # dans le résumé du run. Seuil bloquant : 95 %, la cible de l'audit #462,
+    # appliquée au total réel (98,2 % mesuré le 18/10/2026). Le job Qualité
+    # garde son propre seuil (fail_under de pyproject.toml, 80, #246) : il
+    # mesure sans les modules GTK4, qui y comptent pour 0 %.
+    name: Couverture combinée (Qualité + GTK4)
+    needs: [quality, gtk4]
+    # Toujours exécuté : si un job amont échoue, c'est lui qui est rouge,
+    # ce job se contente alors de le signaler dans le résumé.
+    if: always()
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
+    container:
+      image: ubuntu:26.04
+      options: --privileged
+
+    steps:
+      - name: Prérequis du conteneur (git, certificats, python3)
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates python3 python3-venv
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Checkout du dépôt
+        # Le rapport final affiche les lignes manquantes : les sources
+        # doivent être présentes, aux mêmes chemins absolus que ceux
+        # enregistrés dans les fichiers de données (même image, même
+        # espace de travail → /__w/Netcross/Netcross).
+        uses: actions/checkout@v7
+
+      - name: Téléchargement des données de couverture
+        uses: actions/download-artifact@v7
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+          path: cov/
+
+      - name: Installation de coverage.py
+        # venv PEP 668 (ubuntu:26.04) ; version « >=7 » : combine exige
+        # de lire les données produites par la même génération majeure.
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          # GITHUB_PATH ne prend effet qu'à l'étape suivante : pip du venv
+          # appelé par son chemin absolu ici.
+          "$RUNNER_TEMP/venv/bin/pip" install 'coverage>=7'
+
+      - name: Combinaison et rapport réel
+        # Les données manquantes (job amont rouge avant pytest) ne font
+        # pas échouer ce job : l'échec amont est déjà le signal.
+        run: |
+          if [ ! -f cov/coverage-qualite.dat ] || [ ! -f cov/coverage-gtk4.dat ]; then
+            echo "::warning::données de couverture incomplètes (job Qualité ou GTK4 en échec avant la mesure) — pas de total combiné"
+            echo "## Couverture combinée (issue #943)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Données incomplètes : le job Qualité ou GTK4 a échoué avant la mesure. Pas de total combiné." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          coverage combine cov/coverage-qualite.dat cov/coverage-gtk4.dat
+          coverage report | tee /tmp/couverture.txt
+          coverage xml -o coverage-combinee.xml
+
+      - name: Total réel dans le résumé + seuil
+        # fail_under vient de pyproject.toml ([tool.coverage.report],
+        # lu automatiquement par coverage après le checkout).
+        if: always()
+        run: |
+          if [ ! -f .coverage ]; then
+            exit 0
+          fi
+          pct=$(coverage json -o /tmp/total.json >/dev/null && \
+            python3 -c "import json; print(f\"{json.load(open('/tmp/total.json'))['totals']['percent_covered']:.1f}\")")
+          {
+            echo "## Couverture combinée (Qualité + GTK4) — issue #943"
+            echo
+            echo "Total réel toutes sources confondues : **${pct} %**"
+            echo
+            echo "Seuil bloquant : 95 % (cible de l'audit #462), appliqué à ce total réel."
+            echo
+            echo '```'
+            cat /tmp/couverture.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          coverage report --fail-under=95
 
   types:
     # Verification statique des types (issue #281).
