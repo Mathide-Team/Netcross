@@ -2,7 +2,7 @@
 netcross_core.lua_dissectors -- catalogue des dissecteurs Wireshark écrits en
 Lua, dans la banque Lua (issue #917).
 
-Source : le recensement du dépôt Mathide-Team/wireshark-lua (une issue par
+Source : le recensement du dépôt Mathilde-Team/wireshark-lua (une issue par
 dissecteur, CSV complet joint à l'issue #559), versionné dans
 ``data/lua_dissectors.csv`` (``scripts/import_lua_dissectors.py`` le
 normalise). Chargé dans la même base SQLite que la documentation de l'API
