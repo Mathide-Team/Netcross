@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Mathilde Deuscher <149895843+MathildeDec@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.6.2
-Homepage: https://github.com/Mathide-Team/Netcross
+Homepage: https://github.com/Mathilde-Team/Netcross
 Rules-Requires-Root: no
 
 Package: netcross

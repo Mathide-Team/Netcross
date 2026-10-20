@@ -21,7 +21,7 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 - Bibliothèque de filtres BPF dans l'API : `GET/PUT/DELETE /bpf-filters`,
   champ `bpf_library` de chaque point de `POST /live-captures` (#906)
 - Catalogue des dissecteurs Wireshark écrits en Lua (plus de 1 200 dépôts
-  recensés par [wireshark-lua](https://github.com/Mathide-Team/wireshark-lua))
+  recensés par [wireshark-lua](https://github.com/Mathilde-Team/wireshark-lua))
   dans la banque Lua, en CLI, GUI et API (#917)
 - Exploration et analyses en CLI et API : cartographie des communications
   (#909), exploration statistique (Top-N, tri, regroupement, drill-down,
