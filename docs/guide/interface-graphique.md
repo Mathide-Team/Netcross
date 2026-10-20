@@ -260,7 +260,7 @@ de `--json`. Aucun accès réseau ; la banque est celle de la CLI
 
 La liste en tête de la fenêtre passe de « API Lua » à **Dissecteurs Lua**,
 le catalogue des dissecteurs Wireshark écrits en Lua : plus de 1 200 dépôts
-recensés dans [wireshark-lua](https://github.com/Mathide-Team/wireshark-lua),
+recensés dans [wireshark-lua](https://github.com/Mathilde-Team/wireshark-lua),
 avec leur domaine, le protocole décodé, la licence, le nombre d'étoiles et
 la présence ou non d'un dissecteur natif dans Wireshark. C'est l'équivalent
 de `netcross-lua-doc --dissectors`. La recherche porte sur le nom du dépôt,

@@ -3,7 +3,7 @@ Version:        1.1.0
 Release:        1%{?dist}
 Summary:        Analyse croisee de captures Wireshark multi-points
 License:        MIT
-URL:            https://github.com/Mathide-Team/Netcross
+URL:            https://github.com/Mathilde-Team/Netcross
 BuildArch:      noarch
 
 # paquet "native" sans tarball amont : les sources sont copiees dans le

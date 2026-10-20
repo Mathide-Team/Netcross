@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Normalise le recensement des dissecteurs Lua (dépôt Mathide-Team/wireshark-lua,
+"""Normalise le recensement des dissecteurs Lua (dépôt Mathilde-Team/wireshark-lua,
 CSV joint à l'issue #559) en ``data/lua_dissectors.csv`` (issue #917).
 
     python3 scripts/import_lua_dissectors.py recensement.csv [autre.csv ...]
