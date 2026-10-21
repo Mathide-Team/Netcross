@@ -110,3 +110,30 @@ def test_no_logger_calls_with_raw_braces():
         pytest.fail(
             f"{len(violations)} appel(s) logger.* avec accolades brutes ou exception générique :\n" + "\n".join(lines)
         )
+
+
+_PERCENT_RE = re.compile(r"%(?:\([^)]*\))?[-+ #0]*\d*(?:\.\d+)?[sdifrx]")
+
+
+def test_no_logger_calls_with_percent_format():
+    """Loguru n'interprète pas ``%s``/``%d`` (format de ``logging``) : avec
+    des arguments positionnels, le message s'afficherait sans leurs valeurs.
+    Placeholders ``{}`` seulement (SOCLE §8, règle 5). Un message sans
+    argument qui cite un format (``strftime('%Y')``) est affiché tel quel :
+    il n'est pas visé."""
+    violations = []
+    for py_file in sorted(SRC_DIR.rglob("*.py")):
+        if any(part in _EXCLUDED_DIRS for part in py_file.parts):
+            continue
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        for call, _method in _iter_logger_calls(tree):
+            first = call.args[0] if call.args else None
+            if (
+                len(call.args) > 1
+                and isinstance(first, ast.Constant)
+                and isinstance(first.value, str)
+                and _PERCENT_RE.search(first.value)
+                and "{" not in first.value
+            ):
+                violations.append(f"  {py_file.relative_to(SRC_DIR)}:{call.lineno} {first.value[:80]}")
+    assert violations == [], "messages loguru au format %s/%d :\n" + "\n".join(violations)

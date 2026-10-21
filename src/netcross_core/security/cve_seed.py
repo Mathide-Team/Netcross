@@ -70,5 +70,5 @@ def open_seed_db(path: Path | str = DEFAULT_SEED_PATH) -> tuple[sqlite3.Connecti
     for entry in seed.entries:
         upsert_cve(conn, entry)
     conn.commit()
-    logger.debug("base CVE embarquee chargee : %d CVE (%s)", len(seed.entries), seed.generated)
+    logger.debug("base CVE embarquee chargee : {} CVE ({})", len(seed.entries), seed.generated)
     return conn, seed

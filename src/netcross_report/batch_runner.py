@@ -252,7 +252,7 @@ def run_analyses(plan: BatchPlan, output: str, security: bool, skip_existing: bo
             summaries[key] = analyse_and_write(members, out_path, security)
             progress(f"  {name} : ecrit")
         except Exception as exc:  # noqa: BLE001 -- une analyse en echec ne doit pas arreter le lot
-            logger.exception("analyse %s en echec", key)
+            logger.exception("analyse {} en echec", key)
             errors.append(f"analyse {key} en echec : {exc}")
             progress(f"  {name} : ECHEC -- {exc}")
     logger.debug("run_analyses: retour tuple de 4")
