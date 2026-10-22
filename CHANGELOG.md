@@ -8,6 +8,7 @@ et le projet adhère au [SemVer](https://semver.org/lang/fr/).
 ## [Unreleased]
 
 ### Modifié
+- CI (#966) : un nouveau commit sur une PR annule le run du commit précédent (`concurrency`), dans `ci.yml` et `pr-coverage.yml`. Les runs `push` sur dev et main ne sont jamais annulés.
 - Seuil de couverture bloquant porté à 95 % (#953, règle Mathilde-Team/.github#9) :
   `fail_under = 95` est la seule déclaration. Le job Qualité l'applique hors
   `netcross_gtk4` (mesuré par le job GTK4), le job combiné au total réel, et le
