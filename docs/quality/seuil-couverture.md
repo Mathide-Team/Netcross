@@ -1,6 +1,20 @@
 # Seuil de couverture bloquant
 
-La CI échoue si la couverture totale de `src/` passe sous **80 %**. Le chiffre est dans `pyproject.toml`, section `[tool.coverage.report]`, clé `fail_under`. C'est la seule source : `ci.yml` l'applique via `pytest --cov`, et le commentaire de couverture des PR le lit pour l'afficher.
+La CI échoue si la couverture de `src/` passe sous **95 %** (règle d'équipe, Mathilde-Team/.github#9 ; issue #953). Le chiffre est dans `pyproject.toml`, section `[tool.coverage.report]`, clé `fail_under`. C'est la seule source, lue à trois endroits :
+
+| Où | Périmètre | Comment |
+|---|---|---|
+| job Qualité (`ci.yml`) | `src/` hors `netcross_gtk4` | `coverage report --omit='src/netcross_gtk4/*'` après `pytest --cov --cov-fail-under=0` |
+| job Couverture combinée (`ci.yml`) | `src/` entier, GUI comprise | `coverage report` sur Qualité + GTK4 combinés |
+| commentaire des PR (`pr-coverage.yml`) | même périmètre que le job Qualité | `coverage json --omit='src/netcross_gtk4/*'` |
+
+Le job Qualité n'installe pas PyGObject : les modules `netcross_gtk4` n'y sont pas exécutés et comptaient pour 0 %, ce qui plafonnait sa mesure vers 88 %. Ils sont mesurés par le job GTK4 (Xvfb), puis comptés dans le total combiné. L'`--omit` n'agit qu'au rapport : le fichier `.coverage` publié reste complet pour `coverage combine`.
+
+| Date | Qualité (tout `src/`) | Qualité hors GUI | Total combiné | Événement |
+|---|---|---|---|---|
+| 2026-10-22 | 87,8 % | 98,5 % | 98,1 % | passage à 95 % (#953), mesure locale avec les extras du CI pour les deux premières colonnes |
+
+L'historique ci-dessous explique les seuils précédents.
 
 ## Pourquoi maintenant, et pourquoi 80 %
 
@@ -27,7 +41,7 @@ Le seuil de 80 % porte sur la mesure du job Qualité, sans PyGObject : les modul
 |---|---|---|
 | 2026-10-18 | 98,2 % | premier passage du job combiné (#944) |
 
-L'audit #462 demandait de passer à 95 %. Ce seuil est appliqué au total réel par le job combiné (`coverage report --fail-under=95` dans `ci.yml`) : 3,2 points de marge. Le seuil de `pyproject.toml` reste à 80 % pour le job Qualité, qui ne peut pas mesurer la GUI.
+L'audit #462 demandait de passer à 95 %. Ce seuil a d'abord été écrit en dur dans le job combiné (`coverage report --fail-under=95`), pendant que `pyproject.toml` restait à 80 % pour le job Qualité. Depuis #953, les deux lisent `fail_under = 95`, et le job Qualité l'applique hors GUI.
 
 ## Ce que le seuil ne dit pas
 

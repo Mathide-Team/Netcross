@@ -142,7 +142,10 @@ docs(#216): documentation CLAUDE.md
 - `dict()` déclenche `C408` — utiliser des littéraux `{}`.
 - Lancer : `PYTHONPATH=src python -m pytest tests/ -v`
 - Seuil de couverture : la CI échoue sous `fail_under` (`pyproject.toml`,
-  80 %). Vérifier en local avec `uv run pytest --cov -q`. Le seuil se relève
+  95 %). Vérifier en local avec `uv run pytest --cov -q` si PyGObject est
+  installé ; sinon, comme le job Qualité :
+  `uv run pytest --cov --cov-fail-under=0 -q && uv run coverage report --omit='src/netcross_gtk4/*'`
+  (la GUI est mesurée par le job GTK4, voir #953). Le seuil se relève
   quand la base monte, il ne se baisse pas pour faire passer une PR — voir
   `docs/quality/seuil-couverture.md`.
 
