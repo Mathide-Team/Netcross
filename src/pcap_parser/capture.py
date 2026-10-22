@@ -272,6 +272,7 @@ class CaptureRingBuffer:
         max_duration_per_file: float = 60.0,
         extension: str = ".pcapng",
     ) -> None:
+        logger.debug("__init__: entrée")
         if max_files < 1:
             logger.debug("CaptureRingBuffer.__init__: si max_files < 1 -> levée ValueError")
             raise ValueError("max_files doit etre >= 1")
@@ -372,8 +373,10 @@ def ring_recorder_args(
     lecteur prendrait les octets du flux au processus d'analyse.
     """
     if max_files < 1:
+        logger.debug("ring_recorder_args: refus")
         raise ValueError("max_files doit etre >= 1")
     if max_duration_per_file <= 0:
+        logger.debug("ring_recorder_args: refus")
         raise ValueError("max_duration_per_file doit etre > 0")
     source = parse_source(interface)
     if source.kind == "pipe":
@@ -580,6 +583,7 @@ class TcpreplayError(RuntimeError):
     utile -- meme forme que TsharkError."""
 
     def __init__(self, message: str, returncode: int | None = None, stderr: str = ""):
+        logger.debug("__init__: entrée")
         super().__init__(message)
         self.returncode = returncode
         self.stderr = stderr
@@ -653,6 +657,7 @@ def replay_capture(path: str, interface: str, speed: float | str = 1.0, loop: in
     si tcpreplay a demarre mais a echoue (code de retour non nul).
     """
     _run_tcpreplay(replay_command(path, interface, speed, loop))
+    logger.debug("replay_capture: retour")
 
 
 def replay_command(path: str, interface: str, speed: float | str = 1.0, loop: int = 1) -> list[str]:
@@ -690,6 +695,7 @@ def replay_command(path: str, interface: str, speed: float | str = 1.0, loop: in
     args = [tcpreplay, f"--intf1={interface}", f"--loop={loop}"]
     args.append("--topspeed" if topspeed else f"--multiplier={speed}")
     args.append(path)
+    logger.debug("replay_command: retour")
     return args
 
 
@@ -708,6 +714,7 @@ def wait_replay(proc: subprocess.Popen, stopped: bool = False) -> None:
     _out, err = proc.communicate()
     logger.debug("wait_replay: code {} (arret demande : {})", proc.returncode, stopped)
     if proc.returncode != 0 and not stopped:
+        logger.debug("wait_replay: refus")
         raise TcpreplayError(
             f"tcpreplay a echoue (code {proc.returncode}) : {(err or '').strip()}",
             returncode=proc.returncode,
@@ -1060,6 +1067,7 @@ class _SourceFailed:
 
 def _validate_live_sources(interfaces: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
     """Verifie la liste (label, interface) et la renvoie sous forme de liste."""
+    logger.debug("_validate_live_sources: entrée")
     sources = list(interfaces)
     if not sources:
         logger.debug("_validate_live_sources: si not sources -> levée ValueError")
@@ -1182,6 +1190,7 @@ def _iter_live_multi(
     stop_event: threading.Event | None,
     bpf_filter: str | None,
 ) -> Iterator[tuple[str, RawPacket]]:
+    logger.debug("_iter_live_multi: entrée")
     halt = threading.Event()  # arret interne : stop_event de l'appelant, erreur ou fermeture
     out: queue.Queue = queue.Queue(maxsize=_LIVE_MULTI_QUEUE_MAXSIZE)
     threads = [
@@ -1264,6 +1273,7 @@ def iter_live_multi(
     et un flux manquant fausserait tout le resultat -- mieux vaut echouer
     franchement.
     """
+    logger.debug("iter_live_multi: entrée")
     sources = _validate_live_sources(interfaces)
     logger.debug("iter_live_multi: {} interface(s), bpf={}", len(sources), bool(bpf_filter))
     return _iter_live_multi(sources, stop_event, bpf_filter)

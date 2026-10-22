@@ -19,6 +19,8 @@ import io
 import sys
 from pathlib import Path
 
+from loguru import logger  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -54,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         texte = normaliser([p.read_text(encoding="utf-8") for p in sources])
     except (OSError, CatalogueError) as exc:
+        logger.error("Import impossible : {}", exc)
         print(f"Import impossible : {exc}", file=sys.stderr)
         return 1
     if args.check:

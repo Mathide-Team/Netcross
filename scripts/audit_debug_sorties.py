@@ -19,7 +19,14 @@ import ast
 import json
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent.parent / "src"
+from loguru import logger
+
+# Issue #954 : l'audit couvre tout le Python suivi par git, pas seulement src/.
+BASES = (
+    Path(__file__).resolve().parent.parent / "src",
+    Path(__file__).resolve().parent.parent / "scripts",
+    Path(__file__).resolve().parent.parent / "tools",
+)
 LOGGER_NAMES = ("logger", "_logger", "log")
 RAISE_OK = {"debug", "info", "warning", "error", "exception", "critical"}
 
@@ -135,12 +142,17 @@ def qualname_walk(tree: ast.Module):
 
 
 def main() -> None:
+    logger.debug("main: entrée")
     ap = argparse.ArgumentParser()
     ap.add_argument("--json")
+    ap.add_argument("--total", action="store_true", help="affiche uniquement le total des sorties non conformes")
     args = ap.parse_args()
     result = []
-    for path in sorted(SRC.rglob("*.py")):
-        if "egg-info" in str(path):
+    chemins = []
+    for base in BASES:
+        chemins.extend(base.rglob("*.py"))
+    for path in sorted(chemins):
+        if "egg-info" in str(path) or "__pycache__" in path.parts:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         funcs = []
@@ -164,7 +176,7 @@ def main() -> None:
             continue
         result.append(
             {
-                "module": str(path.relative_to(SRC)),
+                "module": str(path.relative_to(path.parents[1])),
                 "functions": len(funcs),
                 "functions_ok": sum(1 for f in funcs if not f["bad"]),
                 "exits": n_exits,
@@ -175,10 +187,14 @@ def main() -> None:
     bad_mods = [m for m in result if m["exits_bad"]]
     tot_e = sum(m["exits"] for m in result)
     tot_b = sum(m["exits_bad"] for m in result)
+    if args.total:
+        print(tot_b)
+        return
     print(f"{len(result)} modules avec fonctions, {len(bad_mods)} non conformes")
     print(f"sorties : {tot_e - tot_b}/{tot_e} conformes ({tot_b} sans logger.debug)")
     if args.json:
         Path(args.json).write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    logger.debug("main: retour")
 
 
 if __name__ == "__main__":

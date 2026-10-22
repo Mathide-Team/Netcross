@@ -27,6 +27,18 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+try:
+    from loguru import logger
+except ImportError:  # invoqué par la CI avec le python système, sans loguru
+
+    class _logger:  # noqa: N801 -- repli muet, mêmes méthodes que loguru
+        def _mute(self, *_args, **_kwargs):
+            pass
+
+        trace = debug = info = success = warning = error = exception = critical = log = _mute
+
+    logger = _logger()
+
 ROOT = Path(__file__).resolve().parent.parent
 LANG_DIR = ROOT / "lang"
 DOMAIN = "netcross"
@@ -168,7 +180,8 @@ def template_changes(since: str, lang_dir: Path = LANG_DIR) -> tuple[list[str], 
         old = subprocess.run(
             ["git", "show", f"{since}:{rel}"], cwd=ROOT, capture_output=True, text=True, check=True
         ).stdout
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError) as exc:
+        logger.debug("ancien pot indisponible : {}", exc)
         old = ""
     new = (lang_dir / "messages.pot").read_text(encoding="utf-8")
     before, after = template_ids(old), template_ids(new)

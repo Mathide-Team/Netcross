@@ -39,6 +39,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
+
 ROOT = Path(__file__).resolve().parent.parent
 WIRESHARK_GIT = "https://gitlab.com/wireshark/wireshark.git"
 GLOBAL_CLASS = "GlobalFunctions"
@@ -485,6 +487,7 @@ def build_api(adoc_files: list[Path], version: str, source: str) -> dict[str, An
 
 
 def main(argv: list[str] | None = None) -> int:
+    logger.debug("main: entrée")
     parser = argparse.ArgumentParser(description="Extrait l'API Lua Wireshark (make-wsluarm.py) vers JSON.")
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument("--tag", help="tag Wireshark a cloner (ex: v4.6.9)")
