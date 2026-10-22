@@ -16,6 +16,8 @@ import json
 import sys
 from pathlib import Path
 
+from loguru import logger  # noqa: E402
+
 # PYTHONPATH=src pour importer netcross_api
 src = Path(__file__).resolve().parent.parent / "src"
 sys.path.insert(0, str(src))
@@ -44,8 +46,9 @@ def _render() -> tuple[Path, str]:
         import yaml
 
         return output, yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    except ImportError:
+    except ImportError as exc:
         # Repli : JSON si pyyaml n'est pas disponible.
+        logger.debug("pyyaml absent, sortie JSON : {}", exc)
         return output.with_suffix(".json"), json.dumps(spec, indent=2, ensure_ascii=False)
 
 

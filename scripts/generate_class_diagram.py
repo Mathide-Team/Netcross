@@ -35,6 +35,18 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+try:
+    from loguru import logger
+except ImportError:  # invoqué par la CI avec le python système, sans loguru
+
+    class _logger:  # noqa: N801 -- repli muet, mêmes méthodes que loguru
+        def _mute(self, *_args, **_kwargs):
+            pass
+
+        trace = debug = info = success = warning = error = exception = critical = log = _mute
+
+    logger = _logger()
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SRC = REPO_ROOT / "src"
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "class-diagram.md"
@@ -111,7 +123,8 @@ def _annotation_text(node: ast.expr | None) -> str:
         if isinstance(node.value, str):
             try:
                 return _annotation_text(ast.parse(node.value, mode="eval").body)
-            except SyntaxError:
+            except SyntaxError as exc:
+                logger.debug("annotation non parsable, valeur brute conservee : {}", exc)
                 return _safe(node.value)
         return _safe(repr(node.value))
     if isinstance(node, ast.Name):
@@ -154,7 +167,8 @@ def _annotation_names(node: ast.expr | None) -> set[str]:
         elif isinstance(sub, ast.Constant) and isinstance(sub.value, str):
             try:
                 names |= _annotation_names(ast.parse(sub.value, mode="eval").body)
-            except SyntaxError:
+            except SyntaxError as exc:
+                logger.debug("sous-annotation non parsable, ignoree : {}", exc)
                 continue
     return names
 
