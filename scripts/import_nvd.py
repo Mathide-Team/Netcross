@@ -49,7 +49,16 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from loguru import logger  # noqa: E402
+try:
+    from loguru import logger
+except ImportError:  # invoqué par la CI avec le python système, sans loguru
+    class _logger:  # noqa: N801 -- repli muet, mêmes méthodes que loguru
+        def _mute(self, *_args, **_kwargs):
+            pass
+
+        trace = debug = info = success = warning = error = exception = critical = log = _mute
+
+    logger = _logger()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 

@@ -35,7 +35,16 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from loguru import logger  # noqa: E402
+try:
+    from loguru import logger
+except ImportError:  # invoqué par la CI avec le python système, sans loguru
+    class _logger:  # noqa: N801 -- repli muet, mêmes méthodes que loguru
+        def _mute(self, *_args, **_kwargs):
+            pass
+
+        trace = debug = info = success = warning = error = exception = critical = log = _mute
+
+    logger = _logger()
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SRC = REPO_ROOT / "src"
