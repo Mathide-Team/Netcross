@@ -33,6 +33,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from loguru import logger  # noqa: E402
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -102,7 +104,9 @@ def _fetch_cve(cve_id: str, *, attempts: int = 3, pause: float = 60.0) -> list[d
         try:
             return list(iter_nvd_items(_fetch_page({"cveId": cve_id})))
         except (OSError, RuntimeError) as exc:  # URLError/HTTPError, timeouts, limitation persistante
+            logger.warning("CVE {} non recuperee : {}", cve_id, exc)
             print(f"{cve_id} : {exc}", file=sys.stderr)
+    logger.debug("_recuperer_cve() retourne | vide")
     return []
 
 

@@ -19,6 +19,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from loguru import logger
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -26,6 +28,7 @@ from netcross_core.lua_doc import connect, get_meta, load_json_file  # noqa: E40
 
 
 def main(argv: list[str] | None = None) -> int:
+    logger.debug("main: entrée")
     parser = argparse.ArgumentParser(description="Construit la banque SQLite de l'API Lua Wireshark.")
     parser.add_argument("--input", type=Path, default=ROOT / "data" / "lua_api.json", help="JSON produit par #386")
     parser.add_argument("--db", type=Path, default=ROOT / "data" / "lua_api.db", help="fichier SQLite de sortie")
@@ -46,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Banque Lua ecrite dans {args.db} (Wireshark {meta.get('version_wireshark', '?')})")
     for table, n in counts.items():
         print(f"  {table}: {n}")
+    logger.debug("main: retour")
     return 0
 
 

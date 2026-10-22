@@ -15,6 +15,8 @@ import argparse
 import ast
 from pathlib import Path
 
+from loguru import logger
+
 GUI_NAMES = frozenset({"Gtk", "Gio", "GLib", "Gdk", "Pango"})
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "src" / "netcross_gtk4" / "app.py"
 
@@ -43,6 +45,7 @@ def inventaire(source: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    logger.debug("main: entrée")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("path", nargs="?", type=Path, default=DEFAULT_PATH)
     parser.add_argument("--top", type=int, default=15, help="methodes sans GTK a lister (defaut : 15)")
@@ -55,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nPlus grosses methodes sans objet GTK nomme (top {args.top}) :")
     for nombre, nom in inv["sans_gtk"][: args.top]:
         print(f"  {nombre:4d}  {nom}")
+    logger.debug("main: retour")
     return 0
 
 

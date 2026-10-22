@@ -49,6 +49,18 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+try:
+    from loguru import logger
+except ImportError:  # invoqué par la CI avec le python système, sans loguru
+
+    class _logger:  # noqa: N801 -- repli muet, mêmes méthodes que loguru
+        def _mute(self, *_args, **_kwargs):
+            pass
+
+        trace = debug = info = success = warning = error = exception = critical = log = _mute
+
+    logger = _logger()
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from netcross_core.security.cve_db import AffectedProduct, CveEntry, connect_cve_db, upsert_cve  # noqa: E402
@@ -209,6 +221,7 @@ def import_from_api(db_path, *, keyword: str | None, results_per_page: int, dela
             try:
                 payload = _fetch_page(params)
             except urllib.error.URLError as exc:
+                logger.error("requete NVD en echec (startIndex={}) : {}", start_index, exc)
                 raise RuntimeError(
                     f"Echec de la requete NVD (startIndex={start_index}) : {exc}. "
                     "Verifier l'acces reseau sortant vers services.nvd.nist.gov."

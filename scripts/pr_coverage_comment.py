@@ -30,6 +30,8 @@ import sys
 import urllib.error
 import urllib.request
 
+from loguru import logger  # noqa: E402
+
 # Marqueur HTML invisible qui identifie le commentaire de couverture a
 # mettre a jour (plutot qu'a dupliquer) d'un push a l'autre.
 MARQUEUR = "<!-- netcross:couverture-pr -->"
@@ -48,7 +50,8 @@ def lire_seuil(chemin: str = PYPROJECT) -> float | None:
     try:
         with open(chemin, encoding="utf-8") as f:
             texte = f.read()
-    except OSError:
+    except OSError as exc:
+        logger.debug("pyproject.toml illisible : {}", exc)
         return None
     section = re.search(r"^\[tool\.coverage\.report\]\s*$(.*?)(?=^\[|\Z)", texte, re.M | re.S)
     if section is None:
@@ -174,6 +177,7 @@ def main(argv: list[str]) -> int:
     except urllib.error.HTTPError as erreur:
         if erreur.code != 403:
             raise
+        logger.debug("publication depuis un fork ignoree (HTTP 403)")
         # PR ouverte depuis un fork : GitHub fournit un GITHUB_TOKEN en
         # lecture seule, l'API refuse le commentaire. Ce n'est pas un echec
         # de couverture : avertissement, rapport dans le resume du job.

@@ -32,6 +32,8 @@ import ast
 import sys
 from pathlib import Path
 
+from loguru import logger
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audit_debug_sorties import LOGGER_NAMES, RAISE_OK, _can_fall_through, _is_stub, _log_level  # noqa: E402
 from instrument_loguru import hot_names  # noqa: E402
@@ -337,6 +339,7 @@ def _add_summarize_import(text: str) -> str:
 
 
 def main() -> None:
+    logger.debug("main: entrée")
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("files", nargs="+")
@@ -349,6 +352,7 @@ def main() -> None:
         print(f"{f}: {n} sortie(s) instrumentée(s)" + (f" ({'; '.join(notes)})" if notes else ""))
         if not args.dry_run and out != text:
             p.write_text(out, encoding="utf-8")
+    logger.debug("main: retour")
 
 
 if __name__ == "__main__":
