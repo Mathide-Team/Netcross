@@ -489,9 +489,13 @@ jobs:
 
       - name: Installation de Python 3.14 (uv)
         # Python système trop ancien sur les runners maison (3.8) : venv uv.
+        # Nom unique (--clear en plus) : sur un runner auto-hébergé,
+        # $RUNNER_TEMP est partagé entre les jobs — le venv laissé par un
+        # job en conteneur (root, ex. Couverture) y bloque sinon le nôtre
+        # (« A virtual environment already exists », #919).
         run: |
-          uv venv --python 3.14 --seed "$RUNNER_TEMP/venv"
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          uv venv --clear --python 3.14 --seed "$RUNNER_TEMP/venv-mkdocs"
+          echo "$RUNNER_TEMP/venv-mkdocs/bin" >> "$GITHUB_PATH"
 
       - name: Installation de mkdocs-material
         run: pip install mkdocs-material pymdown-extensions
