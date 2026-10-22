@@ -310,7 +310,7 @@ jobs:
     # (coverage combine) et publie le total réel toutes sources confondues
     # dans le résumé du run. Seuil bloquant : 95 %, la cible de l'audit #462,
     # appliquée au total réel (98,2 % mesuré le 18/10/2026). Le job Qualité
-    # garde son propre seuil (fail_under de pyproject.toml, 80, #246) : il
+    # garde son propre seuil (fail_under de pyproject.toml, 86, #246 puis #953) : il
     # mesure sans les modules GTK4, qui y comptent pour 0 %.
     name: Couverture combinée (Qualité + GTK4)
     needs: [quality, gtk4]

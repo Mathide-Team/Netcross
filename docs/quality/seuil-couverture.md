@@ -1,8 +1,8 @@
 # Seuil de couverture bloquant
 
-La CI échoue si la couverture totale de `src/` passe sous **80 %**. Le chiffre est dans `pyproject.toml`, section `[tool.coverage.report]`, clé `fail_under`. C'est la seule source : `ci.yml` l'applique via `pytest --cov`, et le commentaire de couverture des PR le lit pour l'afficher.
+La CI échoue si la couverture totale de `src/` passe sous **86 %**. Le chiffre est dans `pyproject.toml`, section `[tool.coverage.report]`, clé `fail_under`. C'est la seule source : `ci.yml` l'applique via `pytest --cov`, et le commentaire de couverture des PR le lit pour l'afficher.
 
-## Pourquoi maintenant, et pourquoi 80 %
+## Pourquoi ce chiffre (80 %, puis 86 %)
 
 L'issue #246 demandait de décider ce seuil **après** le traitement de `netcross_gtk4/app.py` (#285), pas avant. Un seuil fixé plus tôt aurait été calé sur le plus gros trou du projet, puis n'aurait plus rien retenu une fois ce trou réduit.
 
@@ -10,7 +10,8 @@ L'issue #246 demandait de décider ce seuil **après** le traitement de `netcros
 |---|---|---|
 | 2026-09-21 | 76,7 % | base de référence de #224 |
 | 2026-09-22 | 78,9 % | mesure de #246 |
-| 2026-09-23 | 82,2 % | après #285 lots 1 à 4, #286, #287, #288 |
+| 2026-09-23 | 82,2 % | après #285 lots 1 à 4, #286, #287, #288 → seuil 80 % |
+| 2026-10-22 | 88,0 % | job Qualité sur `dev` (run 39835197889) → seuil 86 %, palier 1 de #953 |
 
 Le 2026-09-23, la mesure donne 82,2 % en local sans tshark, et le même chiffre sur la base `dev` dans les commentaires de PR.
 
@@ -21,13 +22,14 @@ Deux points de marge, pas davantage :
 
 ## Seuil du total réel : 95 % (audit #462)
 
-Le seuil de 80 % porte sur la mesure du job Qualité, sans PyGObject : les modules `netcross_gtk4` y comptent pour 0 %. Depuis #943, le job « Couverture combinée (Qualité + GTK4) » fusionne cette mesure avec celle du job GTK4 (Xvfb) et obtient le total réel toutes sources confondues.
+Le seuil de `pyproject.toml` porte sur la mesure du job Qualité, sans PyGObject : les modules `netcross_gtk4` y comptent pour 0 %. Depuis #943, le job « Couverture combinée (Qualité + GTK4) » fusionne cette mesure avec celle du job GTK4 (Xvfb) et obtient le total réel toutes sources confondues.
 
 | Date | Total réel combiné | Événement |
 |---|---|---|
 | 2026-10-18 | 98,2 % | premier passage du job combiné (#944) |
+| 2026-10-22 | 98,1 % | run 39835197889 sur `dev` |
 
-L'audit #462 demandait de passer à 95 %. Ce seuil est appliqué au total réel par le job combiné (`coverage report --fail-under=95` dans `ci.yml`) : 3,2 points de marge. Le seuil de `pyproject.toml` reste à 80 % pour le job Qualité, qui ne peut pas mesurer la GUI.
+L'audit #462 demandait de passer à 95 %. Ce seuil est appliqué au total réel par le job combiné (`coverage report --fail-under=95` dans `ci.yml`) : 3,2 points de marge. Le seuil de `pyproject.toml` (86 % depuis le palier 1 de #953) porte sur le job Qualité, qui ne peut pas mesurer la GUI. Il monte par paliers vers 95 % (règle du socle, Mathilde-Team/.github#9), toujours avec deux points de marge sous la mesure.
 
 ## Ce que le seuil ne dit pas
 

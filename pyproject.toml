@@ -152,7 +152,9 @@ precision = 1
 # plus rien. Ne s'applique qu'aux executions avec --cov (la CI) ; relever
 # ce chiffre quand la base monte, ne jamais le baisser pour faire passer
 # une PR. Detail : docs/quality/seuil-couverture.md.
-fail_under = 80
+# Palier 1 de #953 (le 2026-10-22) : 88,0 % mesures par le job Qualite sur
+# dev, seuil releve a 86 (memes deux points de marge).
+fail_under = 86
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
