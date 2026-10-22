@@ -453,15 +453,22 @@ jobs:
     # le nom du job doit rester « Construction (mkdocs build --strict) ».
     # Pas de if: -- check_branch_protection.py --hors-ligne ignore les jobs
     # conditionnels.
+    # Checkout isolé : les jobs en conteneur peuvent laisser un .git root-owned
+    # dans le workspace partagé, que ce runner ne peut pas nettoyer.
     name: Construction (mkdocs build --strict)
     # Python seul : natif sur les runners maison (Ubuntu 20.04, Python par
     # uv), sans conteneur. Repli GitHub : variable NETCROSS_RUNS_ON_LEGER.
     runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON_LEGER || '{"group":"maison","labels":["self-hosted","linux"]}') }}
+    defaults:
+      run:
+        working-directory: mkdocs
 
     steps:
 
       - name: Checkout du dépôt
         uses: actions/checkout@v7
+        with:
+          path: mkdocs
 
       - name: Installation de uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -482,7 +489,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mkdocs-site
-          path: site/
+          path: mkdocs/site/
 
   i18n:
     # Ex i18n.yml check (issue #299). Vérifie que les catalogues de traduction
