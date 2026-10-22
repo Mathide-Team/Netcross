@@ -34,6 +34,14 @@ def _modules():
     return sorted(f for f in fichiers if "__pycache__" not in f.parts)
 
 
+def _est_repli_muet(handler: ast.ExceptHandler) -> bool:
+    """Vrai si le handler se contente d'installer un repli de logger."""
+    return any(
+        isinstance(st, ast.Assign) and any(getattr(t, "id", None) in {"logger", "_logger"} for t in st.targets)
+        for st in handler.body
+    )
+
+
 def _is_loguru_call(node: ast.AST) -> bool:
     return (
         isinstance(node, ast.Call)
@@ -51,7 +59,12 @@ def test_chaque_except_contient_un_appel_loguru():
         fautifs.extend(
             f"{path.relative_to(ROOT)}:{node.lineno}"
             for node in ast.walk(tree)
-            if isinstance(node, ast.ExceptHandler) and not any(_is_loguru_call(n) for n in ast.walk(node))
+            if isinstance(node, ast.ExceptHandler)
+            # toléré : le repli muet « logger = ... » quand loguru est absent
+            # (scripts invoqués par la CI avec le python système) — rien à
+            # journaliser, le logger n'existe pas encore (issue #954).
+            and not _est_repli_muet(node)
+            and not any(_is_loguru_call(n) for n in ast.walk(node))
         )
     assert fautifs == [], "except sans appel loguru :\n" + "\n".join(fautifs)
 
@@ -129,15 +142,16 @@ def test_chaque_module_avec_fonctions_a_un_logger():
         if not any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ast.walk(tree)):
             continue
         defini = False
-        for node in tree.body:
-            noms = {"logger", "_logger"}
-            if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in noms for t in node.targets):
-                defini = True
+        noms = {"logger", "_logger"}
+        for node in ast.walk(tree):
+            # import loguru direct ou dans un try/except (repli muet, #954)
             if (
                 isinstance(node, ast.ImportFrom)
                 and node.module == "loguru"
-                and any((a.asname or a.name) in {"logger", "_logger"} for a in node.names)
+                and any((a.asname or a.name) in noms for a in node.names)
             ):
+                defini = True
+            if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in noms for t in node.targets):
                 defini = True
         if not defini:
             fautifs.append(str(path.relative_to(ROOT)))
