@@ -138,9 +138,18 @@ def test_les_workflows_de_couverture_restent_coherents():
     ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     pr = (REPO_ROOT / ".github" / "workflows" / "pr-coverage.yml").read_text(encoding="utf-8")
     assert "uv run pytest --cov " in ci
-    assert "--cov-fail-under" not in ci.split("run: uv run pytest --cov", 1)[1].splitlines()[0]
+    # Job Qualité (#953) : pytest sans seuil, puis le seuil de pyproject.toml
+    # appliqué hors GUI par « coverage report » (aucun --fail-under en dur).
+    etape = ci.split("uv run pytest --cov --cov-fail-under=0 --cov-report=xml\n", 1)[1].splitlines()[0]
+    assert etape.strip() == 'uv run coverage report --show-missing --omit="$COUV_HORS_GUI"'
+    assert 'COUV_HORS_GUI: "src/netcross_gtk4/*"' in ci
+    assert "--fail-under=" not in ci.replace("--cov-fail-under=0", "")
     lancements = [ligne for ligne in pr.splitlines() if "uv run pytest --cov" in ligne]
     assert len(lancements) == 3
+    # Le commentaire compare au seuil le même périmètre que le job Qualité.
+    rapports = [ligne for ligne in pr.splitlines() if "uv run coverage json" in ligne]
+    assert len(rapports) == 3
+    assert all('--omit="src/netcross_gtk4/*"' in ligne for ligne in rapports)
     # Les lancements PR et base ont --cov-fail-under=0 ; le run AI extra
     # collecte juste la couverture sans seuil bloquant.
 

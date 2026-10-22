@@ -120,8 +120,16 @@ jobs:
         # ["src"]) dans pyproject.toml. term-missing dans les logs CI,
         # coverage.xml publie comme artifact (issue #224). Seuil bloquant :
         # fail_under dans [tool.coverage.report] (issue #246), l'etape echoue
-        # si la couverture totale passe dessous.
-        run: uv run pytest --cov --cov-report=term-missing --cov-report=xml
+        # si la couverture passe dessous.
+        # Issue #953 : netcross_gtk4 ne s'exécute pas ici (pas de PyGObject),
+        # il est mesuré par le job GTK4 et compté dans le total combiné. Le
+        # seuil est donc appliqué hors GUI (--omit au rapport seulement : le
+        # fichier .coverage reste complet pour « coverage combine »).
+        env:
+          COUV_HORS_GUI: "src/netcross_gtk4/*"
+        run: |
+          uv run pytest --cov --cov-fail-under=0 --cov-report=xml
+          uv run coverage report --show-missing --omit="$COUV_HORS_GUI"
 
       - name: Aucun test sauté silencieusement (issues #261/#262)
         # Trace le nombre de tests sautés et échoue si la suite @requires_tshark
@@ -308,10 +316,11 @@ jobs:
     # GUI est couvert par ses propres tests dans l'autre job. Ce job
     # télécharge les deux fichiers de données coverage.py, les combine
     # (coverage combine) et publie le total réel toutes sources confondues
-    # dans le résumé du run. Seuil bloquant : 95 %, la cible de l'audit #462,
-    # appliquée au total réel (98,2 % mesuré le 18/10/2026). Le job Qualité
-    # garde son propre seuil (fail_under de pyproject.toml, 80, #246) : il
-    # mesure sans les modules GTK4, qui y comptent pour 0 %.
+    # dans le résumé du run. Seuil bloquant : fail_under de pyproject.toml
+    # (95 %, audit #462, #953), appliqué au total réel (98,2 % mesuré le
+    # 18/10/2026). Le job Qualité applique le même fail_under hors
+    # netcross_gtk4 (--omit au rapport) : sans PyGObject, ces modules y
+    # comptaient pour 0 %. Un seul chiffre, deux périmètres complémentaires.
     name: Couverture combinée (Qualité + GTK4)
     needs: [quality, gtk4]
     # Toujours exécuté : si un job amont échoue, c'est lui qui est rouge,
@@ -382,13 +391,13 @@ jobs:
             echo
             echo "Total réel toutes sources confondues : **${pct} %**"
             echo
-            echo "Seuil bloquant : 95 % (cible de l'audit #462), appliqué à ce total réel."
+            echo "Seuil bloquant : \`fail_under\` de pyproject.toml (95 %, audit #462 et #953), appliqué à ce total réel."
             echo
             echo '```'
             cat /tmp/couverture.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          coverage report --fail-under=95
+          coverage report > /dev/null  # fail_under de pyproject.toml (#953)
 
       - name: Restituer le workspace au runner (chown)
         # Cf. job Qualité : conteneur root, fichiers root-owned sinon légués
