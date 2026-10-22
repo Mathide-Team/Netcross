@@ -152,7 +152,10 @@ precision = 1
 # plus rien. Ne s'applique qu'aux executions avec --cov (la CI) ; relever
 # ce chiffre quand la base monte, ne jamais le baisser pour faire passer
 # une PR. Detail : docs/quality/seuil-couverture.md.
-fail_under = 80
+# Issue #953 : 95 % (regle d'equipe, Mathilde-Team/.github#9). En CI, le job
+# Qualite l'applique hors netcross_gtk4 (mesure par le job GTK4) et le job
+# combine l'applique au total reel ; c'est la seule declaration du seuil.
+fail_under = 95
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
