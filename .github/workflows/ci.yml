@@ -375,8 +375,15 @@ jobs:
 
     steps:
 
+      # Checkout isolé (même principe que le job Construction) : les jobs
+      # en conteneur (--privileged, utilisateur root) laissent des fichiers
+      # détenus par root dans le .git du workspace partagé du runner maison.
+      # Ce job natif (utilisateur mathilde) ne peut ni les supprimer ni les
+      # réécrire : checkout dans un sous-répertoire vierge, hors de ce .git.
       - name: Checkout du dépôt
         uses: actions/checkout@v7
+        with:
+          path: mypy
 
       - name: Installation de uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -388,9 +395,11 @@ jobs:
 
       - name: Installation des dépendances (extras dev)
         run: uv sync --extra dev
+        working-directory: mypy
 
       - name: Vérification des types (mypy)
         run: uv run mypy
+        working-directory: mypy
 
   packaging:
     # Issue #342 : la casse du .deb (#336, sous-paquets et pcap_parser non
@@ -453,6 +462,11 @@ jobs:
     # le nom du job doit rester « Construction (mkdocs build --strict) ».
     # Pas de if: -- check_branch_protection.py --hors-ligne ignore les jobs
     # conditionnels.
+    # Checkout isolé : les jobs en conteneur (--privileged, utilisateur
+    # root) laissent des fichiers détenus par root dans le .git du workspace
+    # partagé du runner maison ; ce job natif (utilisateur mathilde) ne peut
+    # ni les supprimer ni les réécrire. Checkout dans un sous-répertoire
+    # vierge, hors de ce .git (même principe que le job Types).
     name: Construction (mkdocs build --strict)
     # Python seul : natif sur les runners maison (Ubuntu 20.04, Python par
     # uv), sans conteneur. Repli GitHub : variable NETCROSS_RUNS_ON_LEGER.
