@@ -189,6 +189,21 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      - name: Restituer le workspace au runner (chown)
+        # Ce job en conteneur tourne en root : sans restitution, il laisse
+        # dans les répertoires partagés du runner (workspace ET $RUNNER_TEMP,
+        # partagés entre les jobs d'un runner auto-hébergé) des fichiers
+        # détenus par root — artefacts build-rpm/_build, .git recréés, venv
+        # — que les jobs natifs (Types, Construction, Couverture par PR,
+        # Protection des branches) ne peuvent ni lire ni nettoyer : checkout
+        # en EACCES « .git/FETCH_HEAD », venv uv non remplaçable (constat
+        # 22/10/2026, #919/#936, symptômes isolés par #958).
+        # --reference : chaque répertoire appartient au compte du runner.
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
+
   gtk4:
     # Tests GTK4 réellement exécutés (issues #357, #363, #421).
     # Le job Qualité n'installe ni pygobject ni libgtk-4 : tous les tests
@@ -278,6 +293,14 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      - name: Restituer le workspace au runner (chown)
+        # Cf. job Qualité : conteneur root, fichiers root-owned sinon légués
+        # aux jobs natifs du workspace partagé (#919/#936).
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
+
   couverture-combinee:
     # Issue #943 : le total de couverture de la CI ne voyait jamais le GUI.
     # Les jobs Qualité et GTK4 mesuraient chacun leur moitié (source vs
@@ -366,6 +389,14 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           coverage report --fail-under=95
+
+      - name: Restituer le workspace au runner (chown)
+        # Cf. job Qualité : conteneur root, fichiers root-owned sinon légués
+        # aux jobs natifs du workspace partagé (#919/#936).
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
 
   types:
     # Verification statique des types (issue #281).
@@ -461,6 +492,15 @@ jobs:
             build-rpm/dist/*.rpm
           retention-days: 7
           if-no-files-found: warn
+
+      - name: Restituer le workspace au runner (chown)
+        # Cf. job Qualité : conteneur root — ce job laisse précisément les
+        # artefacts build-rpm/_build détenus par root qui ont empoisonné le
+        # workspace (constat 22/10/2026, #919/#936).
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
 
   documentation:
     # Ex docs.yml (issue #282). Check requis par la protection de dev :
@@ -572,3 +612,11 @@ jobs:
       - name: Catalogues désynchronisés
         if: steps.sync.outcome == 'failure'
         run: echo "::warning::catalogues à régénérer -- le job update ouvre la PR de mise à jour"
+
+      - name: Restituer le workspace au runner (chown)
+        # Cf. job Qualité : conteneur root, fichiers root-owned sinon légués
+        # aux jobs natifs du workspace partagé (#919/#936).
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
