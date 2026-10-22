@@ -179,6 +179,7 @@ class CaptureRow(Gtk.Box):
     """Une ligne = un point de capture (nom + fichier), reordonnable."""
 
     def __init__(self, path, default_label, on_change=None):
+        logger.debug("__init__: entrée")
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.path = path
         self._on_change = on_change
@@ -269,6 +270,7 @@ class LiveCaptureRow(Gtk.Box):
         filters=None,
         on_save_filter=None,
     ):
+        logger.debug("__init__: entrée")
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._on_change = on_change
         logger.debug(
@@ -499,6 +501,7 @@ class CaptureListPanel(Gtk.Box):
     en mode comparaison -- voir MainWindow._build_config_page."""
 
     def __init__(self, heading, on_change=None):
+        logger.debug("__init__: entrée")
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._on_change = on_change
         logger.debug("CaptureListPanel: {}", heading)
@@ -598,6 +601,7 @@ class LiveCaptureListPanel(Gtk.Box):
     jour)."""
 
     def __init__(self, heading, on_change=None, filters_path=None):
+        logger.debug("__init__: entrée")
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._on_change = on_change
         self._filters_path = filters_path
@@ -685,6 +689,7 @@ class LiveCaptureListPanel(Gtk.Box):
 
 class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, app):
+        logger.debug("__init__: entrée")
         super().__init__(application=app, title="Analyse croisee de captures reseau")
         self.set_default_size(1080, 800)
         logger.debug("MainWindow: construction de la fenêtre principale")
@@ -798,10 +803,12 @@ class MainWindow(Gtk.ApplicationWindow):
             self.history_window = HistoryWindow(parent=self, db_path=settings.db_path, label=settings.label)
             self.history_window.connect("close-request", self._on_history_closed)
         self.history_window.present()
+        logger.debug("open_history: retour")
         return self.history_window
 
     def _on_history_closed(self, _win):
         self.history_window = None
+        logger.debug("_on_history_closed: retour")
         return False
 
     def open_capture_tools(self):
@@ -812,10 +819,12 @@ class MainWindow(Gtk.ApplicationWindow):
             self.capture_tools_window = CaptureToolsWindow(parent=self)
             self.capture_tools_window.connect("close-request", self._on_capture_tools_closed)
         self.capture_tools_window.present()
+        logger.debug("open_capture_tools: retour")
         return self.capture_tools_window
 
     def _on_capture_tools_closed(self, _win):
         self.capture_tools_window = None
+        logger.debug("_on_capture_tools_closed: retour")
         return False
 
     def open_batch(self):
@@ -826,10 +835,12 @@ class MainWindow(Gtk.ApplicationWindow):
             self.batch_window = BatchWindow(parent=self)
             self.batch_window.connect("close-request", self._on_batch_closed)
         self.batch_window.present()
+        logger.debug("open_batch: retour")
         return self.batch_window
 
     def _on_batch_closed(self, _win):
         self.batch_window = None
+        logger.debug("_on_batch_closed: retour")
         return False
 
     def open_lua_doc(self):
@@ -838,6 +849,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         if self.lua_doc_window is not None and self.lua_doc_window.browser is not None:
             self.lua_doc_window.present()
+            logger.debug("open_lua_doc: retour")
             return self.lua_doc_window
         self.lua_doc_window = LuaDocWindow(parent=self)
         self.lua_doc_window.present()
@@ -1616,6 +1628,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _notify_settings(self) -> NotifySettings:
         """Reglages de notification, lus sur le thread principal."""
+        logger.debug("_notify_settings: retour")
         return settings_from_widgets(
             self.notify_threshold_drop.get_selected(),
             self.notify_webhook_entry.get_text(),
@@ -2355,6 +2368,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 logger.warning("MainWindow._begin_live_capture: rotation de capture refusee ({})", e)
                 self.stack.set_visible_child_name("log")
                 self._log(f"Rotation de capture impossible -- capture annulee : {e}")
+                logger.debug("_begin_live_capture: retour")
                 return
 
         # Issue #676 : rapport HTML en continu, demarre avant les threads de
@@ -2375,6 +2389,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     self._live_ring_recorders = {}
                 self.stack.set_visible_child_name("log")
                 self._log(f"Rapport en continu impossible -- capture annulee : {e}")
+                logger.debug("_begin_live_capture: retour")
                 return
             ring_messages = [*ring_messages, *report_messages]
 
@@ -2880,6 +2895,7 @@ class MainWindow(Gtk.ApplicationWindow):
             logger.warning("_record_diff_history: {}", exc)
             message = f"Historique non enregistre : {exc}"
         GLib.idle_add(self._log, message)
+        logger.debug("_record_diff_history: retour")
         return message
 
     def _on_analysis_error(self, message):
@@ -3005,10 +3021,12 @@ class MainWindow(Gtk.ApplicationWindow):
     def history_settings(self) -> HistorySettings:
         """Historique SQLite de la configuration (issue #674)."""
         label = self.history_label_entry.get_text().strip()
+        logger.debug("history_settings: retour")
         return HistorySettings(db_path=self.history_option.path, label=label or None)
 
     def advanced_settings(self) -> AdvancedSettings:
         """Options avancees de la configuration (issue #672)."""
+        logger.debug("advanced_settings: retour")
         return settings_from_values(
             self.max_packets_spin.get_value(),
             self.sample_spin.get_value(),
@@ -3021,6 +3039,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def expertise_settings(self) -> ExpertiseSettings:
         """Cases « Expertise » de la configuration (issue #673)."""
+        logger.debug("expertise_settings: retour")
         return ExpertiseSettings(
             rule_engine=self.rule_engine_check.get_active(),
             expert_section=self.expert_section_check.get_active(),
@@ -3036,6 +3055,7 @@ class MainWindow(Gtk.ApplicationWindow):
         logger.debug("MainWindow._annotate_from_search: point={} trame={}", point, frame_number)
         self.annotations_expander.set_expanded(True)
         self.annotations_panel.prefill(point, frame_number)
+        logger.debug("_annotate_from_search: retour")
 
     def _on_diff_done(
         self,
@@ -3704,14 +3724,17 @@ class MainWindow(Gtk.ApplicationWindow):
         dialog = Gtk.FileDialog()
         dialog.set_initial_name("rapport_analyse.md")
         dialog.save(self, None, self._on_markdown_path_chosen)
+        logger.debug("on_export_markdown: retour")
 
     def _on_markdown_path_chosen(self, dialog, result):
         try:
             gfile = dialog.save_finish(result)
         except GLib.Error:
             logger.exception("échec dans _on_markdown_path_chosen")
+            logger.debug("_on_markdown_path_chosen: retour")
             return
         self.export_markdown_to(gfile.get_path())
+        logger.debug("_on_markdown_path_chosen: retour")
 
     def export_markdown_to(self, path):
         """Issue #864 : meme document que --md-report (rapport, constats,
@@ -3734,8 +3757,10 @@ class MainWindow(Gtk.ApplicationWindow):
         except OSError as e:
             logger.exception(f"échec dans export_markdown_to: {e}")
             self.status_label.set_text(f"Erreur Markdown : {e}")
+            logger.debug("export_markdown_to: retour")
             return None
         self.status_label.set_text(f"Rapport Markdown ecrit dans {path}")
+        logger.debug("export_markdown_to: retour")
         return path
 
     def export_json_to(self, path):
@@ -3854,6 +3879,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
 class NetcrossApp(Gtk.Application):
     def __init__(self):
+        logger.debug("__init__: entrée")
         super().__init__(application_id="org.netcross.analyzer")
         self.main_window = None
         logger.debug("NetcrossApp: application_id={}", self.get_application_id())
@@ -3908,6 +3934,7 @@ def display_unavailable_message(environ=None, euid=None) -> str:
 def main():
     # --debug est propre a Netcross : retire avant Gtk.Application.run, qui
     # refuserait une option inconnue.
+    logger.debug("main: entrée")
     argv = list(sys.argv)
     if DEBUG_FLAG in argv:
         argv = [a for a in argv if a != DEBUG_FLAG]

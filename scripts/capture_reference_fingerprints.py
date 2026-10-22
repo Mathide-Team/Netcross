@@ -52,6 +52,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from loguru import logger  # noqa: E402
+
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "src"))
 
@@ -76,7 +78,8 @@ def _version_outil(commande: list[str]) -> str:
     version de curl a l'autre des que la liste de ciphers bouge."""
     try:
         proc = subprocess.run(commande, capture_output=True, text=True, timeout=10, check=False)
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("version de l'outil indisponible : {}", exc)
         return "?"
     sortie = (proc.stdout or proc.stderr).strip().splitlines()
     return sortie[0].strip() if sortie else "?"
@@ -133,7 +136,8 @@ class Capture:
             self.proc.send_signal(signal.SIGTERM)
             try:
                 self.proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:  # pragma: no cover
+            except subprocess.TimeoutExpired as exc:  # pragma: no cover
+                logger.debug("arret force du processus (timeout) : {}", exc)
                 self.proc.kill()
         time.sleep(0.5)
 

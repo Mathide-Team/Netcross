@@ -48,6 +48,8 @@ import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 
+from loguru import logger  # noqa: E402
+
 API = "https://api.github.com"
 RACINE = Path(__file__).resolve().parent.parent
 REGLE_PAR_DEFAUT = RACINE / ".github" / "branch-protection" / "dev.json"
@@ -66,8 +68,10 @@ def charger_regle(chemin: Path) -> dict:
     try:
         regle = json.loads(chemin.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
+        logger.error("fichier de regle introuvable : {}", chemin)
         raise RegleInvalideError(f"fichier de regle introuvable : {chemin}") from exc
     except json.JSONDecodeError as exc:
+        logger.error("fichier de regle illisible {} : {}", chemin, exc)
         raise RegleInvalideError(f"fichier de regle illisible {chemin} : {exc}") from exc
     statuts = regle.get("required_status_checks") if isinstance(regle, dict) else None
     if not isinstance(statuts, dict) or not isinstance(statuts.get("checks"), list):
@@ -217,6 +221,7 @@ def _get(url: str, jeton: str | None) -> dict | None:
             return json.load(reponse)
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403, 404):
+            logger.debug("ressource sans protection lisible (HTTP {})", exc.code)
             return None
         raise
 
@@ -249,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             ecarts, non_verifiables = verifier_en_ligne(regle, args.depot, args.branche, os.environ.get("GITHUB_TOKEN"))
     except (RegleInvalideError, RuntimeError, OSError, urllib.error.URLError) as exc:
+        logger.error("verification de la protection impossible : {}", exc)
         print(f"::error::{exc}")
         return ERREUR
 

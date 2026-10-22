@@ -51,6 +51,8 @@ import time
 import tracemalloc
 from dataclasses import dataclass
 
+from loguru import logger  # noqa: E402
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from netcross_core.analysis import analyse  # noqa: E402
@@ -304,7 +306,9 @@ def main() -> int:
     try:
         sizes = [int(s.strip()) for s in args.sizes.split(",") if s.strip()]
     except ValueError:
+        logger.error("--sizes : liste d'entiers separes par des virgules attendue, recu {!r}", args.sizes)
         print(f"--sizes : liste d'entiers separes par des virgules attendue, recu {args.sizes!r}", file=sys.stderr)
+        logger.debug("main() retourne | 1 (argument invalide)")
         return 1
     if not sizes or any(s <= 0 for s in sizes):
         print("--sizes : toutes les tailles doivent etre des entiers > 0", file=sys.stderr)
