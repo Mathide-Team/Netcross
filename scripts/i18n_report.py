@@ -30,6 +30,7 @@ from pathlib import Path
 try:
     from loguru import logger
 except ImportError:  # invoqué par la CI avec le python système, sans loguru
+
     class _logger:  # noqa: N801 -- repli muet, mêmes méthodes que loguru
         def _mute(self, *_args, **_kwargs):
             pass
