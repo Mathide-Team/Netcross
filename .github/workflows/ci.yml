@@ -27,9 +27,14 @@ defaults:
     shell: bash
 
 jobs:
+  # Jobs en conteneur (quality, gtk4, packaging, i18n) : label « docker » exigé.
+  # Il désigne un runner maison qui lance les conteneurs sur son propre hôte
+  # (VM `ubuntu`). Un runner lui-même conteneurisé (RunnerMaison-2) monte
+  # /__w à un autre chemin que l'hôte Docker : « /__w/_temp/…sh: No such file
+  # or directory » (#848, #936). Repli inchangé : NETCROSS_RUNS_ON.
   quality:
     name: Qualité (lint, format, import-linter, tests)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux","docker"]}') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -62,8 +67,8 @@ jobs:
             | debconf-set-selections
           DEBIAN_FRONTEND=noninteractive apt-get update -qq
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tshark poppler-utils gettext
-          tshark --version | head -1
-          editcap --version | head -1
+          tshark --version 2>&1 | sed -n 1p
+          editcap --version 2>&1 | sed -n 1p
           # poppler-utils fournit pdftotext, utilise par tests/test_security_outputs.py
           # (issue #218) pour REEXTRAIRE le texte du PDF produit au lieu de
           # s'arreter avant le rendu. C'est precisement le niveau de
@@ -72,7 +77,7 @@ jobs:
           # tshark ci-dessus (#262) -- sauter ces tests quand l'outil manque
           # rendrait la CI verte en supprimant la seule verification qui
           # regarde le fichier livre a l'utilisateur.
-          pdftotext -v 2>&1 | head -1
+          pdftotext -v 2>&1 | sed -n 1p
 
       - name: Installation de uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -115,8 +120,16 @@ jobs:
         # ["src"]) dans pyproject.toml. term-missing dans les logs CI,
         # coverage.xml publie comme artifact (issue #224). Seuil bloquant :
         # fail_under dans [tool.coverage.report] (issue #246), l'etape echoue
-        # si la couverture totale passe dessous.
-        run: uv run pytest --cov --cov-report=term-missing --cov-report=xml
+        # si la couverture passe dessous.
+        # Issue #953 : netcross_gtk4 ne s'exécute pas ici (pas de PyGObject),
+        # il est mesuré par le job GTK4 et compté dans le total combiné. Le
+        # seuil est donc appliqué hors GUI (--omit au rapport seulement : le
+        # fichier .coverage reste complet pour « coverage combine »).
+        env:
+          COUV_HORS_GUI: "src/netcross_gtk4/*"
+        run: |
+          uv run pytest --cov --cov-fail-under=0 --cov-report=xml
+          uv run coverage report --show-missing --omit="$COUV_HORS_GUI"
 
       - name: Aucun test sauté silencieusement (issues #261/#262)
         # Trace le nombre de tests sautés et échoue si la suite @requires_tshark
@@ -184,6 +197,21 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      - name: Restituer le workspace au runner (chown)
+        # Ce job en conteneur tourne en root : sans restitution, il laisse
+        # dans les répertoires partagés du runner (workspace ET $RUNNER_TEMP,
+        # partagés entre les jobs d'un runner auto-hébergé) des fichiers
+        # détenus par root — artefacts build-rpm/_build, .git recréés, venv
+        # — que les jobs natifs (Types, Construction, Couverture par PR,
+        # Protection des branches) ne peuvent ni lire ni nettoyer : checkout
+        # en EACCES « .git/FETCH_HEAD », venv uv non remplaçable (constat
+        # 22/10/2026, #919/#936, symptômes isolés par #958).
+        # --reference : chaque répertoire appartient au compte du runner.
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
+
   gtk4:
     # Tests GTK4 réellement exécutés (issues #357, #363, #421).
     # Le job Qualité n'installe ni pygobject ni libgtk-4 : tous les tests
@@ -195,7 +223,7 @@ jobs:
     # GTK4 tout en passant en CI). Ici : GTK4 + pygobject + serveur X
     # virtuel (Xvfb), suite complète, et échec si un test GTK est sauté.
     name: Tests GTK4 (Xvfb)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux","docker"]}') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -273,6 +301,14 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      - name: Restituer le workspace au runner (chown)
+        # Cf. job Qualité : conteneur root, fichiers root-owned sinon légués
+        # aux jobs natifs du workspace partagé (#919/#936).
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
+
   couverture-combinee:
     # Issue #943 : le total de couverture de la CI ne voyait jamais le GUI.
     # Les jobs Qualité et GTK4 mesuraient chacun leur moitié (source vs
@@ -280,10 +316,11 @@ jobs:
     # GUI est couvert par ses propres tests dans l'autre job. Ce job
     # télécharge les deux fichiers de données coverage.py, les combine
     # (coverage combine) et publie le total réel toutes sources confondues
-    # dans le résumé du run. Seuil bloquant : 95 %, la cible de l'audit #462,
-    # appliquée au total réel (98,2 % mesuré le 18/10/2026). Le job Qualité
-    # garde son propre seuil (fail_under de pyproject.toml, 80, #246) : il
-    # mesure sans les modules GTK4, qui y comptent pour 0 %.
+    # dans le résumé du run. Seuil bloquant : fail_under de pyproject.toml
+    # (95 %, audit #462, #953), appliqué au total réel (98,2 % mesuré le
+    # 18/10/2026). Le job Qualité applique le même fail_under hors
+    # netcross_gtk4 (--omit au rapport) : sans PyGObject, ces modules y
+    # comptaient pour 0 %. Un seul chiffre, deux périmètres complémentaires.
     name: Couverture combinée (Qualité + GTK4)
     needs: [quality, gtk4]
     # Toujours exécuté : si un job amont échoue, c'est lui qui est rouge,
@@ -354,13 +391,21 @@ jobs:
             echo
             echo "Total réel toutes sources confondues : **${pct} %**"
             echo
-            echo "Seuil bloquant : 95 % (cible de l'audit #462), appliqué à ce total réel."
+            echo "Seuil bloquant : \`fail_under\` de pyproject.toml (95 %, audit #462 et #953), appliqué à ce total réel."
             echo
             echo '```'
             cat /tmp/couverture.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          coverage report --fail-under=95
+          coverage report > /dev/null  # fail_under de pyproject.toml (#953)
+
+      - name: Restituer le workspace au runner (chown)
+        # Cf. job Qualité : conteneur root, fichiers root-owned sinon légués
+        # aux jobs natifs du workspace partagé (#919/#936).
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
 
   types:
     # Verification statique des types (issue #281).
@@ -375,8 +420,15 @@ jobs:
 
     steps:
 
+      # Checkout isolé (même principe que le job Construction) : les jobs
+      # en conteneur (--privileged, utilisateur root) laissent des fichiers
+      # détenus par root dans le .git du workspace partagé du runner maison.
+      # Ce job natif (utilisateur mathilde) ne peut ni les supprimer ni les
+      # réécrire : checkout dans un sous-répertoire vierge, hors de ce .git.
       - name: Checkout du dépôt
         uses: actions/checkout@v7
+        with:
+          path: mypy
 
       - name: Installation de uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -388,9 +440,11 @@ jobs:
 
       - name: Installation des dépendances (extras dev)
         run: uv sync --extra dev
+        working-directory: mypy
 
       - name: Vérification des types (mypy)
         run: uv run mypy
+        working-directory: mypy
 
   packaging:
     # Issue #342 : la casse du .deb (#336, sous-paquets et pcap_parser non
@@ -399,7 +453,7 @@ jobs:
     # recoit : installation apt, --help de chaque lanceur, import de chaque
     # module avec /usr/bin/python3, analyse reelle d'une capture.
     name: Paquets (deb installé, rpm vérifié)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux","docker"]}') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -448,11 +502,25 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+      - name: Restituer le workspace au runner (chown)
+        # Cf. job Qualité : conteneur root — ce job laisse précisément les
+        # artefacts build-rpm/_build détenus par root qui ont empoisonné le
+        # workspace (constat 22/10/2026, #919/#936).
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"
+
   documentation:
     # Ex docs.yml (issue #282). Check requis par la protection de dev :
     # le nom du job doit rester « Construction (mkdocs build --strict) ».
     # Pas de if: -- check_branch_protection.py --hors-ligne ignore les jobs
     # conditionnels.
+    # Checkout isolé : les jobs en conteneur (--privileged, utilisateur
+    # root) laissent des fichiers détenus par root dans le .git du workspace
+    # partagé du runner maison ; ce job natif (utilisateur mathilde) ne peut
+    # ni les supprimer ni les réécrire. Checkout dans un sous-répertoire
+    # vierge, hors de ce .git (même principe que le job Types).
     name: Construction (mkdocs build --strict)
     # Python seul : natif sur les runners maison (Ubuntu 20.04, Python par
     # uv), sans conteneur. Repli GitHub : variable NETCROSS_RUNS_ON_LEGER.
@@ -462,27 +530,34 @@ jobs:
 
       - name: Checkout du dépôt
         uses: actions/checkout@v7
+        with:
+          path: mkdocs
 
       - name: Installation de uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
       - name: Installation de Python 3.14 (uv)
         # Python système trop ancien sur les runners maison (3.8) : venv uv.
+        # Nom unique (--clear en plus) : sur un runner auto-hébergé,
+        # $RUNNER_TEMP est partagé entre les jobs — le venv laissé par un
+        # job en conteneur (root, ex. Couverture) y bloque sinon le nôtre
+        # (« A virtual environment already exists », #919).
         run: |
-          uv venv --python 3.14 --seed "$RUNNER_TEMP/venv"
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          uv venv --clear --python 3.14 --seed "$RUNNER_TEMP/venv-mkdocs"
+          echo "$RUNNER_TEMP/venv-mkdocs/bin" >> "$GITHUB_PATH"
 
       - name: Installation de mkdocs-material
         run: pip install mkdocs-material pymdown-extensions
 
       - name: Construction (strict -- échoue sur lien mort)
         run: mkdocs build --strict
+        working-directory: mkdocs
 
       - name: Upload de l'artefact (site HTML)
         uses: actions/upload-artifact@v4
         with:
           name: mkdocs-site
-          path: site/
+          path: mkdocs/site/
 
   i18n:
     # Ex i18n.yml check (issue #299). Vérifie que les catalogues de traduction
@@ -491,7 +566,7 @@ jobs:
     # les fichiers concernés (src/**/*.py, lang/**) couvrent la majeure partie
     # du code, donc le job tourne sur toutes les PR/push.
     name: i18n (catalogues à jour)
-    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(vars.NETCROSS_RUNS_ON || '{"group":"maison","labels":["self-hosted","linux","docker"]}') }}
     container:
       image: ubuntu:26.04
       options: --privileged
@@ -546,3 +621,11 @@ jobs:
       - name: Catalogues désynchronisés
         if: steps.sync.outcome == 'failure'
         run: echo "::warning::catalogues à régénérer -- le job update ouvre la PR de mise à jour"
+
+      - name: Restituer le workspace au runner (chown)
+        # Cf. job Qualité : conteneur root, fichiers root-owned sinon légués
+        # aux jobs natifs du workspace partagé (#919/#936).
+        if: always()
+        run: |
+          chown -R --reference="$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+          chown -R --reference="$RUNNER_TEMP" "$RUNNER_TEMP"

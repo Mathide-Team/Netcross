@@ -48,11 +48,13 @@ jobs:
           # PR ajoutant du code d'API faisait plonger le total sous 80 %
           # (constat PR #928/#929 : 79,86 % le runner, 88,1 % avec l'extra).
           uv sync --extra dev --extra api
-          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
+          uv run pytest --cov --cov-fail-under=0 --cov-report= -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
+          uv run coverage json --omit="src/netcross_gtk4/*" -o coverage-pr.json  # même périmètre que le seuil de ci.yml (#953)
           uv sync --extra dev --extra ai --extra api
           # Seconde mesure (avec l'extra ai) : sans seuil non plus. Le seuil bloquant
           # reste celui de ci.yml, qui installe aussi l'extra api.
-          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-pr.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
+          uv run pytest --cov --cov-fail-under=0 --cov-report= -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
+          uv run coverage json --omit="src/netcross_gtk4/*" -o coverage-pr.json  # même périmètre que le seuil de ci.yml (#953)
 
       - name: Couverture de la base (SHA de dev)
         run: |
@@ -68,7 +70,8 @@ jobs:
           # delta compare des suites différentes : tests API sautés d'un seul
           # côté, tests du client LLM de l'autre.
           uv sync --extra dev --extra ai --extra api
-          uv run pytest --cov --cov-fail-under=0 --cov-report=json:coverage-base.json -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
+          uv run pytest --cov --cov-fail-under=0 --cov-report= -q --deselect tests/test_i18n.py::test_catalogues_a_jour_avec_les_sources
+          uv run coverage json --omit="src/netcross_gtk4/*" -o coverage-base.json  # même périmètre que le seuil de ci.yml (#953)
           mv coverage-base.json "$OLDPWD/"
 
       - name: Nettoyage de l'arbre de la base

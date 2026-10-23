@@ -42,4 +42,7 @@ jobs:
       - name: Comparaison avec .github/branch-protection/dev.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: uv run --no-project --python 3.14 scripts/check_branch_protection.py --branche dev
+        # loguru (SOCLE §8) : importé par le script depuis la journalisation de
+        # l'équipe ; --no-project n'installe aucune dépendance, d'où --with (même
+        # borne que pyproject.toml, comme modele-depot).
+        run: uv run --no-project --python 3.14 --with "loguru>=0.7" scripts/check_branch_protection.py --branche dev

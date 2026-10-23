@@ -373,6 +373,7 @@ def _options_metadata(options: ApiAnalysisOptions) -> dict:
             ],
         }
     )
+    logger.debug("_options_metadata: retour")
     return data
 
 
@@ -430,25 +431,30 @@ def _options(
 
         match = re.match(r"^1/(\d+)$", sample.strip())
         if not match:
+            logger.debug("_options: refus")
             raise HTTPException(
                 status_code=400,
                 detail="sample : format attendu 1/N avec N entier > 0 (ex: 1/50)",
             )
         sample_n = int(match.group(1))
         if sample_n < 1:
+            logger.debug("_options: refus")
             raise HTTPException(status_code=400, detail="sample : N doit etre > 0")
     if max_packets is not None and max_packets < 1:
+        logger.debug("_options: refus")
         raise HTTPException(status_code=400, detail="max_packets doit etre > 0")
     # Issue #867 : comme `--plugins` (noms séparés par des virgules). Les
     # détecteurs alimentent le rapport de sécurité, absent avec redact.
     plugin_names = tuple(dict.fromkeys(n.strip() for n in (plugins or "").split(",") if n.strip()))
     if plugin_names and redact:
+        logger.debug("_options: refus")
         raise HTTPException(
             status_code=400,
             detail="plugins n'est pas disponible avec redact : les détecteurs alimentent le rapport de "
             "sécurité, absent avec l'anonymisation",
         )
     if parallel_workers is not None and not 1 <= parallel_workers <= _MAX_PARALLEL_WORKERS:
+        logger.debug("_options: refus")
         raise HTTPException(status_code=400, detail=f"parallel_workers doit etre entre 1 et {_MAX_PARALLEL_WORKERS}")
     notify_extras = [
         name
@@ -462,6 +468,7 @@ def _options(
     ]
     if notify_extras and not notify_on:
         # comme la CLI : jamais une option ignorée en silence
+        logger.debug("_options: refus")
         raise HTTPException(
             status_code=400,
             detail=f"{', '.join(notify_extras)} sans notify_on : aucun seuil, aucune notification",
@@ -471,6 +478,7 @@ def _options(
     if history:
         _history_routes.require_history_db()
     elif history_label:
+        logger.debug("_options: refus")
         raise HTTPException(status_code=400, detail="history_label necessite history=true (comme --history-db)")
     notify = None
     if notify_on:
@@ -483,6 +491,7 @@ def _options(
         )
         errors = validate_notify(notify, not redact, "le rapport de securite n'est pas calcule avec redact=true")
         if errors:
+            logger.debug("_options: refus")
             raise HTTPException(status_code=400, detail="; ".join(errors))
     options = ApiAnalysisOptions(
         nat_tolerant,
@@ -529,6 +538,7 @@ def _collect_tshark_stats_api(captures: list[tuple[str, str]]) -> dict:
     la GUI (``collect_capture_stats``) ; tshark absent : erreur par capture."""
     from netcross_core.tshark_stats import collect_capture_stats
 
+    logger.debug("_collect_tshark_stats_api: retour")
     return collect_capture_stats(captures)
 
 
@@ -575,7 +585,9 @@ def _read_captures(captures: list[tuple[str, str]], parallel_workers: int | None
                 logger.warning("parsing de la capture {} impossible : {}", entry["label"], entry["error"])
                 raise AnalysisError(f"Erreur de parsing pour {entry['label']}: {entry['error']}")
             if not entry["count"]:
+                logger.debug("_read_captures: refus")
                 raise AnalysisError(f"Aucun paquet trouvé dans la capture {entry['label']}")
+        logger.debug("_read_captures: retour")
         return list(all_packets)
     packets: list = []
     for label, path in captures:
@@ -588,6 +600,7 @@ def _read_captures(captures: list[tuple[str, str]], parallel_workers: int | None
             logger.debug("_read_captures: si not pkts -> levée AnalysisError")
             raise AnalysisError(f"Aucun paquet trouvé dans la capture {label}")
         packets.extend(pkts)
+    logger.debug("_read_captures: retour")
     return packets
 
 
@@ -633,9 +646,11 @@ def _open_cve_db():
     path = os.environ.get("NETCROSS_CVE_DB")
     if path:
         if not os.path.isfile(path):
+            logger.debug("_open_cve_db: refus")
             raise AnalysisError(f"base CVE introuvable : {path} (NETCROSS_CVE_DB)")
         from netcross_core.security import connect_cve_db
 
+        logger.debug("_open_cve_db: retour")
         return connect_cve_db(path)
     from netcross_core.security.cve_seed import open_seed_db
 
@@ -643,7 +658,9 @@ def _open_cve_db():
         conn, _seed = open_seed_db()
     except (OSError, ValueError) as exc:
         logger.warning("base CVE embarquée illisible, corrélation CVE désactivée : {}", exc)
+        logger.debug("_open_cve_db: retour")
         return None
+    logger.debug("_open_cve_db: retour")
     return conn
 
 
@@ -817,6 +834,7 @@ def _apply_split_interfaces(
     pcapng multi-interfaces en points distincts. Les fichiers extraits vont
     dans un répertoire temporaire supprimé à la fin de l'analyse."""
     if not options or not options.split_interfaces:
+        logger.debug("_apply_split_interfaces: retour")
         return captures
     import atexit
     import shutil
@@ -839,6 +857,7 @@ def _apply_split_interfaces(
             continue
         logger.debug("split_interfaces : {} capture(s) dans {}", len(slices), path)
         expanded.extend((f"{label}:{s.name}", s.path) for s in slices if s.path)
+    logger.debug("_apply_split_interfaces: retour")
     return expanded
 
 
@@ -959,19 +978,25 @@ _UPLOAD_RESPONSES: dict = {
 async def _save_optional_file(file: UploadFile | None, suffix: str) -> str | None:
     """Sauvegarde un fichier optionnel (names, known_destinations, known_hosts)
     sur disque. Retourne le chemin ou None si aucun fichier fourni."""
+    logger.debug("_save_optional_file: entrée")
     if file is None or not file.filename:
+        logger.debug("_save_optional_file: retour")
         return None
     path = await _save_upload(file, file.filename)
+    logger.debug("_save_optional_file: retour")
     return path
 
 
 def _load_host_set(path: str | None) -> frozenset[str] | None:
     """Charge un ensemble d'IP depuis un fichier JSON (known_destinations,
     known_hosts). Retourne None si path est None."""
+    logger.debug("_load_host_set: entrée")
     if path is None:
+        logger.debug("_load_host_set: retour")
         return None
     from netcross_core.discovery.assets import load_baseline_hosts
 
+    logger.debug("_load_host_set: retour")
     return frozenset(load_baseline_hosts(path))
 
 
@@ -1089,6 +1114,7 @@ async def upload_capture(
     if extra_files:
         for ef in extra_files:
             if not ef.filename:
+                logger.debug("upload_capture: refus")
                 raise HTTPException(status_code=400, detail="Nom de fichier manquant dans extra_files")
             captures.append((label, await _save_upload(ef, label)))
     metadata: dict[str, Any] = {"filename": file.filename, "label": label}
@@ -1314,6 +1340,7 @@ async def upload_multi_capture(
             if split_interfaces
             else "Au moins 2 fichiers sont requis pour l'analyse multi-points (ou 1 pcapng avec split_interfaces=true)"
         )
+        logger.debug("upload_multi_capture: refus")
         raise HTTPException(status_code=400, detail=detail)
     if len(files) > _MAX_FILES:
         logger.debug("upload_multi_capture: si len(files) > _MAX_FILES -> levée HTTPException")
@@ -1375,6 +1402,7 @@ def _completed_entry(analysis_id: str) -> dict:
 
 def _completed_document(analysis_id: str) -> dict:
     """Document brut d'une analyse terminée (voir ``_completed_entry``)."""
+    logger.debug("_completed_document: entrée")
     entry = _completed_entry(analysis_id)
     logger.debug("_completed_document: retour entry['document']")
     return entry["document"]
@@ -1470,6 +1498,7 @@ def _live_objects(analysis_id: str) -> dict:
             detail=f"Analyse {analysis_id} sans objets vivants en memoire "
             "(relue depuis SQLite ou version anterieure) : la relancer pour generer cet export",
         )
+    logger.debug("_live_objects: retour")
     return entry
 
 
@@ -1505,6 +1534,7 @@ def _report_with_topn(report, entry: dict, topn: int):
     La CLI passe N à ``analyse()`` ; l'API recalcule les séries Top-N sur les
     paquets gardés en mémoire, de la même façon, dans une copie du rapport
     (l'analyse stockée n'est pas modifiée)."""
+    logger.debug("_report_with_topn: entrée")
     import copy
 
     from netcross_core.correlate import TOPN_DIMENSIONS, compute_topn_series
@@ -1517,6 +1547,7 @@ def _report_with_topn(report, entry: dict, topn: int):
     bucket_seconds = float(options.get("bucket_ms", 1000.0)) / 1000.0
     copie = copy.copy(report)
     copie.topn_timeseries = {dim: compute_topn_series(packets, bucket_seconds, dim, topn) for dim in TOPN_DIMENSIONS}
+    logger.debug("_report_with_topn: retour")
     return copie
 
 
@@ -1561,6 +1592,7 @@ async def get_analysis_markdown(
         security_report=entry.get("security_report_obj"),
         rule_engine_findings=rule_engine_findings,
     )
+    logger.debug("get_analysis_markdown: retour")
     return PlainTextResponse(
         document,
         media_type="text/markdown; charset=utf-8",
@@ -1675,15 +1707,18 @@ async def get_analysis_sequence(
     """
     entry = store.get(analysis_id)
     if entry is None or entry["status"] != COMPLETED:
+        logger.debug("get_analysis_sequence: refus")
         raise HTTPException(status_code=404, detail="Analyse introuvable ou non terminée")
     flows = entry.get("flows")
     if not flows:
+        logger.debug("get_analysis_sequence: refus")
         raise HTTPException(status_code=404, detail="Aucun flux disponible pour le diagramme de séquence")
     from dataclasses import asdict
 
     from netcross_report.sequence_view import top_flow_views
 
     views = top_flow_views(flows, max_flows=max_flows)
+    logger.debug("get_analysis_sequence: retour")
     return JSONResponse({"sequence_views": [asdict(v) for v in views]})
 
 
@@ -1719,7 +1754,9 @@ async def get_analysis_comm_map(
     protos = [p.strip() for v in protocol or [] for p in v.split(",") if p.strip()] or None
     cmap = build_comm_map(flows, protocols=protos, top_n=top_n, only_anomalies=anomalies_only)
     if format == "dot":
+        logger.debug("get_analysis_comm_map: retour")
         return PlainTextResponse(comm_map_to_dot(cmap), media_type="text/vnd.graphviz")
+    logger.debug("get_analysis_comm_map: retour")
     return JSONResponse(comm_map_to_dict(cmap))
 
 
@@ -1758,9 +1795,11 @@ async def get_analysis_stats(
         logger.debug("get_analysis_stats: paramètre invalide ({})", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if fmt == "csv":
+        logger.debug("get_analysis_stats: retour")
         return PlainTextResponse(render_stats(rows, "csv"), media_type="text/csv")
     from netcross_core.stats import export_json
 
+    logger.debug("get_analysis_stats: retour")
     return JSONResponse({"group_by": group_by, "sort": sort, "rows": export_json(rows)})
 
 
@@ -1799,6 +1838,7 @@ async def get_analysis_dashboard(
     except ValueError as exc:
         logger.debug("get_analysis_dashboard: filtre invalide ({})", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    logger.debug("get_analysis_dashboard: retour")
     return JSONResponse(doc)
 
 
@@ -1818,13 +1858,16 @@ async def get_analysis_siem(
     """
     entry = store.get(analysis_id)
     if entry is None or entry["status"] != COMPLETED:
+        logger.debug("get_analysis_siem: refus")
         raise HTTPException(status_code=404, detail="Analyse introuvable ou non terminée")
     report_obj = entry.get("report_obj")
     if report_obj is None:
+        logger.debug("get_analysis_siem: refus")
         raise HTTPException(status_code=404, detail="Rapport non disponible")
     from netcross_report.siem_export import SIEM_FORMATS, export_cef, export_leef
 
     if format not in SIEM_FORMATS:
+        logger.debug("get_analysis_siem: refus")
         raise HTTPException(
             status_code=400, detail=f"Format SIEM inconnu : {format} (attendu : {', '.join(SIEM_FORMATS)})"
         )
@@ -1838,6 +1881,7 @@ async def get_analysis_siem(
         data = export_stix(report_obj)
     if format != "stix":
         data = "\n".join(lines)
+    logger.debug("get_analysis_siem: retour")
     return PlainTextResponse(
         data,
         headers={"Content-Disposition": f'attachment; filename="netcross-{analysis_id}-siem.{format}"'},
@@ -2005,16 +2049,20 @@ _AI_ENDPOINT_FORM = Form(
 
 async def _save_ai_json(upload: UploadFile | None, directory: str, name: str) -> str | None:
     """Fichier JSON joint écrit dans le répertoire temporaire de la requête."""
+    logger.debug("_save_ai_json: entrée")
     if upload is None:
+        logger.debug("_save_ai_json: retour")
         return None
     path = os.path.join(directory, name)
     Path(path).write_bytes(await upload.read())
+    logger.debug("_save_ai_json: retour")
     return path
 
 
 def _ai_result_without_paths(result: dict, baseline_save: str | None, training_export: str | None) -> dict:
     """Résultat de ``run_ai`` sans chemins du serveur ; baseline et jeu
     d'entraînement produits rendus en ligne (le client les conserve)."""
+    logger.debug("_ai_result_without_paths: entrée")
     import json
 
     out = dict(result)
@@ -2027,6 +2075,7 @@ def _ai_result_without_paths(result: dict, baseline_save: str | None, training_e
     for key in ("baseline", "training"):
         if isinstance(out.get(key), dict):
             out[key] = {k: v for k, v in out[key].items() if k != "path"}
+    logger.debug("_ai_result_without_paths: retour")
     return out
 
 
@@ -2075,15 +2124,19 @@ async def run_analysis_ai(
     summary = (summary or "").strip() or None
     endpoint = (endpoint or "").strip() or None
     if not (baseline_save or baseline is not None or training_export or training is not None or summary):
+        logger.debug("run_analysis_ai: refus")
         raise HTTPException(
             status_code=400,
             detail="aucun usage demandé : baseline_save, baseline, training_export, training ou summary",
         )
     if baseline_label and not baseline_save:
+        logger.debug("run_analysis_ai: refus")
         raise HTTPException(status_code=400, detail="baseline_label nécessite baseline_save")
     if baseline_base is not None and not baseline_save:
+        logger.debug("run_analysis_ai: refus")
         raise HTTPException(status_code=400, detail="baseline_base nécessite baseline_save")
     if endpoint and not summary:
+        logger.debug("run_analysis_ai: refus")
         raise HTTPException(status_code=400, detail="endpoint nécessite summary")
     try:
         if baseline is not None:
@@ -2211,6 +2264,7 @@ async def create_support_ticket(
     logger.debug("create_support_ticket(analysis_id={}, kind={}, scopes={})", analysis_id, kind, scopes)
     entry = store.get(analysis_id)
     if entry is None:
+        logger.debug("create_support_ticket: refus")
         raise HTTPException(status_code=404, detail="Analyse introuvable")
     from datetime import datetime, timezone
 
@@ -2218,8 +2272,10 @@ async def create_support_ticket(
     from netcross_core.support.ticket import KINDS, SCOPES, Consent, build_ticket
 
     if not consent:
+        logger.debug("create_support_ticket: refus")
         raise HTTPException(status_code=400, detail="Consentement explicite requis (consent=true)")
     if kind not in KINDS:
+        logger.debug("create_support_ticket: refus")
         raise HTTPException(
             status_code=400,
             detail=f"kind inconnu : {kind!r} (attendu parmi : {', '.join(KINDS)})",
@@ -2229,6 +2285,7 @@ async def create_support_ticket(
         demandees = tuple(s.strip() for s in scopes.split(",") if s.strip())
         inconnues = [s for s in demandees if s not in SCOPES]
         if inconnues or not demandees:
+            logger.debug("create_support_ticket: refus")
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -2241,6 +2298,7 @@ async def create_support_ticket(
     for spec in marker or []:
         cle, sep, valeur = spec.partition("=")
         if not sep or not cle.strip():
+            logger.debug("create_support_ticket: refus")
             raise HTTPException(
                 status_code=400,
                 detail=f"marker : format attendu CLE=VALEUR, reçu {spec!r}",
@@ -2286,12 +2344,14 @@ async def client_comparison(
     all_packets = entry.get("all_packets") or []
     groups = body.get("groups")
     if not groups or len(groups) < 2:
+        logger.debug("client_comparison: refus")
         raise HTTPException(
             status_code=400,
             detail="Au moins 2 groupes de clients sont requis pour la comparaison",
         )
     reference = body.get("reference")
     if reference and reference not in groups:
+        logger.debug("client_comparison: refus")
         raise HTTPException(
             status_code=400,
             detail=f"reference {reference!r} ne correspond a aucun groupe fourni",
@@ -2479,9 +2539,11 @@ async def create_comparison(
     if history:
         _history_routes.require_history_db()
     elif history_label:
+        logger.debug("create_comparison: refus")
         raise HTTPException(status_code=400, detail="history_label necessite history=true (comme --history-db)")
     live_req = _parse_current_live(current_live, current_files, tls, quic, wait)
     if not baseline_files or (not current_files and live_req is None):
+        logger.debug("create_comparison: refus")
         raise HTTPException(status_code=400, detail="baseline_files et current_files (ou current_live) sont requis")
     baseline_label_list = _parse_labels(baseline_labels, len(baseline_files))
     current_label_list = _parse_labels(current_labels, len(current_files or []))
@@ -2493,16 +2555,19 @@ async def create_comparison(
     try:
         for file, label in zip(baseline_files, baseline_label_list, strict=True):
             if not file.filename:
+                logger.debug("create_comparison: refus")
                 raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
             baseline_captures.append((label, await _save_upload(file, label)))
         for file, label in zip(current_files or [], current_label_list, strict=True):
             if not file.filename:
+                logger.debug("create_comparison: refus")
                 raise HTTPException(status_code=400, detail=f"Nom de fichier manquant pour {label}")
             current_captures.append((label, await _save_upload(file, label)))
     except BaseException:
         logger.debug("create_comparison: except BaseException -> nettoyage et relance")
         for _label, path in baseline_captures + current_captures:
             Path(path).unlink(missing_ok=True)
+        logger.debug("create_comparison: refus")
         raise
 
     comparison_id = uuid.uuid4().hex[:12]
@@ -2570,12 +2635,14 @@ async def create_comparison(
         finally:
             for _label, path in baseline_captures + current_captures:
                 Path(path).unlink(missing_ok=True)
+        logger.debug("_run_comparison: retour")
 
     def _abort_comparison(raison: str) -> None:
         # Issue #908 : capture du courant abandonnée ou en échec -> comparaison en échec
         _comparisons[comparison_id] = {**_comparisons[comparison_id], "status": FAILED, "error": raison}
         for _label, path in baseline_captures:
             Path(path).unlink(missing_ok=True)
+        logger.debug("_abort_comparison: retour")
 
     if live_req is not None:
         try:
@@ -2587,6 +2654,7 @@ async def create_comparison(
             _comparisons.pop(comparison_id, None)
             for _label, path in baseline_captures:
                 Path(path).unlink(missing_ok=True)
+            logger.debug("create_comparison: refus")
             raise
         _comparisons[comparison_id]["live_capture_id"] = etat["capture_id"]
         contenu = {
@@ -2594,15 +2662,19 @@ async def create_comparison(
             "live_capture_id": etat["capture_id"],
             "live_capture_url": f"/live-captures/{etat['capture_id']}",
         }
+        logger.debug("create_comparison: retour")
         return JSONResponse(status_code=202, content=contenu, headers={"Location": status_url})
     if not wait:
         _get_executor().submit(_run_comparison)
         accepted = AnalysisAccepted(analysis_id=comparison_id, status=PENDING, status_url=status_url)
+        logger.debug("create_comparison: retour")
         return JSONResponse(status_code=202, content=accepted.model_dump(), headers={"Location": status_url})
     await run_in_threadpool(_run_comparison)
     entry = _comparisons[comparison_id]
     if entry["status"] == FAILED:
+        logger.debug("create_comparison: refus")
         raise HTTPException(status_code=400, detail=entry["error"])
+    logger.debug("create_comparison: retour")
     return JSONResponse(status_code=201, content=entry["result"], headers={"Location": status_url})
 
 
@@ -2611,7 +2683,9 @@ def _parse_current_live(current_live: str | None, current_files, tls: bool, quic
     ``--live-current`` (exclusif avec ``current_files``, sans TLS/QUIC) ; ``wait``
     refusé (la capture dure ``duration``). Contrôles de la capture faits ici,
     avant d'enregistrer le baseline."""
+    logger.debug("_parse_current_live: entrée")
     if current_live is None:
+        logger.debug("_parse_current_live: retour")
         return None
     import json as _json
 
@@ -2620,14 +2694,17 @@ def _parse_current_live(current_live: str | None, current_files, tls: bool, quic
     from netcross_api.live_routes import LiveCaptureRequest
 
     if current_files:
+        logger.debug("_parse_current_live: refus")
         raise HTTPException(
             status_code=400, detail="current_files et current_live sont exclusifs (comme --live-current)"
         )
     if tls or quic:
+        logger.debug("_parse_current_live: refus")
         raise HTTPException(
             status_code=400, detail="tls/quic ne sont pas disponibles avec current_live (comme --live-current)"
         )
     if wait:
+        logger.debug("_parse_current_live: refus")
         raise HTTPException(
             status_code=400,
             detail="wait n'est pas disponible avec current_live : suivre status_url ou live_capture_url",
@@ -2635,20 +2712,24 @@ def _parse_current_live(current_live: str | None, current_files, tls: bool, quic
     try:
         brut = _json.loads(current_live)
         if not isinstance(brut, dict):
+            logger.debug("_parse_current_live: refus")
             raise TypeError("objet JSON attendu")
         if brut.get("options"):
+            logger.debug("_parse_current_live: refus")
             raise TypeError("pas d'options dans current_live : celles de la comparaison s'appliquent")
         req = LiveCaptureRequest.model_validate(brut)
     except (ValueError, TypeError, ValidationError) as exc:
         logger.debug("_parse_current_live: current_live invalide ({})", exc)
         raise HTTPException(status_code=422, detail=f"current_live invalide : {exc}") from exc
     live_captures.check(req)
+    logger.debug("_parse_current_live: retour")
     return req
 
 
 def _dict_as_report(doc: dict):
     """Convertit un document JSON (report_document) en un objet semblable à
     un Report pour diff_reports, qui lit les champs par attribut."""
+    logger.debug("_dict_as_report: entrée")
     from netcross_core.models import Report
 
     r = Report()
@@ -2668,11 +2749,13 @@ def _dict_as_report(doc: dict):
     r.frag_count = doc.get("frag_count", {})
     r.frag_new = {tuple(k.split(" -> ")): v for k, v in doc.get("frag_new", {}).items()}
     r.security_findings = doc.get("security_findings", [])
+    logger.debug("_dict_as_report: retour")
     return r
 
 
 def _diff_finding_to_dict(f) -> dict:
     """Sérialise un DiffFinding en dict JSON-sérialisable."""
+    logger.debug("_diff_finding_to_dict: retour")
     return {
         "severity": f.severity,
         "category": f.category,
@@ -2692,11 +2775,15 @@ async def get_comparison(
     """
     entry = _comparisons.get(comparison_id)
     if entry is None:
+        logger.debug("get_comparison: refus")
         raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
     if entry["status"] == PENDING:
+        logger.debug("get_comparison: refus")
         raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
     if entry["status"] == FAILED:
+        logger.debug("get_comparison: refus")
         raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    logger.debug("get_comparison: retour")
     return JSONResponse(content=entry["result"])
 
 
@@ -2704,10 +2791,13 @@ _REDACT_MAP_WARNING = "a conserver en prive, ne pas transmettre avec le rapport"
 
 
 def _redact_map_response(entries: list | None, what: str, filename: str) -> PlainTextResponse:
+    logger.debug("_redact_map_response: entrée")
     if entries is None:
+        logger.debug("_redact_map_response: refus")
         raise HTTPException(status_code=404, detail=f"{what} sans anonymisation (redact=true) : aucune table")
     from netcross_core.redact import redaction_map_csv
 
+    logger.debug("_redact_map_response: retour")
     return PlainTextResponse(
         redaction_map_csv(entries),
         media_type="text/csv",
@@ -2733,13 +2823,16 @@ async def get_analysis_redact_map(
     seulement (jamais en SQLite) ; à conserver en privé."""
     entry = _completed_entry(analysis_id)
     if entry.get("redaction_map") is None and not (entry.get("metadata") or {}).get("options", {}).get("redact"):
+        logger.debug("get_analysis_redact_map: refus")
         raise HTTPException(
             status_code=404, detail=f"Analyse {analysis_id} sans anonymisation (redact=true) : aucune table"
         )
     if entry.get("redaction_map") is None:
+        logger.debug("get_analysis_redact_map: refus")
         raise HTTPException(
             status_code=409, detail=f"Analyse {analysis_id} relue après redémarrage : table non conservée"
         )
+    logger.debug("get_analysis_redact_map: retour")
     return _redact_map_response(
         entry["redaction_map"], f"Analyse {analysis_id}", f"netcross-redact-map-{analysis_id}.csv"
     )
@@ -2758,11 +2851,15 @@ async def get_comparison_redact_map(
     (équivalent de ``--redact-map`` de ``netcross-diff``, issue #876)."""
     entry = _comparisons.get(comparison_id)
     if entry is None:
+        logger.debug("get_comparison_redact_map: refus")
         raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
     if entry["status"] == PENDING:
+        logger.debug("get_comparison_redact_map: refus")
         raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
     if entry["status"] == FAILED:
+        logger.debug("get_comparison_redact_map: refus")
         raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
+    logger.debug("get_comparison_redact_map: retour")
     return _redact_map_response(
         entry.get("redaction_map"), f"Comparaison {comparison_id}", f"netcross-diff-redact-map-{comparison_id}.csv"
     )
@@ -2780,10 +2877,13 @@ async def get_comparison_csv(
     """CSV du détail des écarts (équivalent de ``--diff-csv``, issue #669)."""
     entry = _comparisons.get(comparison_id)
     if entry is None:
+        logger.debug("get_comparison_csv: refus")
         raise HTTPException(status_code=404, detail=f"Comparaison {comparison_id} introuvable")
     if entry["status"] == PENDING:
+        logger.debug("get_comparison_csv: refus")
         raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en cours (pending)")
     if entry["status"] == FAILED:
+        logger.debug("get_comparison_csv: refus")
         raise HTTPException(status_code=409, detail=f"Comparaison {comparison_id} en echec : {entry['error']}")
     import csv
     import io
@@ -2793,6 +2893,7 @@ async def get_comparison_csv(
     writer.writerow(["severity", "category", "point", "detail"])
     for f in entry["result"]["findings"]:
         writer.writerow([f["severity"], f["category"], f["point"], f["detail"]])
+    logger.debug("get_comparison_csv: retour")
     return PlainTextResponse(
         buf.getvalue(),
         headers={"Content-Disposition": f'attachment; filename="netcross-diff-{comparison_id}.csv"'},
@@ -2828,6 +2929,7 @@ def _batch_options(
     security_report: bool,
 ) -> Any:
     """Réglages du lot validés comme la CLI (400 sinon)."""
+    logger.debug("_batch_options: entrée")
     from netcross_report.batch_runner import BatchOptions, check_options
 
     defaults = BatchOptions()
@@ -2843,8 +2945,10 @@ def _batch_options(
     if refus:
         for flag in ("--group-window", "--min-overlap", "--min-common-ips", "--jobs"):
             refus = refus.replace(flag, flag[2:].replace("-", "_"))
+        logger.debug("_batch_options: refus")
         raise HTTPException(status_code=400, detail=refus)
     if jobs > _MAX_PARALLEL_WORKERS:
+        logger.debug("_batch_options: refus")
         raise HTTPException(status_code=400, detail=f"jobs doit etre <= {_MAX_PARALLEL_WORKERS}.")
     logger.debug("_batch_options: retour {}", summarize(options, "options"))
     return options
@@ -2852,12 +2956,14 @@ def _batch_options(
 
 def _batch_view(entry: dict) -> dict:
     """État public d'un lot (sans répertoire de travail)."""
+    logger.debug("_batch_view: entrée")
     view = {k: v for k, v in entry.items() if k not in ("workdir", "index")}
     batch_id = entry["batch_id"]
     view["status_url"] = f"/batches/{batch_id}"
     if entry["status"] == "completed":
         view["index_url"] = f"/batches/{batch_id}/index"
         view["report_url_template"] = f"/batches/{batch_id}/reports/{{name}}"
+    logger.debug("_batch_view: retour")
     return view
 
 
@@ -2904,8 +3010,10 @@ async def create_batch(
 
     options = _batch_options(no_group, group_window, min_overlap, min_common_ips, jobs, security_report)
     if not files:
+        logger.debug("create_batch: refus")
         raise HTTPException(status_code=400, detail="Aucun fichier reçu")
     if len(files) > _MAX_FILES:
+        logger.debug("create_batch: refus")
         raise HTTPException(status_code=400, detail=f"Trop de fichiers ({len(files)}, max {_MAX_FILES})")
     workdir, captures_dir = new_workdir()
     names: list[str] = []
@@ -2913,6 +3021,7 @@ async def create_batch(
     try:
         for upload in files:
             if not upload.filename:
+                logger.debug("create_batch: refus")
                 raise HTTPException(status_code=400, detail="Nom de fichier manquant")
             name = safe_name(upload.filename)
             tmp = await _save_upload(upload, name)
@@ -2929,10 +3038,12 @@ async def create_batch(
     except BatchInputError as exc:
         logger.warning("create_batch: envoi refusé ({})", exc)
         shutil.rmtree(workdir, ignore_errors=True)
+        logger.debug("create_batch: refus")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except BaseException:
         logger.debug("create_batch: échec de réception, répertoire {} supprimé", workdir)
         shutil.rmtree(workdir, ignore_errors=True)
+        logger.debug("create_batch: refus")
         raise
     batch_id = batch_store.create(options, names, workdir)
     status_url = f"/batches/{batch_id}"
@@ -2940,25 +3051,31 @@ async def create_batch(
         _get_executor().submit(run_batch_job, batch_id, options, ignored)
         entry = batch_store.get(batch_id)
         assert entry is not None
+        logger.debug("create_batch: retour")
         return JSONResponse(status_code=202, content=_batch_view(entry), headers={"Location": status_url})
     await run_in_threadpool(run_batch_job, batch_id, options, ignored)
     entry = batch_store.get(batch_id)
     assert entry is not None
     if entry["status"] == "failed":
+        logger.debug("create_batch: refus")
         raise HTTPException(status_code=400, detail=entry["error"])
     logger.debug("create_batch: lot {} terminé", batch_id)
     return JSONResponse(status_code=201, content=_batch_view(entry), headers={"Location": status_url})
 
 
 def _batch_entry(batch_id: str, completed: bool = False) -> dict:
+    logger.debug("_batch_entry: entrée")
     from netcross_api.batches import batch_store
 
     entry = batch_store.get(batch_id)
     if entry is None:
+        logger.debug("_batch_entry: refus")
         raise HTTPException(status_code=404, detail=f"Lot {batch_id} introuvable")
     if completed and entry["status"] != "completed":
         detail = entry["error"] if entry["status"] == "failed" else f"Lot {batch_id} en cours ({entry['status']})"
+        logger.debug("_batch_entry: refus")
         raise HTTPException(status_code=409, detail=detail)
+    logger.debug("_batch_entry: retour")
     return entry
 
 
@@ -2967,6 +3084,7 @@ async def list_batches(_auth: None = Depends(_verify_api_key)) -> JSONResponse:
     """Lots conservés en mémoire (les plus anciens terminés sont évincés)."""
     from netcross_api.batches import batch_store
 
+    logger.debug("list_batches: retour")
     return JSONResponse({"batches": batch_store.list()})
 
 
@@ -2975,6 +3093,7 @@ async def get_batch(batch_id: str, _auth: None = Depends(_verify_api_key)) -> JS
     """Avancement (``progress``, lignes de la CLI) et résultat du lot :
     groupes et justification, captures isolées et motif, échecs, rapports,
     constats par sévérité, synthèse."""
+    logger.debug("get_batch: retour")
     return JSONResponse(_batch_view(_batch_entry(batch_id)))
 
 
@@ -2985,6 +3104,7 @@ async def get_batch(batch_id: str, _auth: None = Depends(_verify_api_key)) -> JS
 )
 async def get_batch_index(batch_id: str, _auth: None = Depends(_verify_api_key)) -> PlainTextResponse:
     """Index du lot (``index.txt`` de la CLI)."""
+    logger.debug("get_batch_index: retour")
     return PlainTextResponse(_batch_entry(batch_id, completed=True)["index"])
 
 
@@ -3000,7 +3120,9 @@ async def get_batch_report(batch_id: str, name: str, _auth: None = Depends(_veri
     entry = _batch_entry(batch_id, completed=True)
     path = report_path(entry, name)
     if path is None:
+        logger.debug("get_batch_report: refus")
         raise HTTPException(status_code=404, detail=f"Rapport {name} introuvable dans le lot {batch_id}")
+    logger.debug("get_batch_report: retour")
     return PlainTextResponse(path.read_text(encoding="utf-8"))
 
 
@@ -3029,6 +3151,7 @@ _LIVE_OPTION_DEFAULTS = {"nat_tolerant": False, "nat_window_ms": 200.0, "tls": F
 
 def _live_make_options(**kwargs: Any) -> ApiAnalysisOptions:
     """Options d'analyse d'une capture en direct : celles de POST /captures/multi."""
+    logger.debug("_live_make_options: retour")
     return _options(**{**_LIVE_OPTION_DEFAULTS, **kwargs})
 
 

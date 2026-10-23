@@ -30,6 +30,8 @@ import re
 import sys
 from pathlib import Path
 
+from loguru import logger  # noqa: E402
+
 SRC = Path(__file__).resolve().parent.parent / "src"
 TRIVIAL_LINES = 3
 IMPORT_LINE = "from netcross_core.logging_config import summarize"
@@ -150,7 +152,8 @@ class _Usage(ast.NodeVisitor):
 def _parse_or_empty(path: Path) -> ast.Module:
     try:
         return ast.parse(path.read_text(encoding="utf-8"))
-    except SyntaxError:
+    except SyntaxError as exc:
+        logger.warning("{} : syntaxe invalide, ignore : {}", path, exc)
         print(f"{path}: syntaxe invalide, ignore", file=sys.stderr)
         return ast.Module(body=[], type_ignores=[])
 
