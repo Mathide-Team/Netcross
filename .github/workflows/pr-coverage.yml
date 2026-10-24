@@ -14,6 +14,13 @@ on:
   pull_request:
     branches: [dev]
 
+# Issue #966 : un nouveau commit sur une PR annule le run du commit précédent
+# (inutile, et il occupait l'unique runner docker). Les runs push sur dev/main
+# ne sont jamais annulés ; event_name sépare le push de dev du relais dev → main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
   pull-requests: write
