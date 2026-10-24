@@ -212,3 +212,22 @@ def test_main_sans_resume_de_job(pcc, tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("GITHUB_STEP_SUMMARY")
     monkeypatch.setattr(pcc, "_publier", lambda *a: "ok")
     assert pcc.main(_arguments_main(tmp_path)) == 0
+
+
+def test_uv_run_no_project_fournit_loguru_aux_scripts_qui_l_importent():
+    """#971 : ``uv run --no-project`` n'installe aucune dépendance ; tout
+    script de ``scripts/`` lancé ainsi par un workflow et qui importe loguru
+    doit recevoir ``--with loguru`` (sinon ModuleNotFoundError en CI)."""
+    import re
+
+    lancements = []
+    for workflow in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")):
+        for ligne in workflow.read_text(encoding="utf-8").splitlines():
+            trouve = re.search(r"uv run --no-project\b.*?(scripts/\S+\.py)", ligne)
+            if trouve:
+                lancements.append((workflow.name, ligne, trouve.group(1)))
+    assert any(script == "scripts/pr_coverage_comment.py" for _, _, script in lancements)
+    for nom, ligne, script in lancements:
+        source = (REPO_ROOT / script).read_text(encoding="utf-8")
+        if re.search(r"^\s*from loguru import|^\s*import loguru", source, re.MULTILINE):
+            assert "--with" in ligne and "loguru" in ligne.split(script)[0], f"{nom} : {ligne.strip()}"

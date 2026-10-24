@@ -83,8 +83,10 @@ jobs:
       - name: Publication du commentaire de couverture
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # --no-project n'installe aucune dépendance : le script importe loguru
+        # (journalisation §8, #954), d'où --with, version de uv.lock (#971).
         run: |
-          uv run --no-project --python 3.14 scripts/pr_coverage_comment.py \
+          uv run --no-project --python 3.14 --with "loguru==0.7.3" scripts/pr_coverage_comment.py \
             --pr-json coverage-pr.json \
             --base-json coverage-base.json \
             --pr-number "${{ github.event.pull_request.number }}"
